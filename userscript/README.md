@@ -16,13 +16,15 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.5.3 keeps an unexpired staged task through a page refresh. If a new
+Version 0.5.4 keeps an unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
 The pill uses a compact action label. Its hover text contains the changed
 fields and complete execution route. A conversation-scoped planning barrier,
 persisted revision, and browser-wide lock prevent another tab from dispatching
-an older task after the route changes.
+an older task after the route changes. After dispatch, a conversation-scoped
+terminal marker prevents the same task envelope from being staged again when
+the result message changes the page DOM.
 
 ## Supported sites
 
@@ -73,7 +75,9 @@ paths, raw logs, credentials, or raw errors to the webpage.
   confirmation. Reading an AI reply or observing a DOM change is insufficient.
 - The origin-bound status capability expires and stays in userscript memory.
 - Refresh recovery stores only the bounded staged envelope and change state in
-  extension-isolated userscript storage. The entry expires after ten minutes.
+  extension-isolated userscript storage. A pending entry expires after ten
+  minutes. A dispatched-envelope marker remains for that conversation so page
+  history cannot silently re-stage already consumed work.
 - Confirmation and dispatch re-read the latest visible task and the persisted
   conversation revision. A stale tab fails closed and asks for a refresh.
 - A browser-wide Web Lock serializes candidate creation across tabs for the
@@ -102,8 +106,8 @@ source modules.
 
 Open the userscript manager, find `AgentControlPlane Web Bridge Preview`, then
 disable or remove it. Execution choices remain in ACP's local state directory.
-Only an unexpired staged envelope can remain in extension-isolated userscript
-storage for refresh recovery.
+An unexpired staged envelope or a bounded dispatched-envelope marker can remain
+in extension-isolated userscript storage for refresh and replay protection.
 
 ## Current boundary
 

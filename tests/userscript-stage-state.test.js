@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   conversationScope,
+  createDispatchedRecord,
   createPlanningRecord,
   createStageRecord,
   observationCanReplace,
+  observationWasDispatched,
   readStageRecord,
   stageLockName,
   stageRecordsMatch,
@@ -79,5 +81,42 @@ test("planning barriers and newer assistant ordinals reject stale tab tasks", ()
   assert.equal(
     observationCanReplace(current, { id: "new-envelope", assistantOrdinal: 7 }),
     true,
+  );
+});
+
+test("dispatched records permanently consume the sent task but allow a newer task", () => {
+  const dispatched = createDispatchedRecord({
+    id: "sent-envelope",
+    envelope,
+    assistantOrdinal: 8,
+  }, { scope, dispatchedAt: 1_500 });
+  assert.equal(readStageRecord(dispatched, { scope, now: 9_999_999 }), dispatched);
+  assert.equal(
+    observationWasDispatched(dispatched, {
+      id: "sent-envelope",
+      assistantOrdinal: 8,
+    }),
+    true,
+  );
+  assert.equal(
+    observationWasDispatched(dispatched, {
+      id: "older-envelope",
+      assistantOrdinal: 7,
+    }),
+    true,
+  );
+  assert.equal(
+    observationCanReplace(dispatched, {
+      id: "new-envelope",
+      assistantOrdinal: 9,
+    }),
+    true,
+  );
+  assert.equal(
+    observationWasDispatched(dispatched, {
+      id: "new-envelope",
+      assistantOrdinal: 9,
+    }),
+    false,
   );
 });

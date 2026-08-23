@@ -55,20 +55,37 @@ export function createPlanningRecord({
   };
 }
 
+export function createDispatchedRecord(stage, { scope, dispatchedAt }) {
+  return {
+    version: STAGE_RECORD_VERSION,
+    state: "dispatched",
+    scope,
+    id: stage.id,
+    envelope: stage.envelope,
+    assistantOrdinal: boundedInteger(stage.assistantOrdinal),
+    dispatchedAt,
+  };
+}
+
 export function readStageRecord(value, { scope, now = Date.now() }) {
   if (
     !value ||
     value.version !== STAGE_RECORD_VERSION ||
     value.scope !== scope ||
-    !["staged", "planning"].includes(value.state) ||
-    now >= Number(value.expiresAt ?? 0) ||
-    typeof value.revision !== "string" ||
-    !value.revision
+    !["staged", "planning", "dispatched"].includes(value.state)
   ) {
     return null;
   }
   if (
-    value.state === "staged" &&
+    value.state !== "dispatched" &&
+    (now >= Number(value.expiresAt ?? 0) ||
+      typeof value.revision !== "string" ||
+      !value.revision)
+  ) {
+    return null;
+  }
+  if (
+    ["staged", "dispatched"].includes(value.state) &&
     (typeof value.id !== "string" ||
       !value.id ||
       !value.envelope ||
@@ -95,6 +112,16 @@ export function stageRecordsMatch(left, right) {
 export function observationCanReplace(record, observation) {
   if (!record) return true;
   if (record.state === "staged" && record.id === observation.id) return true;
+  if (record.state === "dispatched" && record.id === observation.id) return false;
   return boundedInteger(observation.assistantOrdinal) >
     boundedInteger(record.assistantOrdinal);
+}
+
+export function observationWasDispatched(record, observation) {
+  return Boolean(
+    record?.state === "dispatched" &&
+    (record.id === observation?.id ||
+      boundedInteger(observation?.assistantOrdinal) <=
+        boundedInteger(record.assistantOrdinal)),
+  );
 }

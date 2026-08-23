@@ -310,6 +310,8 @@ export class CandidateReviewService {
       workspace: approved.workspace,
       executor: approved.executor,
       profile: approved.profile,
+      model: approved.model,
+      reasoningEffort: approved.reasoning_effort,
     });
 
     try {

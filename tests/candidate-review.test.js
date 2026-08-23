@@ -84,7 +84,7 @@ test("candidate stages bounded execution preferences for later validation", () =
 });
 
 test("fresh approval applies staged execution preferences", () => {
-  const { service, dispatched } = serviceHarness();
+  const { service, dispatched, audits } = serviceHarness();
   const created = createCandidate(service, {
     execution: {
       executor: "opencode",
@@ -107,6 +107,17 @@ test("fresh approval applies staged execution preferences", () => {
     model: "opencode-go/deepseek-v4-pro",
     reasoning_effort: "high",
   });
+  assert.deepEqual(
+    audits.find((entry) => entry.type === "candidate.approved")?.payload,
+    {
+      candidateId: created.candidate.id,
+      workspace: "C:\\allowed",
+      executor: "opencode",
+      profile: "economy",
+      model: "opencode-go/deepseek-v4-pro",
+      reasoningEffort: "high",
+    },
+  );
 });
 
 test("trusted userscript idempotency key reaches the orchestrator without becoming public", () => {

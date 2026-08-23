@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.5.3
+// @version      0.5.4
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -330,20 +330,37 @@ function createPlanningRecord({
   };
 }
 
+function createDispatchedRecord(stage, { scope, dispatchedAt }) {
+  return {
+    version: STAGE_RECORD_VERSION,
+    state: "dispatched",
+    scope,
+    id: stage.id,
+    envelope: stage.envelope,
+    assistantOrdinal: boundedInteger(stage.assistantOrdinal),
+    dispatchedAt,
+  };
+}
+
 function readStageRecord(value, { scope, now = Date.now() }) {
   if (
     !value ||
     value.version !== STAGE_RECORD_VERSION ||
     value.scope !== scope ||
-    !["staged", "planning"].includes(value.state) ||
-    now >= Number(value.expiresAt ?? 0) ||
-    typeof value.revision !== "string" ||
-    !value.revision
+    !["staged", "planning", "dispatched"].includes(value.state)
   ) {
     return null;
   }
   if (
-    value.state === "staged" &&
+    value.state !== "dispatched" &&
+    (now >= Number(value.expiresAt ?? 0) ||
+      typeof value.revision !== "string" ||
+      !value.revision)
+  ) {
+    return null;
+  }
+  if (
+    ["staged", "dispatched"].includes(value.state) &&
     (typeof value.id !== "string" ||
       !value.id ||
       !value.envelope ||
@@ -370,8 +387,18 @@ function stageRecordsMatch(left, right) {
 function observationCanReplace(record, observation) {
   if (!record) return true;
   if (record.state === "staged" && record.id === observation.id) return true;
+  if (record.state === "dispatched" && record.id === observation.id) return false;
   return boundedInteger(observation.assistantOrdinal) >
     boundedInteger(record.assistantOrdinal);
+}
+
+function observationWasDispatched(record, observation) {
+  return Boolean(
+    record?.state === "dispatched" &&
+    (record.id === observation?.id ||
+      boundedInteger(observation?.assistantOrdinal) <=
+        boundedInteger(record.assistantOrdinal)),
+  );
 }
 
   const ROOT_ID = "acp-web-bridge-preview";
@@ -422,7 +449,7 @@ function observationCanReplace(record, observation) {
       await Promise.resolve(GM_getValue(currentStorageKey(), null)),
       { scope: activeScope },
     );
-    if (record?.state === "staged") {
+    if (["staged", "dispatched"].includes(record?.state)) {
       try {
         candidateFromEnvelope(record.envelope);
         if (envelopeId(record.envelope) !== record.id) return null;
@@ -457,6 +484,16 @@ function observationCanReplace(record, observation) {
       staged = null;
       planningBaseline = saved.baselineEnvelope ?? null;
       showStatus("网页 AI 正在整理任务");
+      return;
+    }
+    if (saved.state === "dispatched") {
+      staged = null;
+      planningBaseline = saved.envelope;
+      dispatchingEnvelopeId = saved.id;
+      showStatus(
+        "本对话任务已封存",
+        "已派发的任务不会从页面历史中重复执行。可继续描述新任务。",
+      );
       return;
     }
     try {
@@ -665,44 +702,53 @@ function observationCanReplace(record, observation) {
 
   const refreshStageFromConversation = async () => {
     await ensureConversationScope();
-    const observation = latestTaskObservation();
-    const stored = await readStoredStage();
-    if (!observation) return { observation: null, stored, conflict: false };
-    candidateFromEnvelope(observation.envelope);
+    return withStageLock(async () => {
+      const observation = latestTaskObservation();
+      const stored = await readStoredStage();
+      if (!observation) return { observation: null, stored, conflict: false };
+      candidateFromEnvelope(observation.envelope);
 
-    if (stored?.state === "staged" && stored.id === observation.id) {
-      staged = stageFromRecord(stored);
+      if (observationWasDispatched(stored, observation)) {
+        staged = null;
+        planningBaseline = stored.envelope;
+        dispatchingEnvelopeId = stored.id;
+        return { observation, stored, conflict: false };
+      }
+
+      if (stored?.state === "staged" && stored.id === observation.id) {
+        staged = stageFromRecord(stored);
+        planningBaseline = null;
+        return { observation, stored, conflict: false };
+      }
+
+      if (
+        !observationCanReplace(stored, observation) ||
+        (stored && document.visibilityState === "hidden")
+      ) {
+        if (stored?.state === "staged") staged = stageFromRecord(stored);
+        else staged = null;
+        showStageConflict();
+        return { observation, stored, conflict: true };
+      }
+
+      const baseline = stored?.state === "planning"
+        ? stored.baselineEnvelope
+        : stored?.envelope ?? staged?.envelope ?? planningBaseline;
+      const changes = baseline ? taskEnvelopeChanges(baseline, observation.envelope) : [];
+      staged = {
+        id: observation.id,
+        revision: nextRevision(),
+        ownerId: TAB_ID,
+        envelope: observation.envelope,
+        changes,
+        changeConfirmed: changes.length === 0,
+        assistantOrdinal: observation.assistantOrdinal,
+      };
       planningBaseline = null;
+      await saveStage();
+      showStagedStatus();
       return { observation, stored, conflict: false };
-    }
-
-    if (
-      !observationCanReplace(stored, observation) ||
-      (stored && document.visibilityState === "hidden")
-    ) {
-      if (stored?.state === "staged") staged = stageFromRecord(stored);
-      else staged = null;
-      showStageConflict();
-      return { observation, stored, conflict: true };
-    }
-
-    const baseline = stored?.state === "planning"
-      ? stored.baselineEnvelope
-      : stored?.envelope ?? staged?.envelope ?? planningBaseline;
-    const changes = baseline ? taskEnvelopeChanges(baseline, observation.envelope) : [];
-    staged = {
-      id: observation.id,
-      revision: nextRevision(),
-      ownerId: TAB_ID,
-      envelope: observation.envelope,
-      changes,
-      changeConfirmed: changes.length === 0,
-      assistantOrdinal: observation.assistantOrdinal,
-    };
-    planningBaseline = null;
-    await saveStage();
-    showStagedStatus();
-    return { observation, stored, conflict: false };
+    });
   };
 
   const beginPlanning = async () => {
@@ -711,7 +757,7 @@ function observationCanReplace(record, observation) {
     await withStageLock(async () => {
       const stored = await readStoredStage();
       const baselineEnvelope = staged?.envelope ??
-        (stored?.state === "staged" ? stored.envelope : stored?.baselineEnvelope) ??
+        (stored?.state === "planning" ? stored.baselineEnvelope : stored?.envelope) ??
         null;
       const record = createPlanningRecord({
         scope: activeScope,
@@ -945,8 +991,15 @@ function observationCanReplace(record, observation) {
         if (!Number.isFinite(expiresAt)) {
           throw new Error("ACP returned an invalid status expiry");
         }
+        await Promise.resolve(GM_setValue(
+          currentStorageKey(),
+          createDispatchedRecord(activeEnvelope, {
+            scope: activeScope,
+            dispatchedAt: Date.now(),
+          }),
+        ));
         staged = null;
-        await Promise.resolve(GM_deleteValue(currentStorageKey()));
+        planningBaseline = activeEnvelope.envelope;
         stopTracking();
         tracking = {
           id: candidateId,
