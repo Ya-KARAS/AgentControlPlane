@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.5.2
+// @version      0.5.3
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -20,6 +20,7 @@
   "use strict";
 
   // @acp-conversation-protocol
+  // @acp-stage-state
 
   const ROOT_ID = "acp-web-bridge-preview";
   const LOCAL_BASE_URL = "http://127.0.0.1:4318";
@@ -27,7 +28,6 @@
   const CAPABILITIES_URL = `${LOCAL_BASE_URL}/v1/local-review/capabilities`;
   const ADAPTERS = /* @acp-adapters */ [];
   const STAGE_TTL_MS = 10 * 60 * 1000;
-  const STAGE_STORAGE_KEY = `acp-stage-v1:${window.location.origin}:${window.location.pathname}`;
   const TERMINAL_TASK_STATUSES = new Set([
     "completed",
     "failed",
@@ -49,45 +49,90 @@
   let suppressCapture = false;
   let inspectTimer = null;
   let launchPending = false;
+  const TAB_ID = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  let revisionSequence = 0;
+  let activeScope = conversationScope(window.location);
+  let planningBaseline = null;
+
+  const nextRevision = () =>
+    `${Date.now().toString(36)}:${TAB_ID}:${revisionSequence += 1}`;
+  const currentStorageKey = () => stageStorageKey(activeScope);
+  const currentLockName = () => stageLockName(activeScope);
+  const withStageLock = async (callback) => {
+    if (!navigator.locks?.request) throw new Error("stage_lock_unavailable");
+    return navigator.locks.request(currentLockName(), { mode: "exclusive" }, callback);
+  };
+
+  const readStoredStage = async () => {
+    const record = readStageRecord(
+      await Promise.resolve(GM_getValue(currentStorageKey(), null)),
+      { scope: activeScope },
+    );
+    if (record?.state === "staged") {
+      try {
+        candidateFromEnvelope(record.envelope);
+        if (envelopeId(record.envelope) !== record.id) return null;
+      } catch {
+        return null;
+      }
+    }
+    return record;
+  };
 
   const saveStage = async () => {
     if (!staged) {
-      await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
+      await Promise.resolve(GM_deleteValue(currentStorageKey()));
       return;
     }
-    await Promise.resolve(GM_setValue(STAGE_STORAGE_KEY, {
-      version: 1,
-      id: staged.id,
-      envelope: staged.envelope,
-      changes: staged.changes ?? [],
-      changeConfirmed: staged.changeConfirmed === true,
-      expiresAt: Date.now() + STAGE_TTL_MS,
-    }));
+    await Promise.resolve(GM_setValue(
+      currentStorageKey(),
+      createStageRecord(staged, {
+        scope: activeScope,
+        expiresAt: Date.now() + STAGE_TTL_MS,
+      }),
+    ));
   };
 
   const restoreStage = async () => {
-    const saved = await Promise.resolve(GM_getValue(STAGE_STORAGE_KEY, null));
-    if (
-      !saved ||
-      saved.version !== 1 ||
-      Date.now() >= Number(saved.expiresAt ?? 0) ||
-      envelopeId(saved.envelope) !== saved.id
-    ) {
-      await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
+    const saved = await readStoredStage();
+    if (!saved) {
+      await Promise.resolve(GM_deleteValue(currentStorageKey()));
+      return;
+    }
+    if (saved.state === "planning") {
+      staged = null;
+      planningBaseline = saved.baselineEnvelope ?? null;
+      showStatus("网页 AI 正在整理任务");
       return;
     }
     try {
       candidateFromEnvelope(saved.envelope);
+      if (envelopeId(saved.envelope) !== saved.id) throw new Error("stage_id_mismatch");
       staged = {
         id: saved.id,
+        revision: saved.revision,
+        ownerId: saved.ownerId,
         envelope: saved.envelope,
         changes: Array.isArray(saved.changes) ? saved.changes.slice(0, 6) : [],
         changeConfirmed: saved.changeConfirmed === true,
+        assistantOrdinal: Number(saved.assistantOrdinal ?? 0),
       };
       showStagedStatus("restored");
     } catch {
-      await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
+      await Promise.resolve(GM_deleteValue(currentStorageKey()));
     }
+  };
+
+  const ensureConversationScope = async () => {
+    const scope = conversationScope(window.location);
+    if (scope === activeScope) return;
+    activeScope = scope;
+    staged = null;
+    planningBaseline = null;
+    dispatchingEnvelopeId = null;
+    await restoreStage();
   };
 
   const stableIdempotencyKey = async (activeEnvelope) => {
@@ -134,6 +179,20 @@
   const findSendButton = () => visibleElements(adapter.send).at(-1) ?? null;
   const latestText = (selectors) =>
     visibleElements(selectors).at(-1)?.textContent?.trim() ?? "";
+  const latestTaskObservation = () => {
+    const messages = visibleElements(adapter.assistant);
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const envelope = extractTaskEnvelope(messages[index].textContent?.trim() ?? "");
+      if (envelope) {
+        return {
+          envelope,
+          id: envelopeId(envelope),
+          assistantOrdinal: index + 1,
+        };
+      }
+    }
+    return null;
+  };
 
   const readComposer = (composer = findComposer()) => {
     if (!composer) return "";
@@ -235,6 +294,119 @@
       `${label} · 回复“执行”`,
       `${label}\n执行配置：${route}\n请回复“执行”`,
     );
+  };
+
+  const showStageConflict = () => showStatus(
+    "任务版本冲突 · 请刷新页面",
+    "当前标签页中的任务不是最新暂存版本。为防止派发旧工作区或旧模型，ACP 已停止执行。请刷新页面后重新确认。",
+  );
+
+  const stageFromRecord = (record) => ({
+    id: record.id,
+    revision: record.revision,
+    ownerId: record.ownerId,
+    envelope: record.envelope,
+    changes: Array.isArray(record.changes) ? record.changes.slice(0, 6) : [],
+    changeConfirmed: record.changeConfirmed === true,
+    assistantOrdinal: Number(record.assistantOrdinal ?? 0),
+  });
+
+  const refreshStageFromConversation = async () => {
+    await ensureConversationScope();
+    const observation = latestTaskObservation();
+    const stored = await readStoredStage();
+    if (!observation) return { observation: null, stored, conflict: false };
+    candidateFromEnvelope(observation.envelope);
+
+    if (stored?.state === "staged" && stored.id === observation.id) {
+      staged = stageFromRecord(stored);
+      planningBaseline = null;
+      return { observation, stored, conflict: false };
+    }
+
+    if (
+      !observationCanReplace(stored, observation) ||
+      (stored && document.visibilityState === "hidden")
+    ) {
+      if (stored?.state === "staged") staged = stageFromRecord(stored);
+      else staged = null;
+      showStageConflict();
+      return { observation, stored, conflict: true };
+    }
+
+    const baseline = stored?.state === "planning"
+      ? stored.baselineEnvelope
+      : stored?.envelope ?? staged?.envelope ?? planningBaseline;
+    const changes = baseline ? taskEnvelopeChanges(baseline, observation.envelope) : [];
+    staged = {
+      id: observation.id,
+      revision: nextRevision(),
+      ownerId: TAB_ID,
+      envelope: observation.envelope,
+      changes,
+      changeConfirmed: changes.length === 0,
+      assistantOrdinal: observation.assistantOrdinal,
+    };
+    planningBaseline = null;
+    await saveStage();
+    showStagedStatus();
+    return { observation, stored, conflict: false };
+  };
+
+  const beginPlanning = async () => {
+    await ensureConversationScope();
+    const assistantOrdinal = visibleElements(adapter.assistant).length;
+    await withStageLock(async () => {
+      const stored = await readStoredStage();
+      const baselineEnvelope = staged?.envelope ??
+        (stored?.state === "staged" ? stored.envelope : stored?.baselineEnvelope) ??
+        null;
+      const record = createPlanningRecord({
+        scope: activeScope,
+        revision: nextRevision(),
+        ownerId: TAB_ID,
+        assistantOrdinal,
+        baselineEnvelope,
+        expiresAt: Date.now() + STAGE_TTL_MS,
+      });
+      await Promise.resolve(GM_setValue(currentStorageKey(), record));
+      staged = null;
+      planningBaseline = baselineEnvelope;
+    });
+  };
+
+  const confirmStageChanges = async () => {
+    const refreshed = await refreshStageFromConversation();
+    if (refreshed.conflict || !staged) return false;
+    return withStageLock(async () => {
+      const stored = await readStoredStage();
+      const localRecord = createStageRecord(staged, {
+        scope: activeScope,
+        expiresAt: Date.now() + STAGE_TTL_MS,
+      });
+      if (!stageRecordsMatch(stored, localRecord)) {
+        showStageConflict();
+        return false;
+      }
+      staged = {
+        ...staged,
+        revision: nextRevision(),
+        ownerId: TAB_ID,
+        changeConfirmed: true,
+      };
+      await saveStage();
+      const confirmed = await readStoredStage();
+      const confirmedRecord = createStageRecord(staged, {
+        scope: activeScope,
+        expiresAt: Date.now() + STAGE_TTL_MS,
+      });
+      if (!stageRecordsMatch(confirmed, confirmedRecord)) {
+        showStageConflict();
+        return false;
+      }
+      showStagedStatus("change-confirmed");
+      return true;
+    });
   };
 
   const validatedReviewUrl = (value, candidateId) => {
@@ -369,58 +541,75 @@
     }
   };
 
-  const dispatchEnvelope = async (activeEnvelope) => {
-    if (!activeEnvelope || dispatchingEnvelopeId === activeEnvelope.id) return;
-    if (activeEnvelope.changes?.length && !activeEnvelope.changeConfirmed) {
+  const dispatchEnvelope = async () => {
+    const refreshed = await refreshStageFromConversation();
+    if (refreshed.conflict || !staged || dispatchingEnvelopeId === staged.id) return;
+    if (staged.changes?.length && !staged.changeConfirmed) {
       showStagedStatus();
       return;
     }
-    dispatchingEnvelopeId = activeEnvelope.id;
-    showStatus("正在派发");
     try {
-      const idempotencyKey = await stableIdempotencyKey(activeEnvelope);
-      const response = await request({
-        method: "POST",
-        url: CANDIDATE_URL,
-        headers: {
-          "content-type": "application/json",
-          "x-acp-client": "userscript-v1",
-          "x-acp-idempotency-key": idempotencyKey,
-          "x-acp-page-origin": window.location.origin,
-        },
-        data: JSON.stringify(candidateFromEnvelope(activeEnvelope.envelope)),
+      await withStageLock(async () => {
+        const activeEnvelope = staged;
+        const stored = await readStoredStage();
+        const activeRecord = createStageRecord(activeEnvelope, {
+          scope: activeScope,
+          expiresAt: Date.now() + STAGE_TTL_MS,
+        });
+        const observation = latestTaskObservation();
+        if (
+          !stageRecordsMatch(stored, activeRecord) ||
+          (observation && observation.id !== activeEnvelope.id)
+        ) {
+          showStageConflict();
+          return;
+        }
+        dispatchingEnvelopeId = activeEnvelope.id;
+        showStatus("正在派发");
+        const idempotencyKey = await stableIdempotencyKey(activeEnvelope);
+        const response = await request({
+          method: "POST",
+          url: CANDIDATE_URL,
+          headers: {
+            "content-type": "application/json",
+            "x-acp-client": "userscript-v1",
+            "x-acp-idempotency-key": idempotencyKey,
+            "x-acp-page-origin": window.location.origin,
+          },
+          data: JSON.stringify(candidateFromEnvelope(activeEnvelope.envelope)),
+        });
+        const body = JSON.parse(response.responseText);
+        const candidateId = body.candidate?.id;
+        if (
+          response.status !== 201 ||
+          typeof candidateId !== "string" ||
+          !/^[0-9a-f-]{36}$/i.test(candidateId) ||
+          typeof body.status_secret !== "string" ||
+          !/^[A-Za-z0-9_-]{20,128}$/.test(body.status_secret)
+        ) {
+          throw new Error(body.error?.code ?? `http_${response.status}`);
+        }
+        const expiresAt = Date.parse(body.candidate.status_expires_at);
+        if (!Number.isFinite(expiresAt)) {
+          throw new Error("ACP returned an invalid status expiry");
+        }
+        staged = null;
+        await Promise.resolve(GM_deleteValue(currentStorageKey()));
+        stopTracking();
+        tracking = {
+          id: candidateId,
+          secret: body.status_secret,
+          expiresAt,
+          startedAt: Date.now(),
+          returnResultToChat: body.return_result_to_chat === true,
+        };
+        showStatus(body.auto_dispatched ? "任务已派发" : "等待本机确认");
+        pollStatus(tracking);
+        if (!body.auto_dispatched) {
+          const reviewUrl = validatedReviewUrl(body.review_url, candidateId);
+          GM_openInTab(reviewUrl, { active: true, insert: true, setParent: true });
+        }
       });
-      const body = JSON.parse(response.responseText);
-      const candidateId = body.candidate?.id;
-      if (
-        response.status !== 201 ||
-        typeof candidateId !== "string" ||
-        !/^[0-9a-f-]{36}$/i.test(candidateId) ||
-        typeof body.status_secret !== "string" ||
-        !/^[A-Za-z0-9_-]{20,128}$/.test(body.status_secret)
-      ) {
-        throw new Error(body.error?.code ?? `http_${response.status}`);
-      }
-      const expiresAt = Date.parse(body.candidate.status_expires_at);
-      if (!Number.isFinite(expiresAt)) {
-        throw new Error("ACP returned an invalid status expiry");
-      }
-      staged = null;
-      await saveStage();
-      stopTracking();
-      tracking = {
-        id: candidateId,
-        secret: body.status_secret,
-        expiresAt,
-        startedAt: Date.now(),
-        returnResultToChat: body.return_result_to_chat === true,
-      };
-      showStatus(body.auto_dispatched ? "任务已派发" : "等待本机确认");
-      pollStatus(tracking);
-      if (!body.auto_dispatched) {
-        const reviewUrl = validatedReviewUrl(body.review_url, candidateId);
-        GM_openInTab(reviewUrl, { active: true, insert: true, setParent: true });
-      }
     } catch (error) {
       dispatchingEnvelopeId = null;
       showStatus(
@@ -428,32 +617,19 @@
           ? "连接本机超时"
           : error.message === "network_error"
             ? "本机 ACP 未连接"
+            : error.message === "stage_lock_unavailable"
+              ? "浏览器不支持安全派发"
             : error.message === "candidate_route_cooldown"
               ? "所选模型暂时冷却"
               : "派发失败",
       );
-      await saveStage();
     }
   };
 
-  const inspectConversation = () => {
+  const inspectConversation = async () => {
     inspectTimer = null;
-    const assistantText = latestText(adapter.assistant);
-    const envelope = extractTaskEnvelope(assistantText);
-    if (!envelope) return;
     try {
-      candidateFromEnvelope(envelope);
-      const id = envelopeId(envelope);
-      if (id === dispatchingEnvelopeId || id === staged?.id) return;
-      const changes = staged ? taskEnvelopeChanges(staged.envelope, envelope) : [];
-      staged = {
-        id,
-        envelope,
-        changes,
-        changeConfirmed: changes.length === 0,
-      };
-      saveStage();
-      showStagedStatus();
+      await refreshStageFromConversation();
     } catch {
       showStatus("任务格式无效");
     }
@@ -461,7 +637,7 @@
 
   const scheduleInspection = () => {
     if (inspectTimer) clearTimeout(inspectTimer);
-    inspectTimer = setTimeout(inspectConversation, 250);
+    inspectTimer = setTimeout(() => void inspectConversation(), 250);
   };
 
   const captureOrExpandComposer = async (event) => {
@@ -496,6 +672,7 @@
       launchPending = true;
       showStatus("正在读取本机可选配置");
       try {
+        await beginPlanning();
         const capabilities = await readCapabilities();
         writeComposer(controllerPrompt(launch.request, capabilities), composer);
         showStatus("网页 AI 正在整理任务");
@@ -514,11 +691,20 @@
       return;
     }
 
+    try {
+      await refreshStageFromConversation();
+    } catch (error) {
+      showStatus(
+        error.message === "stage_lock_unavailable"
+          ? "浏览器不支持安全派发"
+          : "任务状态无法校验",
+      );
+      return;
+    }
+
     if (staged?.changes?.length && !staged.changeConfirmed) {
       if (isChangeConfirmation(text)) {
-        staged.changeConfirmed = true;
-        saveStage();
-        showStagedStatus("change-confirmed");
+        await confirmStageChanges();
       } else if (isConfirmation(text)) {
         showStagedStatus();
       }
@@ -526,8 +712,7 @@
     }
 
     if (staged && isConfirmation(text)) {
-      const activeEnvelope = staged;
-      setTimeout(() => dispatchEnvelope(activeEnvelope), 0);
+      setTimeout(() => void dispatchEnvelope(), 0);
     }
   };
 
@@ -537,6 +722,10 @@
     childList: true,
     subtree: true,
     characterData: true,
+  });
+  window.addEventListener("focus", () => void refreshStageFromConversation());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void refreshStageFromConversation();
   });
   restoreStage().finally(scheduleInspection);
 })();

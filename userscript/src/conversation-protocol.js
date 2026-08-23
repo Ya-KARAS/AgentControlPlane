@@ -242,6 +242,7 @@ export function safeResultBlock(task) {
     blocker_count: Number(task?.blocker_count ?? 0),
     failure_category: boundedText(task?.failure_category, 64) || null,
     execution: {
+      workspace: boundedText(task?.execution?.workspace, 200) || null,
       executor: boundedText(task?.execution?.executor, 64) || null,
       profile: boundedText(task?.execution?.profile, 64) || null,
       model: boundedText(task?.execution?.model, 200) || null,

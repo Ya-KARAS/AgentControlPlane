@@ -43,6 +43,7 @@ test("public task status excludes raw task content, paths, logs, and errors", ()
     test_cases: null,
     blocker_count: 0,
     execution: {
+      workspace: "workspace",
       executor: "opencode",
       profile: "economy",
       model: "opencode-go/deepseek-v4-pro",
@@ -53,7 +54,10 @@ test("public task status excludes raw task content, paths, logs, and errors", ()
     updated_at: "2026-08-23T12:00:00.000Z",
     completed_at: "2026-08-23T12:01:00.000Z",
   });
-  assert.doesNotMatch(JSON.stringify(projected), /secret|workspace|objective|summary|log/);
+  assert.doesNotMatch(
+    JSON.stringify(projected),
+    /C:\\\\secret|private objective|secret summary|private error|private log/,
+  );
 });
 
 test("public status separates test commands from parsed test cases and classifies safe failures", () => {

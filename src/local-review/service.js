@@ -18,6 +18,10 @@ function boundedCount(value) {
   return Array.isArray(value) ? Math.min(value.length, 1000) : 0;
 }
 
+function workspaceLabel(value) {
+  return String(value ?? "").split(/[\\/]/).filter(Boolean).at(-1) || null;
+}
+
 function testCounts(tests) {
   const entries = Array.isArray(tests) ? tests.slice(0, 1000) : [];
   let passed = 0;
@@ -148,6 +152,7 @@ export function publicTaskStatus(task) {
     test_cases: parseTestCases(task.result?.tests),
     blocker_count: boundedCount(task.result?.blockers),
     execution: {
+      workspace: workspaceLabel(task.workspace),
       executor: task.executor ?? null,
       profile: task.policy?.name ?? null,
       model: task.policy?.model ?? null,

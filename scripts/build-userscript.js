@@ -7,6 +7,7 @@ const root = path.resolve("userscript");
 const adaptersDir = path.join(root, "src", "adapters");
 const runtimePath = path.join(root, "src", "runtime.user.js");
 const protocolPath = path.join(root, "src", "conversation-protocol.js");
+const stageStatePath = path.join(root, "src", "stage-state.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
 
 const adapterFiles = fs.readdirSync(adaptersDir)
@@ -46,13 +47,18 @@ const protocolModule = fs
   .readFileSync(protocolPath, "utf8")
   .replace(/^export\s+/gm, "")
   .trim();
+const stageStateModule = fs
+  .readFileSync(stageStatePath, "utf8")
+  .replace(/^export\s+/gm, "")
+  .trim();
 const built = runtime
   .replace("// @acp-adapter-matches", matchLines)
   .replace(
     "const ADAPTERS = /* @acp-adapters */ [];",
     `const ADAPTERS = Object.freeze(${JSON.stringify(publicAdapters)});`,
   )
-  .replace("// @acp-conversation-protocol", protocolModule);
+  .replace("// @acp-conversation-protocol", protocolModule)
+  .replace("// @acp-stage-state", stageStateModule);
 if (built === runtime) throw new Error("Userscript build markers were not replaced");
 
 if (process.argv.includes("--check")) {

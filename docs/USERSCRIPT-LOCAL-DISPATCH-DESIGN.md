@@ -49,6 +49,9 @@ are never accepted.
    `确认变更` before dispatch confirmation is accepted.
    The floating pill shows the current action. Its hover text carries the full
    execution route and changed-field list.
+   A new `@AgentControlPlane` request writes a conversation-scoped planning
+   barrier. Confirmation and dispatch re-read the latest task and persisted
+   revision under a browser-wide lock; a stale tab fails closed.
 6. The person sends a short confirmation from the page composer.
 7. ACP creates a candidate and validates any requested execution choices. A
    local setting either dispatches it with validated choices or opens the
@@ -117,6 +120,7 @@ The optional result projection contains only:
   "blocker_count": 0,
   "failure_category": null,
   "execution": {
+    "workspace": "registered-project-alias",
     "executor": "opencode",
     "profile": "economy",
     "model": "opencode-go/deepseek-v4-pro",
@@ -129,13 +133,17 @@ The optional result projection contains only:
 `test_commands` names that count explicitly. `test_cases` is populated only
 when ACP can parse a supported test-runner summary. `failure_category` is a
 bounded provider-neutral classification derived from executor failure data.
-The projection excludes objectives, summaries, paths, changed-file names, logs,
-credentials, executor output, and raw errors.
+The workspace value is a basename-only alias already exposed by local
+capabilities, never a configured root. The projection excludes objectives,
+summaries, full paths, changed-file names, logs, credentials, executor output,
+and raw errors.
 
 ## Module boundaries
 
 - `userscript/src/conversation-protocol.js` parses the launch command, task
   envelope, explicit confirmation, and safe result projection.
+- `userscript/src/stage-state.js` owns the versioned conversation scope,
+  planning barrier, revision matching, expiry, and stale-observation rules.
 - `userscript/src/adapters/` contains data-only page adapters.
 - `userscript/src/adapter-registry.js` validates adapter metadata and selectors.
 - `userscript/src/runtime.user.js` owns page interaction and local HTTP calls.
@@ -154,6 +162,8 @@ modules. The candidate service has no browser or adapter dependency.
 1. Protocol tests cover exact mention parsing, bounded task extraction,
    confirmation words, bounded execution choices, stable envelope ids, and
    result redaction.
+   Stage-state tests cover scope isolation, expiry, revision mismatch, planning
+   barriers, and stale-tab observations.
 2. Static userscript tests require native-conversation markers and reject task
    forms, page storage, credentials, raw task APIs, and HTML injection.
    Extension-isolated storage is limited to a bounded, expiring staged envelope.

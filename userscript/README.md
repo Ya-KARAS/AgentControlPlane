@@ -16,11 +16,13 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.5.2 keeps an unexpired staged task through a page refresh. If a new
+Version 0.5.3 keeps an unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
 The pill uses a compact action label. Its hover text contains the changed
-fields and complete execution route.
+fields and complete execution route. A conversation-scoped planning barrier,
+persisted revision, and browser-wide lock prevent another tab from dispatching
+an older task after the route changes.
 
 ## Supported sites
 
@@ -53,7 +55,7 @@ fields and complete execution route.
 7. If safe result return is enabled, the bridge sends an `<ACP_RESULT>` block
    to the same conversation after the task reaches a terminal state.
 
-The result block contains task status, file and blocker counts, test-command
+The result block contains task status, a safe workspace alias, file and blocker counts, test-command
 counts, parsed test-case counts when available, a safe failure category, and
 non-secret executor, profile, model, and reasoning ids. It does not send local
 paths, raw logs, credentials, or raw errors to the webpage.
@@ -72,6 +74,10 @@ paths, raw logs, credentials, or raw errors to the webpage.
 - The origin-bound status capability expires and stays in userscript memory.
 - Refresh recovery stores only the bounded staged envelope and change state in
   extension-isolated userscript storage. The entry expires after ten minutes.
+- Confirmation and dispatch re-read the latest visible task and the persisted
+  conversation revision. A stale tab fails closed and asks for a refresh.
+- A browser-wide Web Lock serializes candidate creation across tabs for the
+  same conversation.
 - A stable, non-secret idempotency key prevents a refresh or retry from creating
   a second engineering task for the same staged envelope.
 - Automatic dispatch and result return are separate, default-off local settings.

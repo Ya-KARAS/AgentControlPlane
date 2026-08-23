@@ -18,7 +18,7 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.5\.2$/m);
+  assert.match(script, /^\/\/ @version\s+0\.5\.3$/m);
   assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
@@ -61,6 +61,9 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /任务已变更 · 回复“确认变更”/);
   assert.match(script, /变更已确认/);
   assert.match(script, /任务已恢复/);
+  assert.match(script, /navigator\.locks/);
+  assert.match(script, /任务版本冲突 · 请刷新页面/);
+  assert.match(script, /acp-stage-v2/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);
   assert.doesNotMatch(script, /document\.createElement\(["']textarea["']\)/);

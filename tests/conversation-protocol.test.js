@@ -176,20 +176,21 @@ test("envelope identity is stable and safe result excludes private detail", () =
     error: "private error",
     logs: ["private log"],
     execution: {
+      workspace: "safe-workspace-alias",
       executor: "opencode",
       profile: "economy",
       model: "opencode-go/deepseek-v4-pro",
       reasoning_effort: "high",
-      workspace: "C:\\private",
     },
   });
   assert.match(result, /^<ACP_RESULT>/);
   assert.match(result, /"task_id": "task-1"/);
   assert.match(result, /"changed_files_count": 2/);
   assert.match(result, /"executor": "opencode"/);
+  assert.match(result, /"workspace": "safe-workspace-alias"/);
   assert.match(result, /"reasoning_effort": "high"/);
   assert.match(result, /"test_cases"/);
   assert.match(result, /"total": 8/);
   assert.match(result, /"failure_category": null/);
-  assert.doesNotMatch(result, /private|workspace|summary|error|logs/i);
+  assert.doesNotMatch(result, /C:\\\\private|summary|error|logs/i);
 });

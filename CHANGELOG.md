@@ -32,6 +32,11 @@
   synchronized inside the objective is reported as one workspace change.
 - Replacement task prompts now ask for `确认变更`. A premature `执行` response
   remains in the conversation while the local bridge keeps dispatch blocked.
+- Web Bridge 0.5.3 adds conversation-scoped planning barriers, persisted stage
+  revisions, dynamic SPA conversation scopes, and browser-wide dispatch locks.
+  Confirmation and dispatch now fail closed when another tab holds a newer
+  task. Safe results include the validated workspace basename so the web AI no
+  longer guesses which workspace actually ran.
 
 ### Security
 
@@ -46,6 +51,9 @@
   expiry. It stores only the bounded task envelope and change-confirmation
   state; credentials, local paths discovered by ACP, status secrets, and task
   output are excluded.
+- Candidate creation requires the current page task, persisted revision, and
+  conversation scope to match while holding a browser-wide Web Lock. Starting
+  a new planning request invalidates older tabs before the web AI replies.
 
 ## v0.9.0 — 2026-08-21
 
