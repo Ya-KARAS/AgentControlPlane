@@ -28,6 +28,13 @@ function relayConfig(relays) {
   };
 }
 
+test("buildExecutors includes the Kimi Code built-in executor", () => {
+  const kimi = buildExecutors(relayConfig([])).get("kimi");
+  assert.ok(kimi);
+  assert.equal(kimi.describe().display_name, "Kimi Code");
+  assert.equal(kimi.describe().capabilities.persistentThreads, false);
+});
+
 test("buildExecutors registers each relay as a model-endpoint executor", () => {
   const executors = buildExecutors(
     relayConfig([

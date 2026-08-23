@@ -135,12 +135,18 @@ ChatGPT / DeepSeek / Claude
 | OpenCode | CLI | installed CLI with a configured model |
 | Codex | App Server | installed client, account quota, and Windows sandbox readiness |
 | Claude Code | CLI | Claude Pro/Max login or an Anthropic API key |
+| Kimi Code | CLI | installed CLI with a Kimi login and configured model |
 | OpenCodex | OpenAI-compatible endpoint | reachable endpoint, configured model, and verified tool capability |
 | DeepSeek Harness | OpenAI-compatible endpoint | DeepSeek API configuration and verified tool capability |
 
 Run `npm run doctor` to list discovery status and the automatic default. A task
-can set `executor: "opencode"`, `"codex"`, `"claude"`,
+can set `executor: "opencode"`, `"codex"`, `"claude"`, `"kimi"`,
 `"openai-compatible"`, or `"deepseek"`.
+
+Kimi Code can use its managed membership login or a provider configured with a
+Kimi Platform API key. ACP reads readiness from the installed Kimi CLI and does
+not store either credential in the repository. See the
+[official Kimi provider guide](https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/providers).
 
 ## Dispatch from a connected web AI
 

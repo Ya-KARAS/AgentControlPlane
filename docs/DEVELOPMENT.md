@@ -1,9 +1,9 @@
 # Development
 
 This document describes how to develop AgentControlPlane with any supported
-executor (Codex, Claude Code, OpenCode, an OpenAI-compatible model endpoint,
-or a future executor). It defines the shared development flow, the handoff
-contract, the verification gate, executor-switch procedures, and
+executor (Codex, Claude Code, Kimi Code, OpenCode, an OpenAI-compatible model
+endpoint, or a future executor). It defines the shared development flow, the
+handoff contract, the verification gate, executor-switch procedures, and
 working-tree safety rules.
 
 ## Repository orientation
@@ -13,7 +13,8 @@ working-tree safety rules.
 - `src/core/` — task lifecycle, persistence, usage, policy, protocol, and
   orchestration. This layer stays executor-neutral.
 - `src/executors/` — executor adapters (`CodexExecutor`,
-  `OpenCodeExecutor`, `ClaudeCodeExecutor`, `OpenAICompatibleExecutor`) and
+  `OpenCodeExecutor`, `ClaudeCodeExecutor`, `KimiCodeExecutor`,
+  `OpenAICompatibleExecutor`) and
   the lifecycle contract in `src/executors/lifecycle.js`.
 - `contracts/` — shared wire schemas (for example the usage/reconciliation
   contract).

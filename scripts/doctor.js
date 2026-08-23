@@ -38,7 +38,9 @@ if (config) {
   for (const id of uniqueOrder) {
     const state = discovery[id];
     if (!state) continue;
-    const detail = state.version ?? state.reason ?? state.status;
+    const detail = state.available
+      ? state.version ?? state.status
+      : state.reason ?? state.status;
     if (state.available && state.status === "degraded") {
       info(`${id}: installed but degraded (${state.reason})`);
     } else if (state.available) pass(`${id}: ${detail}`);

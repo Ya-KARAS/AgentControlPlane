@@ -12,6 +12,7 @@ import { TaskStore } from "./core/store.js";
 import { CodexExecutor } from "./executors/codex-executor.js";
 import { ClaudeCodeExecutor } from "./executors/claude-code-executor.js";
 import { OpenCodeExecutor } from "./executors/opencode-executor.js";
+import { KimiCodeExecutor } from "./executors/kimi-code-executor.js";
 import { OpenAICompatibleExecutor } from "./executors/openai-compatible-executor.js";
 import { assertExecutor } from "./executors/executor.js";
 import { assertLifecycle } from "./executors/lifecycle.js";
@@ -84,6 +85,14 @@ export function buildExecutor(config, provider) {
       workspaceRoots: config.workspaceRoots,
     });
   }
+  if (provider === "kimi") {
+    const options = config.executor.kimi ?? {};
+    return new KimiCodeExecutor({
+      command: options.command,
+      model: options.model ?? null,
+      workspaceRoots: config.workspaceRoots,
+    });
+  }
   return new CodexExecutor({
     command: config.codex.command,
     disabledFeatures: config.codex.disabledFeatures,
@@ -97,6 +106,7 @@ export function buildExecutors(config) {
     "deepseek",
     "claude",
     "opencode",
+    "kimi",
   ];
   const executors = new Map();
   for (const provider of providers) {
