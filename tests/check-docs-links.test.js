@@ -31,7 +31,8 @@ test("broken.md fails and reports file:line and the missing target", () => {
   assert.match(result.stdout, /broken\.md:3: broken link -> missing\.md/);
 });
 
-test("default scan covers README.md, README.zh-CN.md, and docs/*.md", () => {
+test("default scan recursively validates repository documentation", () => {
   const result = run([]);
-  assert.ok(result.code === 0 || result.code === 1, `unexpected exit ${result.code}`);
+  assert.equal(result.code, 0, result.stdout);
+  assert.equal(result.stdout.trim(), "");
 });

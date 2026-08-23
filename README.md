@@ -262,6 +262,7 @@ logo are trademarks and carry no license. See
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Protocol](docs/PROTOCOL.md)
 - [Browser companion](docs/BROWSER-COMPANION.md)
@@ -273,6 +274,7 @@ logo are trademarks and carry no license. See
 - [Release checklist](docs/RELEASE-CHECKLIST.md)
 - [GitHub launch checklist](docs/GITHUB-LAUNCH-CHECKLIST.md)
 - [Cross-device roadmap](docs/CROSS-DEVICE-ROADMAP.md)
+- [Maintenance scripts](scripts/README.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 

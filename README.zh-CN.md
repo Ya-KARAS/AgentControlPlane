@@ -230,6 +230,7 @@ Plan。当前 ZCode 无界面 CLI 不提供可用的推理等级参数，因此�
 
 ## 文档
 
+- [完整文档索引](docs/README.zh-CN.md)
 - [架构](docs/ARCHITECTURE.zh-CN.md)
 - [协议](docs/PROTOCOL.zh-CN.md)
 - [浏览器伴侣](docs/BROWSER-COMPANION.zh-CN.md)
@@ -241,6 +242,7 @@ Plan。当前 ZCode 无界面 CLI 不提供可用的推理等级参数，因此�
 - [发布检查](docs/RELEASE-CHECKLIST.md)
 - [GitHub 发布检查](docs/GITHUB-LAUNCH-CHECKLIST.md)
 - [跨设备路线图](docs/CROSS-DEVICE-ROADMAP.zh-CN.md)
+- [维护脚本](scripts/README.md)
 - [安全策略](SECURITY.zh-CN.md)
 - [变更记录](CHANGELOG.md)
 

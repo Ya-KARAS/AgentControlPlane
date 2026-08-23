@@ -6,7 +6,7 @@
 // and exits with code 1 when any broken link exists.
 //
 // Usage:
-//   node scripts/check-docs-links.js                 # scan README + docs/*
+//   node scripts/check-docs-links.js                 # scan repository Markdown
 //   node scripts/check-docs-links.js <file>...       # scan the given files
 import fs from "node:fs";
 import path from "node:path";
@@ -70,13 +70,27 @@ function scanFile(absFile) {
   return broken;
 }
 
-function defaultFiles() {
-  const files = ["README.md", "README.zh-CN.md"];
-  const docsDir = path.join(root, "docs");
-  for (const name of fs.readdirSync(docsDir)) {
-    if (name.endsWith(".md")) files.push(path.join("docs", name));
+function collectMarkdown(relativeDir, files) {
+  const absoluteDir = path.join(root, relativeDir);
+  for (const entry of fs.readdirSync(absoluteDir, { withFileTypes: true })) {
+    const relative = path.join(relativeDir, entry.name);
+    if (entry.isDirectory()) {
+      collectMarkdown(relative, files);
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(relative);
+    }
   }
-  return files;
+}
+
+function defaultFiles() {
+  const files = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name);
+  for (const directory of ["docs", "scripts", "userscript"]) {
+    collectMarkdown(directory, files);
+  }
+  return files.sort();
 }
 
 const given = process.argv.slice(2);

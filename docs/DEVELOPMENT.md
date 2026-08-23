@@ -20,8 +20,14 @@ working-tree safety rules.
   contract).
 - `config/` — defaults (`default.json`) and machine-specific overrides
   (`local.json`, gitignored).
+- `browser-companion/` — the browser extension source and popup UI.
+- `userscript/` — the generated userscript plus its modular source adapters.
+- `scripts/` — verification, packaging, demo, benchmark, and operator commands;
+  see [`scripts/README.md`](../scripts/README.md).
+- `benchmark/` — committed benchmark inputs and reports.
 - `tests/` — node:test suites, one file per module.
-- `docs/` — architecture, protocol, provider, and onboarding documents.
+- `docs/` — architecture, protocol, provider, onboarding, release, and historical
+  evidence documents; see the [documentation index](README.md).
 
 ## Commands
 

@@ -13,3 +13,7 @@ docs/app-server-schema/
 config/local.json
 acp-*.txt
 scripts/random-smoke.py
+
+# Local diagnostic scripts
+.acp-*.mjs
+.newapi-*.mjs
