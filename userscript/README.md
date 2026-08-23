@@ -38,7 +38,8 @@ when the result message changes the page DOM.
 3. Use the userscript manager's install or update action.
 4. Start AgentControlPlane on `127.0.0.1:4318`.
 5. Open a supported web AI page and select the floating **ACP** pill.
-6. Save a default workspace, executor, and profile on the local settings page.
+6. Save a workspace and choose Auto or a concrete default for executor, task
+   profile, model, and reasoning effort on the local settings page.
 7. Enable automatic dispatch if `执行` should use those saved choices without
    opening another local review page.
 8. Enable safe result return if the terminal task status should be sent back to
@@ -53,8 +54,9 @@ when the result message changes the page DOM.
 4. The bridge stages the envelope. AI-generated text or DOM changes cannot
    dispatch it.
 5. A user presses Send with a short confirmation such as `执行`.
-6. ACP validates the requested execution choices against local workspace roots
-   and live executor capabilities. Omitted choices use locally saved defaults.
+6. The web AI recommends concrete values for fields saved as Auto. ACP validates
+   every requested execution choice against local workspace roots and live
+   executor capabilities. Concrete saved values supply the defaults.
 7. If safe result return is enabled, the bridge sends an `<ACP_RESULT>` block
    to the same conversation after the task reaches a terminal state.
 

@@ -127,7 +127,13 @@ test("capability summary exposes safe natural-language choices", async () => {
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.capabilities.current.workspace, "allowed");
-    assert.equal(body.capabilities.current.executor, "opencode");
+    assert.deepEqual(body.capabilities.current, {
+      workspace: "allowed",
+      executor: "auto",
+      profile: "auto",
+      model: "auto",
+      reasoning_effort: "auto",
+    });
     assert.deepEqual(body.capabilities.workspaces, ["allowed"]);
     assert.deepEqual(body.capabilities.models.opencode[0], {
       id: "opencode-go/deepseek-v4-pro",

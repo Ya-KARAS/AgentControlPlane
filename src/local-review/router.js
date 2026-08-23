@@ -333,6 +333,7 @@ export class LocalReviewRouter {
             candidate: review.candidate,
             approvalSecret: review.approvalSecret,
             options: this.getOptions(),
+            settings: this.settings.current(),
           }),
         );
         return true;
@@ -344,6 +345,8 @@ export class LocalReviewRouter {
           workspace: body.workspace,
           executor: body.executor,
           profile: body.profile,
+          model: body.model,
+          reasoning_effort: body.reasoning_effort,
         });
         sendLocalHtml(response, 200, dispatchedPage(result));
         return true;

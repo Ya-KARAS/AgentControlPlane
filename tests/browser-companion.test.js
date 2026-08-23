@@ -68,6 +68,7 @@ test("controller prompt keeps local paths out of the web conversation", () => {
   assert.match(prompt, /任务已暂存/);
   assert.match(prompt, /Dispatch is performed locally/);
   assert.match(prompt, /Model and reasoning check/);
+  assert.match(prompt, /Automatic execution recommendation/);
   assert.match(prompt, /deepseek \(DeepSeek Harness\)/);
   assert.match(prompt, /Never invent or write an <ACP_RESULT>/);
 });
@@ -102,6 +103,21 @@ test("panel-selected model and reasoning effort flow into dispatch", () => {
     },
   );
   assert.equal(envelopeWins.model, "explicit-model");
+
+  const automatic = normalizeDispatch(
+    { objective: "Create hello.txt" },
+    {
+      workspace: "C:\\approved-project",
+      executor: "auto",
+      profile: "auto",
+      model: "auto",
+      reasoning_effort: "auto",
+    },
+  );
+  assert.equal(automatic.executor, "auto");
+  assert.equal(automatic.profile, "economy");
+  assert.equal("model" in automatic, false);
+  assert.equal("reasoning_effort" in automatic, false);
 });
 
 test("controller prompt lists advertised models from the catalog", () => {
@@ -232,6 +248,9 @@ test("companion surfaces recommendations without auto-selecting", () => {
   assert.match(panel, /recommendModels/);
   assert.match(panel, /setRecommendation/);
   assert.match(panel, /selectRecommended/);
+  assert.match(panel, /data-field="reasoning_effort"/);
+  assert.match(panel, /profileAuto/);
+  assert.match(panel, /reasoningAuto/);
 
   const content = fs.readFileSync(
     path.resolve("browser-companion", "src", "content.js"),
@@ -246,6 +265,8 @@ test("companion surfaces recommendations without auto-selecting", () => {
   );
   assert.match(background, /ACP_RECOMMEND/);
   assert.match(background, /\/v1\/recommendations/);
+  assert.match(background, /profile: "auto"/);
+  assert.match(background, /reasoning_effort: "auto"/);
 });
 
 test("manifest grants only known AI sites by default", () => {

@@ -289,6 +289,7 @@ export async function createApplication(overrides = {}) {
       validateSelection: (selection) =>
         validateLocalSelection(config, orchestrator, selection, {
           projectRegistry,
+          preserveAuto: true,
         }),
       normalizeWorkspace: (workspace) =>
         projectRegistry?.referenceForPath(workspace) ?? workspace,

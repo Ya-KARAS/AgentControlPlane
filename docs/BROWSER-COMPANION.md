@@ -34,8 +34,10 @@ failures are reported in the page panel.
    `browser-companion` directory.
 5. Open a supported web AI page and click the floating **ACP** button.
 6. Click **Pair**, compare the six-digit code, and approve the local page.
-7. Select a known workspace, profile, and executor. `auto` chooses the first
-   healthy installed/configured executor.
+7. Select a known workspace. Executor, task profile, model, and reasoning
+   effort accept either Auto or a concrete value. The web AI recommends each
+   automatic field, and ACP validates the recommendation against live local
+   capabilities.
 
 No API key or main control-plane bearer token is copied into the browser. A
 paired extension receives a separate scoped credential that can access only

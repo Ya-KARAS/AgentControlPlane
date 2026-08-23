@@ -7,9 +7,10 @@ const DEFAULTS = {
   activeTasks: [],
   settings: {
     workspace: "",
-    profile: "balanced",
+    profile: "auto",
     executor: "auto",
-    model: "",
+    model: "auto",
+    reasoning_effort: "auto",
     confirmWords: "",
     autoSubmitResults: false,
   },

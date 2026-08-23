@@ -178,4 +178,42 @@ test("natural-language workspace paths and route choices stay inside local capab
     }),
     (error) => error.code === "candidate_reasoning_effort_denied",
   );
+  assert.deepEqual(
+    validateLocalSelection(config, orchestrator, {
+      workspace,
+      objective: "写一个简单示例",
+      executor: "auto",
+      profile: "auto",
+      model: "provider/model-a",
+      reasoning_effort: "auto",
+    }),
+    {
+      workspace,
+      executor: "opencode",
+      profile: "economy",
+      model: "provider/model-a",
+      reasoning_effort: null,
+    },
+  );
+  assert.deepEqual(
+    validateLocalSelection(
+      config,
+      orchestrator,
+      {
+        workspace,
+        executor: "auto",
+        profile: "auto",
+        model: "auto",
+        reasoning_effort: "auto",
+      },
+      { preserveAuto: true },
+    ),
+    {
+      workspace,
+      executor: "auto",
+      profile: "auto",
+      model: "auto",
+      reasoning_effort: "auto",
+    },
+  );
 });

@@ -304,6 +304,7 @@ export class CandidateReviewService {
   #dispatchCandidate(candidate, selection, approvalAuditType) {
     const approved = this.validateApproval({
       ...selection,
+      objective: candidate.objective,
       ...(candidate.execution ?? {}),
     });
     const reviewedRevisions = candidate.approvalContext?.project_path_revisions;

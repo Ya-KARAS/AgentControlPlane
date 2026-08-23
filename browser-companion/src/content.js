@@ -117,7 +117,7 @@
       objective,
       profile: values.profile || undefined,
       executor: values.executor || undefined,
-      model: values.model || undefined,
+      model: values.model === "auto" ? undefined : values.model || undefined,
     });
     panel.setRecommendation(response.recommendation ?? null);
     panel.open();
@@ -164,6 +164,7 @@
       profile: values.profile,
       executor: values.executor,
       model: values.model ?? "",
+      reasoning_effort: values.reasoning_effort ?? "auto",
       confirmWords: values.confirmWords,
       autoSubmitResults: values.autoSubmitResults,
       language: values.language,

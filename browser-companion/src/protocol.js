@@ -91,7 +91,7 @@ export function normalizeDispatch(envelope, settings = {}) {
       (source === "model" || source === "reasoning_effort"
         ? settings?.[source]
         : undefined);
-    if (value == null || value === "") continue;
+    if (value == null || value === "" || value === "auto") continue;
     if (listTargets.has(target) && typeof value === "string") {
       request[target] = [boundedString(value, limit)];
       continue;
@@ -139,7 +139,12 @@ export function controllerPrompt(settings = {}, executors = [], models = {}) {
       const list = models?.[entry.id] ?? [];
       const names = list
         .slice(0, 5)
-        .map((model) => model.id ?? model.model)
+        .map((model) => {
+          const id = model.id ?? model.model;
+          const efforts = model.reasoning_efforts ??
+            model.supported_reasoning_efforts ?? [];
+          return efforts.length ? `${id} [${efforts.join(", ")}]` : id;
+        })
         .filter(Boolean);
       return names.length
         ? `${entry.display_name ?? entry.id}: ${names.join(", ")}`
@@ -167,6 +172,7 @@ export function controllerPrompt(settings = {}, executors = [], models = {}) {
     ),
     TASK_CLOSE,
     "DEFAULT is resolved locally by the companion; do not ask for or expose a local filesystem path.",
+    `Current local modes: executor=${executor}, profile=${profile}, model=${boundedString(settings.model, 120) || "auto"}, reasoning_effort=${boundedString(settings.reasoning_effort, 40) || "auto"}.`,
     `Available executors: ${executorCatalog || "auto (automatic routing)"}. When the user names an executor, put its id in the "executor" field; otherwise use "auto".`,
     "Optional fields to add only when the user explicitly asks for them:",
     modelCatalog
@@ -177,7 +183,9 @@ export function controllerPrompt(settings = {}, executors = [], models = {}) {
     '"max_subagents": an integer subagent cap.',
     '"time_limit_minutes": an integer minute cap on task runtime (1 to 240); omit for the default.',
     'Profiles: "economy" (small edits, low effort, 0 subagents), "balanced" (normal work, high effort, up to 2 subagents), "deep" (architecture, ultra effort, up to 4 subagents).',
-    "Model and reasoning check: before emitting the envelope, ask the user once to choose the model and the reasoning effort, unless the user already specified them or said auto. If the user says auto, choose a model and reasoning_effort that fit the task difficulty and state your choice in the line after the envelope. Copy a user-named model exactly into the \"model\" field. If the returned ACP_RESULT reports a model error, tell the user that model name was rejected and ask them to pick another one.",
+    "Automatic execution recommendation: for each current local mode set to auto, choose one concrete listed executor, profile, model, or reasoning_effort that fits the task and include it in the envelope. Use a reasoning effort advertised by the chosen model; omit reasoning_effort when that model lists no efforts.",
+    "A concrete local mode is the default for that field. Keep it by omitting the field unless the user explicitly requests a different listed value.",
+    "Model and reasoning check: copy user-named values exactly. The local control plane validates every recommendation against its current capability catalog before dispatch.",
     "Do not claim the task ran until an <ACP_RESULT> envelope is returned.",
     "Never invent or write an <ACP_RESULT> envelope yourself. Only quote the real envelope the conversation receives. If asked about completion before an <ACP_RESULT> arrives, answer only that no result has arrived yet.",
     "Dispatch is performed locally: after the user replies with a confirmation word, the browser companion sends the staged envelope to the local control plane automatically. Do not claim you dispatched anything and do not tell the user to click or press anything. After the user confirms, reply only that the task is executing locally and wait for the <ACP_RESULT> envelope before reporting any outcome.",

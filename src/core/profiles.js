@@ -2,6 +2,23 @@ import { ControlPlaneError } from "./errors.js";
 
 const PROFILE_ESTIMATE_MINUTES = { economy: 2, balanced: 5, deep: 12 };
 
+export function inferProfileFromObjective(objective) {
+  const text = String(objective ?? "");
+  if (
+    /(架构|重构|迁移|大规模|性能优化|安全审计|全面检查|深度)/.test(text) ||
+    text.length > 400
+  ) {
+    return "deep";
+  }
+  if (
+    /(最小|简单|单文件|一行|小修|微调|示例|hello|demo)/i.test(text) &&
+    text.length < 200
+  ) {
+    return "economy";
+  }
+  return "balanced";
+}
+
 export function estimateTaskMinutes(profileName, timeLimitMinutes = null) {
   const base = PROFILE_ESTIMATE_MINUTES[profileName] ?? 5;
   return timeLimitMinutes != null ? Math.min(base, timeLimitMinutes) : base;

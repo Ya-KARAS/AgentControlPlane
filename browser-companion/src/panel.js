@@ -51,7 +51,7 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
           <div class="actions"><button data-action="latest">${t("useLatest")}</button><button data-action="disconnect">${t("disconnect")}</button></div>
           <div class="stack"><label>${t("workspaceLabel")}</label><select data-field="workspace"><option value="">${t("selectAfterPairing")}</option></select></div>
           <div class="row"><div><label>${t("profileLabel")}</label><select data-field="profile"><option value="auto">${t("profileAuto")}</option><option value="economy">${t("profileEconomy")}</option><option value="balanced">${t("profileBalanced")}</option><option value="deep">${t("profileDeep")}</option></select></div><div><label>${t("executorLabel")}</label><select data-field="executor"><option value="auto">${t("executorAuto")}</option></select></div></div>
-          <div class="stack"><label>${t("modelLabel")}</label><select data-field="model"><option value="">${t("modelAuto")}</option></select></div>
+          <div class="row"><div><label>${t("modelLabel")}</label><select data-field="model"><option value="auto">${t("modelAuto")}</option></select></div><div><label>${t("reasoningLabel")}</label><select data-field="reasoning_effort"><option value="auto">${t("reasoningAuto")}</option></select></div></div>
           <div class="actions"><button data-action="recommendModels">${t("recommendModelsButton")}</button></div>
           <div class="recommendation"></div>
           <div class="stack"><label>${t("objectiveLabel")}</label><textarea data-field="objective" placeholder="${t("objectivePlaceholder")}"></textarea></div>
@@ -99,10 +99,16 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
     }
     if (fields.executor && fields.model) {
       fields.executor.addEventListener("change", () => {
-        if (currentOptions) refreshModelOptions(currentOptions);
+        if (currentOptions) {
+          refreshModelOptions(currentOptions);
+          refreshReasoningOptions(currentOptions);
+        }
+      });
+      fields.model.addEventListener("change", () => {
+        if (currentOptions) refreshReasoningOptions(currentOptions);
       });
     }
-    for (const name of ["workspace", "profile", "executor", "confirmWords", "autoSubmitResults"]) {
+    for (const name of ["workspace", "profile", "executor", "model", "reasoning_effort", "confirmWords", "autoSubmitResults"]) {
       fields[name].addEventListener("change", () => handlers.settings?.(getValues()));
     }
     if (fields.historyQuery) {
@@ -138,7 +144,10 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
       workspace: fields.workspace.value,
       profile: fields.profile.value,
       executor: fields.executor.value,
-      model: fields.model ? fields.model.value : "",
+      model: fields.model ? fields.model.value : "auto",
+      reasoning_effort: fields.reasoning_effort
+        ? fields.reasoning_effort.value
+        : "auto",
       confirmWords: fields.confirmWords.value,
       autoSubmitResults: fields.autoSubmitResults.checked,
       language: lang,
@@ -259,20 +268,54 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
     }
   }
 
+  function modelsForExecutor(options, executorValue) {
+    if (executorValue !== "auto") return options?.models?.[executorValue] ?? [];
+    return Object.entries(options?.models ?? {}).flatMap(([executorId, entries]) =>
+      entries.map((entry) => ({ ...entry, executorId })),
+    );
+  }
+
   function refreshModelOptions(options) {
     const executorValue = fields.executor.value;
-    const list = options?.models?.[executorValue] ?? [];
+    const list = modelsForExecutor(options, executorValue);
     const previous = fields.model.value;
     fields.model.innerHTML = [
-      `<option value="">${t("modelAuto")}</option>`,
+      `<option value="auto">${t("modelAuto")}</option>`,
       ...list.map((entry) => {
         const id = entry.id ?? entry.model;
-        return `<option value="${escapeAttribute(id)}">${escapeText(id)}</option>`;
+        const label = entry.executorId ? `${id} · ${entry.executorId}` : id;
+        return `<option value="${escapeAttribute(id)}">${escapeText(label)}</option>`;
       }),
     ].join("");
     if (previous && list.some((entry) => (entry.id ?? entry.model) === previous)) {
       fields.model.value = previous;
+    } else {
+      fields.model.value = "auto";
     }
+  }
+
+  function refreshReasoningOptions(options) {
+    if (!fields.reasoning_effort) return;
+    const executorValue = fields.executor.value;
+    const modelValue = fields.model.value;
+    const models = modelsForExecutor(options, executorValue);
+    const selectedModel = models.find(
+      (entry) => (entry.id ?? entry.model) === modelValue,
+    );
+    const efforts = selectedModel
+      ? selectedModel.supported_reasoning_efforts ?? []
+      : [...new Set(models.flatMap((entry) => entry.supported_reasoning_efforts ?? []))];
+    const previous = fields.reasoning_effort.value;
+    fields.reasoning_effort.innerHTML = [
+      `<option value="auto">${t("reasoningAuto")}</option>`,
+      ...efforts.map(
+        (effort) =>
+          `<option value="${escapeAttribute(effort)}">${escapeText(effort)}</option>`,
+      ),
+    ].join("");
+    fields.reasoning_effort.value = efforts.includes(previous)
+      ? previous
+      : "auto";
   }
 
   function applySettings(settings) {
@@ -283,14 +326,22 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
     }
     fields.language.value = lang;
     fields.autoSubmitResults.checked = Boolean(settings?.autoSubmitResults);
+    refreshModelOptions(currentOptions);
     if (fields.model) {
-      const modelList = currentOptions?.models?.[fields.executor.value] ?? [];
-      const model = settings?.model ?? "";
+      const modelList = modelsForExecutor(currentOptions, fields.executor.value);
+      const model = settings?.model || "auto";
       if (
-        !model ||
+        model === "auto" ||
         modelList.some((entry) => (entry.id ?? entry.model) === model)
       ) {
         fields.model.value = model;
+      }
+    }
+    refreshReasoningOptions(currentOptions);
+    if (fields.reasoning_effort) {
+      const effort = settings?.reasoning_effort || "auto";
+      if ([...fields.reasoning_effort.options].some((entry) => entry.value === effort)) {
+        fields.reasoning_effort.value = effort;
       }
     }
   }
@@ -307,12 +358,14 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
           `<option value="${escapeAttribute(value)}">${escapeText(value)}</option>`,
       )
       .join("");
-    fields.profile.innerHTML = Object.keys(options?.profiles ?? {})
+    fields.profile.innerHTML = [
+      `<option value="auto">${t("profileAuto")}</option>`,
+      ...Object.keys(options?.profiles ?? {})
       .map(
         (value) =>
           `<option value="${escapeAttribute(value)}">${escapeText(t(`profile${value[0].toUpperCase()}${value.slice(1)}`) ?? value)}</option>`,
-      )
-      .join("");
+      ),
+    ].join("");
     const executors = options?.executors ?? [];
     const ENDPOINT_IDS = new Set(["openai-compatible", "deepseek"]);
     const isEndpoint = (entry) =>
@@ -349,6 +402,7 @@ export function createPanel({ adapterId, handlers, language = "zh" }) {
       `</optgroup>`,
     ].join("");
     refreshModelOptions(options);
+    refreshReasoningOptions(options);
     applySettings(settings);
   }
 

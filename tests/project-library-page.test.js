@@ -47,6 +47,16 @@ function options() {
     discoveryRoots: ["D:\\Development"],
     executors: [{ id: "opencode", display_name: "OpenCode", ready: true }],
     profiles: ["economy"],
+    models: {
+      opencode: [
+        {
+          id: "deepseek/deepseek-v4-flash",
+          display_name: "DeepSeek V4 Flash",
+          reasoning_efforts: ["low", "high"],
+        },
+      ],
+    },
+    reasoningEfforts: ["low", "high"],
   };
 }
 
@@ -66,6 +76,11 @@ test("project library keeps routine actions visible and management controls adva
 
   assert.match(html, /项目文件夹路径/);
   assert.match(html, /资料目录和空文件夹都可以加入项目库/);
+  assert.match(html, /默认执行器/);
+  assert.match(html, /默认任务档位/);
+  assert.match(html, /默认模型/);
+  assert.match(html, /默认推理等级/);
+  assert.equal((html.match(/网页 AI 推荐（本机校验）/g) ?? []).length, 4);
   assert.match(html, /value="add_project"/);
   assert.match(html, /当前默认/);
   assert.match(html, /value="set_default"/);
@@ -98,7 +113,9 @@ test("setting one project as default preserves the remaining dispatch settings",
   settings.save(settings.issueFormSecret(), {
     workspace: "project:available",
     executor: "opencode",
-    profile: "economy",
+      profile: "economy",
+      model: "auto",
+      reasoning_effort: "auto",
     auto_dispatch: "on",
     return_result_to_chat: "on",
   });
@@ -110,6 +127,8 @@ test("setting one project as default preserves the remaining dispatch settings",
   assert.equal(saved.workspace, "project:available-2");
   assert.equal(saved.executor, "opencode");
   assert.equal(saved.profile, "economy");
+  assert.equal(saved.model, "auto");
+  assert.equal(saved.reasoning_effort, "auto");
   assert.equal(saved.autoDispatch, true);
   assert.equal(saved.returnResultToChat, true);
 });

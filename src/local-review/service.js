@@ -1,6 +1,7 @@
 import path from "node:path";
 import { CandidateReviewService } from "../core/candidate-review.js";
 import { ControlPlaneError } from "../core/errors.js";
+import { inferProfileFromObjective } from "../core/profiles.js";
 import { classifyExecutorFailure } from "../core/reroute.js";
 import { resolveWorkspace } from "../core/workspace.js";
 
@@ -169,11 +170,11 @@ export function validateLocalSelection(
   config,
   orchestrator,
   selection,
-  { routeHealth = null, projectRegistry = null } = {},
+  { routeHealth = null, projectRegistry = null, preserveAuto = false } = {},
 ) {
   const requestedWorkspace = String(selection?.workspace ?? "").trim();
-  const executor = String(selection?.executor ?? "");
-  const profile = String(selection?.profile ?? "");
+  const requestedExecutor = String(selection?.executor ?? "auto").trim() || "auto";
+  const requestedProfile = String(selection?.profile ?? "auto").trim() || "auto";
   const roots = config.workspaceRoots ?? [];
   const project = projectRegistry?.resolve(requestedWorkspace);
   const exactRoot = roots.find(
@@ -196,26 +197,55 @@ export function validateLocalSelection(
       throw error;
     }
   }
-  const executorEntry = (orchestrator.getExecutors?.() ?? []).find(
-    (entry) => entry.id === executor && entry.ready !== false,
+  const readyExecutors = (orchestrator.getExecutors?.() ?? []).filter(
+    (entry) => entry.ready !== false,
   );
-  if (!executorEntry) {
-    throw new ControlPlaneError(
-      "candidate_executor_denied",
-      "Executor must be ready and selected from the local registry",
-    );
+  const rawModel = String(selection?.model ?? "auto").trim() || "auto";
+  const model = rawModel === "auto" ? null : rawModel;
+  let executorEntry = requestedExecutor === "auto"
+    ? null
+    : readyExecutors.find((entry) => entry.id === requestedExecutor);
+  if (!executorEntry && requestedExecutor === "auto" && !preserveAuto) {
+    const matching = model
+      ? readyExecutors.filter((entry) =>
+          (orchestrator.getModels?.(entry.id) ?? []).some(
+            (candidate) => (candidate.model ?? candidate.id) === model,
+          ),
+        )
+      : readyExecutors;
+    executorEntry =
+      matching.find((entry) => entry.selected === true) ?? matching[0] ?? null;
   }
-  if (!Object.hasOwn(config.profiles ?? {}, profile)) {
+  const executor = preserveAuto && requestedExecutor === "auto"
+    ? "auto"
+    : executorEntry?.id;
+  if (!executorEntry) {
+    if (preserveAuto && requestedExecutor === "auto") {
+      // The concrete executor will be selected from the web recommendation
+      // and revalidated immediately before dispatch.
+    } else {
+      throw new ControlPlaneError(
+        "candidate_executor_denied",
+        "Executor must be ready and selected from the local registry",
+      );
+    }
+  }
+  const profile = requestedProfile === "auto" && !preserveAuto
+    ? inferProfileFromObjective(selection?.objective)
+    : requestedProfile;
+  if (profile !== "auto" && !Object.hasOwn(config.profiles ?? {}, profile)) {
     throw new ControlPlaneError(
       "candidate_profile_denied",
       "Profile must be selected from the local configuration",
     );
   }
-  const model = String(selection?.model ?? "").trim() || null;
-  const reasoningEffort =
-    String(selection?.reasoning_effort ?? selection?.reasoningEffort ?? "").trim() ||
-    null;
-  const catalog = orchestrator.getModels?.(executor) ?? [];
+  const rawReasoning = String(
+    selection?.reasoning_effort ?? selection?.reasoningEffort ?? "auto",
+  ).trim() || "auto";
+  const reasoningEffort = rawReasoning === "auto" ? null : rawReasoning;
+  const catalog = executor === "auto"
+    ? readyExecutors.flatMap((entry) => orchestrator.getModels?.(entry.id) ?? [])
+    : orchestrator.getModels?.(executor) ?? [];
   const availableModels = catalog
     .map((entry) => entry.model ?? entry.id)
     .filter(Boolean);
@@ -230,7 +260,9 @@ export function validateLocalSelection(
     );
   }
   const effectiveModel = model ?? (
-    executor === "codex"
+    executor === "auto"
+      ? null
+      : executor === "codex"
       ? config.profiles?.[profile]?.model ?? null
       : configuredExecutorModel(config, executor, catalog)
   );
@@ -274,8 +306,9 @@ export function validateLocalSelection(
       : {}),
     executor,
     profile,
-    model,
-    reasoning_effort: reasoningEffort,
+    model: preserveAuto && rawModel === "auto" ? "auto" : model,
+    reasoning_effort:
+      preserveAuto && rawReasoning === "auto" ? "auto" : reasoningEffort,
   };
 }
 
@@ -310,6 +343,27 @@ export function createCandidateReviewService({
 export function localReviewOptions(config, orchestrator, projectRegistry = null) {
   const projects = projectRegistry?.publicProjects() ?? [];
   const availableProjects = projects.filter((entry) => entry.status === "available");
+  const executors = orchestrator.getExecutors?.() ?? [];
+  const models = Object.fromEntries(
+    executors.map((executor) => [
+      executor.id,
+      (orchestrator.getModels?.(executor.id) ?? []).map((entry) => ({
+        id: entry.model ?? entry.id,
+        display_name:
+          entry.displayName ?? entry.display_name ?? entry.model ?? entry.id,
+        reasoning_efforts:
+          entry.supportedReasoningEfforts?.map(
+            (effort) => effort.reasoningEffort,
+          ) ?? [],
+      })),
+    ]),
+  );
+  const reasoningEfforts = [...new Set([
+    ...Object.values(config.profiles ?? {}).map((profile) => profile.effort),
+    ...Object.values(models).flatMap((entries) =>
+      entries.flatMap((entry) => entry.reasoning_efforts),
+    ),
+  ].filter(Boolean))];
   return {
     workspaces: projectRegistry
       ? availableProjects.map((entry) => entry.id)
@@ -319,8 +373,10 @@ export function localReviewOptions(config, orchestrator, projectRegistry = null)
       : (config.workspaceRoots ?? []).map((entry) => ({ value: entry, label: entry })),
     projects,
     discoveryRoots: projectRegistry?.discoveryRoots() ?? [],
-    executors: orchestrator.getExecutors?.() ?? [],
+    executors,
     profiles: Object.keys(config.profiles ?? {}),
+    models,
+    reasoningEfforts,
   };
 }
 
@@ -376,11 +432,18 @@ export function localReviewCapabilities(
       .filter((entry) => entry.id);
   }
   const currentProfile = config.profiles?.[settings.profile] ?? {};
-  const currentCatalog = orchestrator.getModels?.(settings.executor) ?? [];
-  const currentModel =
-    settings.executor === "codex"
-      ? currentProfile.model ?? null
-      : configuredExecutorModel(config, settings.executor, currentCatalog);
+  const currentCatalog = settings.executor === "auto"
+    ? []
+    : orchestrator.getModels?.(settings.executor) ?? [];
+  const configuredModel =
+    settings.executor === "auto"
+      ? null
+      : settings.executor === "codex"
+        ? currentProfile.model ?? null
+        : configuredExecutorModel(config, settings.executor, currentCatalog);
+  const currentModel = settings.model === "auto"
+    ? "auto"
+    : settings.model ?? configuredModel;
   const projects = projectRegistry?.publicProjects() ?? [];
   const workspaceLabels = projectRegistry
     ? projects.filter((entry) => entry.status === "available").map((entry) => entry.alias)
@@ -393,7 +456,10 @@ export function localReviewCapabilities(
       executor: settings.executor,
       profile: settings.profile,
       model: currentModel,
-      reasoning_effort: currentProfile.effort ?? null,
+      reasoning_effort:
+        settings.reasoning_effort === "auto"
+          ? "auto"
+          : settings.reasoning_effort ?? currentProfile.effort ?? null,
     },
     workspaces: workspaceLabels.filter(
       (label) =>

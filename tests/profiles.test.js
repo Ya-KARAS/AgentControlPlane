@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  inferProfileFromObjective,
   resolveProfile,
   resolveEndpointModel,
   estimateTaskMinutes,
 } from "../src/core/profiles.js";
+
+test("infers an automatic profile from task scope", () => {
+  assert.equal(inferProfileFromObjective("写一个 hello 示例"), "economy");
+  assert.equal(inferProfileFromObjective("给接口增加参数校验"), "balanced");
+  assert.equal(inferProfileFromObjective("重构整个模块的架构"), "deep");
+});
 
 const config = {
   codex: { defaultModel: null },

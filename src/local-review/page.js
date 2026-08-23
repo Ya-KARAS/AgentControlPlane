@@ -11,6 +11,50 @@ function option(value, label, selected = false) {
   return `<option value="${escapeHtml(value)}"${selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
 }
 
+function executorOptions(executors, selected) {
+  return [
+    option("auto", "自动 · 网页 AI 推荐（本机校验）", selected === "auto"),
+    ...executors.map((entry) =>
+      option(
+        entry.id,
+        entry.display_name ?? entry.id,
+        entry.id === selected,
+      ),
+    ),
+  ].join("");
+}
+
+function profileOptions(profiles, selected) {
+  return [
+    option("auto", "自动 · 网页 AI 推荐（本机校验）", selected === "auto"),
+    ...profiles.map((entry) => option(entry, entry, entry === selected)),
+  ].join("");
+}
+
+function modelOptions(models, selected) {
+  const groups = Object.entries(models ?? {}).map(([executor, entries]) => {
+    const rows = entries.map((entry) =>
+      option(
+        entry.id ?? entry.model,
+        entry.display_name ?? entry.id ?? entry.model,
+        (entry.id ?? entry.model) === selected,
+      ),
+    ).join("");
+    return rows ? `<optgroup label="${escapeHtml(executor)}">${rows}</optgroup>` : "";
+  });
+  return [
+    option("auto", "自动 · 网页 AI 推荐（本机校验）", selected === "auto"),
+    ...groups,
+  ].join("");
+}
+
+function reasoningOptions(efforts, selected) {
+  return [
+    option("auto", "自动 · 网页 AI 推荐（本机校验）", selected === "auto"),
+    ...efforts.map((effort) => option(effort, effort, effort === selected)),
+  ].join("");
+}
+
 function page(title, body) {
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -19,7 +63,7 @@ function page(title, body) {
 <body><main class="card">${body}</main></body></html>`;
 }
 
-export function reviewPage({ candidate, approvalSecret, options }) {
+export function reviewPage({ candidate, approvalSecret, options, settings = {} }) {
   const workspaceEntries = options.workspaceEntries ?? (options.workspaces ?? []).map((entry) => ({ value: entry, label: entry }));
   const workspaces = workspaceEntries.map((entry) => entry.value);
   const executors = (options.executors ?? []).filter((entry) => entry.ready !== false);
@@ -38,8 +82,10 @@ export function reviewPage({ candidate, approvalSecret, options }) {
 <input type="hidden" name="id" value="${escapeHtml(candidate.id)}">
 <input type="hidden" name="approval_secret" value="${escapeHtml(approvalSecret)}">
 <label>工作区 Workspace<select name="workspace" required>${workspaceEntries.map((entry, index) => option(entry.value, entry.label, index === 0)).join("")}</select></label>
-<label>执行器 Executor<select name="executor" required>${executors.map((entry) => option(entry.id, entry.display_name ?? entry.id, entry.selected === true)).join("")}</select></label>
-<label>配置 Profile<select name="profile" required>${profiles.map((entry) => option(entry, entry, entry === "economy")).join("")}</select></label>
+<label>执行器 Executor<select name="executor" required>${executorOptions(executors, settings.executor ?? "auto")}</select></label>
+<label>任务档位 Profile<select name="profile" required>${profileOptions(profiles, settings.profile ?? "auto")}</select></label>
+<label>模型 Model<select name="model" required>${modelOptions(options.models, settings.model ?? "auto")}</select></label>
+<label>推理等级 Reasoning<select name="reasoning_effort" required>${reasoningOptions(options.reasoningEfforts ?? [], settings.reasoning_effort ?? "auto")}</select></label>
 <button type="submit">确认并派发 Confirm and dispatch</button>
 </form>`
     : '<p class="error">本机没有可用的工作区、执行器或配置，无法派发。No local dispatch option is available.</p>';
@@ -78,8 +124,11 @@ export function settingsPage({
     ? `<form method="post" action="/local-review/settings" autocomplete="off">
 <input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}">
 <label>默认工作区 Workspace<select name="workspace" required>${workspaceEntries.map((entry) => option(entry.value, entry.label, entry.value === settings.workspace)).join("")}</select></label>
-<label>默认执行器 Executor<select name="executor" required>${executors.map((entry) => option(entry.id, entry.display_name ?? entry.id, entry.id === settings.executor)).join("")}</select></label>
-<label>默认配置 Profile<select name="profile" required>${profiles.map((entry) => option(entry, entry, entry === settings.profile)).join("")}</select></label>
+<label>默认执行器 Executor<select name="executor" required>${executorOptions(executors, settings.executor)}</select></label>
+<label>默认任务档位 Profile<select name="profile" required>${profileOptions(profiles, settings.profile)}</select></label>
+<label>默认模型 Model<select name="model" required>${modelOptions(options.models, settings.model)}</select></label>
+<label>默认推理等级 Reasoning<select name="reasoning_effort" required>${reasoningOptions(options.reasoningEfforts ?? [], settings.reasoning_effort)}</select></label>
+<p class="muted">选择“自动”后，网页 AI 会按任务目标推荐具体值；ACP 会用本机能力目录和可用状态校验推荐。具体值作为默认值，网页对话中的明确指令可为单次任务指定其他值。</p>
 <label><span><input type="checkbox" name="auto_dispatch"${settings.autoDispatch ? " checked" : ""}> 在网页对话中确认后自动派发 Auto-dispatch after chat confirmation</span></label>
 <label><span><input type="checkbox" name="return_result_to_chat"${settings.returnResultToChat ? " checked" : ""}> 任务结束后把安全结果发回网页 AI 对话 Return safe result to web AI</span></label>
 <button type="submit">保存设置 Save settings</button>

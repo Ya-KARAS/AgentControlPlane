@@ -9,15 +9,12 @@ function hashSecret(value) {
 
 function defaultSelection(options) {
   const workspaces = options.workspaces ?? [];
-  const executors = (options.executors ?? []).filter((entry) => entry.ready !== false);
-  const profiles = options.profiles ?? [];
   return {
     workspace: workspaces[0] ?? null,
-    executor:
-      executors.find((entry) => entry.selected === true)?.id ??
-      executors[0]?.id ??
-      null,
-    profile: profiles.includes("economy") ? "economy" : profiles[0] ?? null,
+    executor: "auto",
+    profile: "auto",
+    model: "auto",
+    reasoning_effort: "auto",
   };
 }
 
@@ -49,6 +46,11 @@ export class LocalReviewSettings {
         workspace: typeof parsed.workspace === "string" ? parsed.workspace : null,
         executor: typeof parsed.executor === "string" ? parsed.executor : null,
         profile: typeof parsed.profile === "string" ? parsed.profile : null,
+        model: typeof parsed.model === "string" ? parsed.model : "auto",
+        reasoning_effort:
+          typeof parsed.reasoning_effort === "string"
+            ? parsed.reasoning_effort
+            : "auto",
       };
     } catch {
       return {
@@ -57,6 +59,8 @@ export class LocalReviewSettings {
         workspace: null,
         executor: null,
         profile: null,
+        model: "auto",
+        reasoning_effort: "auto",
       };
     }
   }
@@ -74,14 +78,23 @@ export class LocalReviewSettings {
         : (options.workspaces ?? []).includes(storedWorkspace)
           ? storedWorkspace
           : fallback.workspace,
-      executor: (options.executors ?? []).some(
+      executor: this.stored.executor === "auto" || (options.executors ?? []).some(
         (entry) => entry.ready !== false && entry.id === this.stored.executor,
       )
         ? this.stored.executor
         : fallback.executor,
-      profile: (options.profiles ?? []).includes(this.stored.profile)
+      profile: this.stored.profile === "auto" ||
+        (options.profiles ?? []).includes(this.stored.profile)
         ? this.stored.profile
         : fallback.profile,
+      model: this.#modelExists(options, this.stored.model)
+        ? this.stored.model
+        : fallback.model,
+      reasoning_effort:
+        this.stored.reasoning_effort === "auto" ||
+        (options.reasoningEfforts ?? []).includes(this.stored.reasoning_effort)
+          ? this.stored.reasoning_effort
+          : fallback.reasoning_effort,
     };
     return {
       autoDispatch: this.stored.autoDispatch,
@@ -104,6 +117,8 @@ export class LocalReviewSettings {
       workspace: String(input.workspace ?? ""),
       executor: String(input.executor ?? ""),
       profile: String(input.profile ?? ""),
+      model: String(input.model ?? "auto"),
+      reasoning_effort: String(input.reasoning_effort ?? "auto"),
     });
     this.stored = {
       autoDispatch: input.auto_dispatch === "on",
@@ -117,6 +132,8 @@ export class LocalReviewSettings {
       workspace: selection.workspace,
       executor: selection.executor,
       profile: selection.profile,
+      model: selection.model,
+      reasoningEffort: selection.reasoning_effort,
     });
     return this.current();
   }
@@ -128,6 +145,8 @@ export class LocalReviewSettings {
       workspace: String(workspace ?? ""),
       executor: current.executor,
       profile: current.profile,
+      model: current.model,
+      reasoning_effort: current.reasoning_effort,
     });
     this.stored = {
       ...this.stored,
@@ -167,6 +186,13 @@ export class LocalReviewSettings {
     } catch {
       return null;
     }
+  }
+
+  #modelExists(options, model) {
+    if (model === "auto") return true;
+    return Object.values(options.models ?? {}).some((entries) =>
+      entries.some((entry) => (entry.id ?? entry.model) === model),
+    );
   }
 
   #pruneSecrets() {

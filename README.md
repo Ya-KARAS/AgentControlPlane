@@ -113,6 +113,12 @@ profile, advertised model, and reasoning effort in natural language. Reply with
 safe result return are separate local opt-ins. The result sent to the webpage
 contains status, counts, and the non-secret execution ids.
 
+The local settings page provides an Auto option for executor, task profile,
+model, and reasoning effort. The web AI recommends a concrete value for each
+automatic field, and ACP validates it against the live executor catalog, model
+capabilities, and route status. Concrete settings remain defaults; a value the
+user explicitly names in the web conversation applies to that task.
+
 The [project registry](docs/PROJECT-REGISTRY.md) assigns stable project IDs and
 supports multiple cross-drive discovery roots, logical categories, move
 detection, and locally confirmed relinking. A browser conversation can continue
