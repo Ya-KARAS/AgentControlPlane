@@ -4,6 +4,10 @@
 
 ### Added
 
+- Web Bridge 0.8.1 records result delivery by conversation and task id. A
+  terminal `<ACP_RESULT>` is inserted only once, survives DeepSeek/ChatGPT DOM
+  rerenders without duplication, and never overwrites user-authored composer
+  text. A distinct later task can still return one new result.
 - The desktop userscript now keeps task planning in the native ChatGPT or
   DeepSeek conversation. `@AgentControlPlane` starts planning, the web AI emits
   a bounded task envelope, and a fresh user Send action with `执行` authorizes

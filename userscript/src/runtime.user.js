@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.8.0
+// @version      0.8.1
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.0/agent-control-plane-web-bridge.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.1/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -26,6 +26,7 @@
   // @acp-i18n
   // @acp-conversation-protocol
   // @acp-stage-state
+  // @acp-result-delivery-state
 
   const ROOT_ID = "acp-web-bridge-preview";
   const LOCAL_BASE_URL = "http://127.0.0.1:4318";
@@ -35,6 +36,7 @@
   const DEFAULT_REMOTE_RELAY_URL = "https://acp.asterroute.com";
   const ADAPTERS = /* @acp-adapters */ [];
   const STAGE_TTL_MS = 10 * 60 * 1000;
+  const RESULT_DELIVERY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const TERMINAL_TASK_STATUSES = new Set([
     "completed",
     "failed",
@@ -59,7 +61,6 @@
   let tracking = null;
   let pollTimer = null;
   let pendingResult = null;
-  let pendingResultExpiresAt = 0;
   let suppressCapture = false;
   let inspectTimer = null;
   let launchPending = false;
@@ -75,6 +76,8 @@
     `${Date.now().toString(36)}:${TAB_ID}:${revisionSequence += 1}`;
   const currentStorageKey = () => stageStorageKey(activeScope);
   const currentLockName = () => stageLockName(activeScope);
+  const currentResultDeliveryKey = (scope = activeScope) =>
+    resultDeliveryStorageKey(scope);
   const withStageLock = async (callback) => {
     if (!navigator.locks?.request) throw new Error("stage_lock_unavailable");
     return navigator.locks.request(currentLockName(), { mode: "exclusive" }, callback);
@@ -158,6 +161,9 @@
     planningBaseline = null;
     dispatchingEnvelopeId = null;
     await restoreStage();
+    if (pendingResult?.scope === activeScope) {
+      void returnResultToConversation();
+    }
   };
 
   const stableIdempotencyKey = async (activeEnvelope) => {
@@ -668,21 +674,50 @@
     pollTimer = null;
   };
 
+  const resultAlreadyReturned = async (taskId, scope) => resultWasDelivered(
+    await Promise.resolve(GM_getValue(currentResultDeliveryKey(scope), null)),
+    { scope, taskId },
+  );
+
+  const rememberReturnedResult = async (taskId, scope) => {
+    const key = currentResultDeliveryKey(scope);
+    const current = await Promise.resolve(GM_getValue(key, null));
+    const deliveredAt = Date.now();
+    await Promise.resolve(GM_setValue(key, rememberResultDelivery(current, {
+      scope,
+      taskId,
+      deliveredAt,
+      expiresAt: deliveredAt + RESULT_DELIVERY_TTL_MS,
+    })));
+  };
+
   const returnResultToConversation = async () => {
-    if (!pendingResult || Date.now() >= pendingResultExpiresAt) {
+    const queued = pendingResult;
+    if (!queued || Date.now() >= queued.expiresAt) {
       pendingResult = null;
+      return;
+    }
+    if (queued.scope !== activeScope) return;
+    if (await resultAlreadyReturned(queued.taskId, queued.scope)) {
+      if (pendingResult === queued) pendingResult = null;
       return;
     }
     if (readComposer()) {
       setTimeout(returnResultToConversation, 1000);
       return;
     }
-    const value = pendingResult;
-    pendingResult = null;
-    if (!writeComposer(value) || !(await submitComposer())) {
-      pendingResult = value;
+    if (!writeComposer(queued.value)) {
       setTimeout(returnResultToConversation, 1000);
+      return;
     }
+    if (pendingResult === queued) pendingResult = null;
+    try {
+      await rememberReturnedResult(queued.taskId, queued.scope);
+    } catch {
+      // The current page still consumes this insertion once. A storage failure
+      // must never trigger a second write that could overwrite user text.
+    }
+    await submitComposer();
   };
 
   const pollStatus = async (activeTracking) => {
@@ -716,9 +751,17 @@
       if (body.task && TERMINAL_TASK_STATUSES.has(body.task.status)) {
         stopTracking();
         if (activeTracking.returnResultToChat) {
-          pendingResult = safeResultBlock(body.task);
-          pendingResultExpiresAt = Date.now() + 2 * 60 * 1000;
-          returnResultToConversation();
+          const taskId = String(body.task.id ?? activeTracking.id ?? "").trim();
+          const scope = activeTracking.scope ?? activeScope;
+          if (taskId && !(await resultAlreadyReturned(taskId, scope))) {
+            pendingResult = {
+              taskId,
+              scope,
+              value: safeResultBlock(body.task),
+              expiresAt: Date.now() + 2 * 60 * 1000,
+            };
+            void returnResultToConversation();
+          }
         }
         return;
       }
@@ -820,6 +863,7 @@
         stopTracking();
         tracking = {
           id: candidateId,
+          scope: activeScope,
           secret: usedRemote ? null : body.status_secret,
           expiresAt,
           startedAt: Date.now(),

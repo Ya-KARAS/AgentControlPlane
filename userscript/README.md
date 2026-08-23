@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.8.0 provides separate Chinese and English interfaces, local/remote
+Version 0.8.1 provides separate Chinese and English interfaces, local/remote
 transport selection, and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
@@ -27,6 +27,10 @@ persisted revision, and browser-wide lock prevent another tab from dispatching
 an older task after the route changes. After dispatch, a conversation-scoped
 terminal fingerprint prevents the same task envelope from being staged again
 when the result message changes the page DOM.
+Each terminal task result is also inserted into its originating conversation
+at most once. DeepSeek or ChatGPT DOM rerenders and page reloads cannot insert
+the same `<ACP_RESULT>` again, and the bridge never overwrites text already
+typed by the user. A different task id can still return one new result.
 
 ## Supported sites
 
@@ -99,7 +103,9 @@ independent from the userscript preference.
    every requested execution choice against local workspace roots and live
    executor capabilities. Concrete saved values supply the defaults.
 7. If safe result return is enabled, the bridge sends an `<ACP_RESULT>` block
-   to the same conversation after the task reaches a terminal state.
+   to the same conversation after the task reaches a terminal state. Each task
+   id is inserted once; if automatic Send is unavailable, the single inserted
+   block remains in the composer for the user to send manually.
 
 The result block contains task status, a safe workspace alias, file and blocker counts, test-command
 counts, parsed test-case counts when available, a safe failure category, and

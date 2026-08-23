@@ -9,6 +9,7 @@ const runtimePath = path.join(root, "src", "runtime.user.js");
 const protocolPath = path.join(root, "src", "conversation-protocol.js");
 const i18nPath = path.join(root, "src", "i18n.js");
 const stageStatePath = path.join(root, "src", "stage-state.js");
+const resultDeliveryStatePath = path.join(root, "src", "result-delivery-state.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
 const metaOutputPath = path.join(root, "agent-control-plane-web-bridge.meta.js");
 
@@ -57,6 +58,10 @@ const stageStateModule = fs
   .readFileSync(stageStatePath, "utf8")
   .replace(/^export\s+/gm, "")
   .trim();
+const resultDeliveryStateModule = fs
+  .readFileSync(resultDeliveryStatePath, "utf8")
+  .replace(/^export\s+/gm, "")
+  .trim();
 const built = runtime
   .replace("// @acp-adapter-matches", matchLines)
   .replace(
@@ -65,7 +70,8 @@ const built = runtime
   )
   .replace("// @acp-i18n", i18nModule)
   .replace("// @acp-conversation-protocol", protocolModule)
-  .replace("// @acp-stage-state", stageStateModule);
+  .replace("// @acp-stage-state", stageStateModule)
+  .replace("// @acp-result-delivery-state", resultDeliveryStateModule);
 if (built === runtime) throw new Error("Userscript build markers were not replaced");
 const headerEndMarker = "// ==/UserScript==";
 const headerEnd = built.indexOf(headerEndMarker);
