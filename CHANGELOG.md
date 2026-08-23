@@ -48,6 +48,9 @@
   uses GitHub's explicit `refs/heads/main` raw path for both update checks and
   downloads. This avoids stale `/main/` branch-path responses observed during
   immediate Tampermonkey update checks.
+- Web Bridge 0.7.3 adds a release-version query to the full script download URL.
+  A successful metadata check can therefore no longer download an older script
+  body from a previously cached branch URL.
 
 ### Security
 

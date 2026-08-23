@@ -22,9 +22,9 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.7\.2$/m);
+  assert.match(script, /^\/\/ @version\s+0\.7\.3$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.user\.js\?version=0\.7\.3$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @grant\s+GM_openInTab$/m);
@@ -50,7 +50,8 @@ test("userscript update metadata is small and matches the install header", () =>
   const expected = `${script.slice(0, script.indexOf(marker) + marker.length)}\n`;
 
   assert.equal(meta, expected);
-  assert.match(meta, /^\/\/ @version\s+0\.7\.2$/m);
+  assert.match(meta, /^\/\/ @version\s+0\.7\.3$/m);
+  assert.match(meta, /agent-control-plane-web-bridge\.user\.js\?version=0\.7\.3/);
   assert.match(meta, /agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);
