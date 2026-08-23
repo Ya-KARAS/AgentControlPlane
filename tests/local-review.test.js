@@ -136,6 +136,36 @@ test("unapproved page origins cannot create candidates", async () => {
   });
 });
 
+test("opaque browser origins can submit only a token-protected local review", async () => {
+  await withReviewServer(async ({ baseUrl, orchestrator }) => {
+    const response = await fetch(`${baseUrl}/local-review/confirm`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "null",
+      },
+      body: new URLSearchParams({
+        id: "invalid",
+        approval_secret: "invalid",
+        workspace: "C:\\allowed",
+        executor: "opencode",
+        profile: "economy",
+      }),
+    });
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get("content-type"), /^text\/html/);
+    assert.equal(orchestrator.requests.length, 0);
+
+    const candidate = await createCandidate(
+      baseUrl,
+      validCandidate,
+      "null",
+    );
+    assert.equal(candidate.status, 403);
+    assert.equal(orchestrator.requests.length, 0);
+  });
+});
+
 test("local review escapes page content and dispatches exactly once", async () => {
   await withReviewServer(async ({ baseUrl, orchestrator }) => {
     const created = await createCandidate(baseUrl, validCandidate);

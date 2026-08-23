@@ -85,6 +85,11 @@ executor implementations, or webpage adapters. Future clients reuse the
 service contract. Their transport layers carry candidate input and review
 responses.
 
+Some Chromium extension flows submit a top-level local confirmation form with
+the opaque `Origin: null` value. ACP accepts this value only on the loopback
+review routes. The one-time approval secret and local selection validation stay
+mandatory. Candidate creation still requires an allowlisted webpage origin.
+
 ## Implementation gates
 
 The implementation is accepted only while these gates have tests:

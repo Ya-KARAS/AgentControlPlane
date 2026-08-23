@@ -12,7 +12,7 @@ function isLoopback(address) {
 }
 
 function isLoopbackOrigin(origin) {
-  if (!origin) return true;
+  if (!origin || origin === "null") return true;
   try {
     const url = new URL(origin);
     return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
