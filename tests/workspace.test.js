@@ -21,3 +21,12 @@ test("resolveWorkspace rejects directories outside configured roots", () => {
   );
 });
 
+test("resolveWorkspace ignores a stale root when another configured root is valid", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "acp-root-live-"));
+  const child = fs.mkdtempSync(path.join(root, "project-"));
+  const missing = path.join(os.tmpdir(), "acp-root-that-moved-away");
+  assert.equal(
+    resolveWorkspace(child, [missing, root]),
+    fs.realpathSync.native(child),
+  );
+});

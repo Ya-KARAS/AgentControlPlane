@@ -224,6 +224,7 @@ export class Orchestrator extends EventEmitter {
     codex = null,
     executors = null,
     defaultProvider = null,
+    projectRegistry = null,
   }) {
     super();
     this.config = config;
@@ -231,6 +232,7 @@ export class Orchestrator extends EventEmitter {
     this.executors =
       executors ?? new Map([[defaultProvider ?? "codex", codex]]);
     this.defaultProvider = defaultProvider ?? config?.executor?.provider ?? "auto";
+    this.projectRegistry = projectRegistry;
     this.primaryProvider = null;
     this.executorDiscovery = {};
     this.running = new Map();
@@ -699,7 +701,40 @@ export class Orchestrator extends EventEmitter {
   }
 
   dispatch(request) {
-    const workspace = resolveWorkspace(
+    if (request.project_id && !this.projectRegistry) {
+      throw new ControlPlaneError(
+        "project_registry_unavailable",
+        "A project id was supplied but the local project registry is unavailable",
+      );
+    }
+    const project = this.projectRegistry?.resolve(
+      request.project_id ?? request.workspace,
+    );
+    if (
+      !project &&
+      (request.project_id || String(request.workspace ?? "").startsWith("project:"))
+    ) {
+      throw new ControlPlaneError(
+        "project_not_found",
+        "The selected project id is not registered on this device",
+      );
+    }
+    if (
+      project &&
+      request.project_path_revision != null &&
+      Number(request.project_path_revision) !== project.pathRevision
+    ) {
+      throw new ControlPlaneError(
+        "project_revision_conflict",
+        "The selected project moved after it was approved; refresh and confirm again",
+        {
+          project_id: project.projectId,
+          approved_revision: Number(request.project_path_revision),
+          current_revision: project.pathRevision,
+        },
+      );
+    }
+    const workspace = project?.workspace ?? resolveWorkspace(
       request.workspace,
       this.config.workspaceRoots,
     );
@@ -796,6 +831,8 @@ export class Orchestrator extends EventEmitter {
       executorCapabilities,
       idempotencyKey,
       requestFingerprint,
+      projectId: project?.projectId ?? null,
+      projectPathRevision: project?.pathRevision ?? null,
     });
     this.queue.push({ taskId: task.id, followUp: false });
     queueMicrotask(() => this.#drain());
@@ -815,6 +852,16 @@ export class Orchestrator extends EventEmitter {
       profile: request.profile ?? parent.policy.name,
     });
     const executorChanged = provider !== parent.executor;
+    const project = parent.project_id
+      ? this.projectRegistry?.resolve(parent.project_id)
+      : null;
+    const workspace = project?.workspace ?? parent.workspace;
+    const workspaceRelinked = Boolean(
+      project &&
+      (project.pathRevision !== parent.project_path_revision ||
+        project.workspace.toLowerCase() !== parent.workspace.toLowerCase()),
+    );
+    const sessionChanged = executorChanged || workspaceRelinked;
     if (!parent.threadId && !executorChanged) {
       throw new ControlPlaneError(
         "task_not_started",
@@ -876,11 +923,16 @@ export class Orchestrator extends EventEmitter {
     const rerouteReason = executorChanged
       ? parent.reroute_reason ?? null
       : null;
-    const continuation = executorChanged
+    const continuation = sessionChanged
       ? buildContinuationPackage(parent, rerouteReason, parent.error)
       : null;
+    if (continuation && workspaceRelinked) {
+      continuation.workspace_relinked = true;
+      continuation.previous_path_revision = parent.project_path_revision ?? null;
+      continuation.current_path_revision = project.pathRevision;
+    }
     const history = structuredClone(parent.executor_history ?? []);
-    if (executorChanged) {
+    if (sessionChanged) {
       const changedAt = new Date().toISOString();
       if (history.length > 0 && history.at(-1).ended_at == null) {
         history[history.length - 1] = {
@@ -904,7 +956,7 @@ export class Orchestrator extends EventEmitter {
       });
     }
     const task = this.store.createTask({
-      workspace: parent.workspace,
+      workspace,
       brief,
       policy,
       parentTaskId: parent.id,
@@ -915,9 +967,21 @@ export class Orchestrator extends EventEmitter {
       rerouteReason,
       capabilityRequirements,
       executorCapabilities,
+      projectId: project?.projectId ?? parent.project_id ?? null,
+      projectPathRevision:
+        project?.pathRevision ?? parent.project_path_revision ?? null,
+      workspaceRelinked,
     });
-    if (!executorChanged) {
+    if (!sessionChanged) {
       this.store.updateTask(task.id, { threadId: parent.threadId });
+    }
+    if (workspaceRelinked) {
+      this.store.addEvent(task.id, {
+        type: "workspace.relinked",
+        project_id: project.projectId,
+        previous_path_revision: parent.project_path_revision ?? null,
+        current_path_revision: project.pathRevision,
+      });
     }
     this.queue.push({ taskId: task.id, followUp: true });
     queueMicrotask(() => this.#drain());
@@ -991,17 +1055,35 @@ export class Orchestrator extends EventEmitter {
   async #run(taskId, followUp) {
     const task = this.store.getTask(taskId, true);
     if (!task || task.status !== "queued") return;
-    const workspace = resolveWorkspace(
-      task.workspace,
-      this.config.workspaceRoots,
-    );
-    const executor = this.#executorFor(task);
-    this.store.updateTask(taskId, {
-      status: "running",
-      startedAt: new Date().toISOString(),
-    });
-
     try {
+      const registryProject = task.project_id
+        ? this.projectRegistry?.resolve(task.project_id)
+        : null;
+      if (
+        registryProject &&
+        (registryProject.pathRevision !== task.project_path_revision ||
+          registryProject.workspace.toLowerCase() !== task.workspace.toLowerCase())
+      ) {
+        throw new ControlPlaneError(
+          "project_revision_conflict",
+          "The project moved after this task was staged; create a continuation after relinking",
+          {
+            project_id: registryProject.projectId,
+            staged_revision: task.project_path_revision,
+            current_revision: registryProject.pathRevision,
+          },
+        );
+      }
+      const workspace = registryProject?.workspace ?? resolveWorkspace(
+        task.workspace,
+        this.config.workspaceRoots,
+      );
+      const executor = this.#executorFor(task);
+      this.store.updateTask(taskId, {
+        status: "running",
+        startedAt: new Date().toISOString(),
+      });
+
       if (!executor.ready) {
         await executor.start();
       }
@@ -1015,9 +1097,11 @@ export class Orchestrator extends EventEmitter {
           );
         }
       }
-      const project = this.store.getProject(task.workspace);
+      const projectKey = task.project_id ?? task.workspace;
+      const project = this.store.getProject(projectKey);
       const reusableProjectThread =
         !task.continuation &&
+        (!task.project_id || project?.pathRevision === task.project_path_revision) &&
         (!project?.executor || project.executor === task.executor)
           ? project?.threadId ?? null
           : null;
@@ -1061,9 +1145,10 @@ export class Orchestrator extends EventEmitter {
           },
         });
         threadId = started.thread.id;
-        this.store.setProject(workspace, {
+        this.store.setProject(projectKey, {
           threadId,
           executor: task.executor,
+          pathRevision: task.project_path_revision ?? null,
         });
       }
 

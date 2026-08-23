@@ -1,5 +1,6 @@
 import http from "node:http";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { loadConfig } from "./core/config.js";
 import { ControlPlaneError } from "./core/errors.js";
@@ -22,6 +23,7 @@ import { dashboardHtml } from "./dashboard.js";
 import { usageDimensions, reconcileUsage } from "./core/usage-dimensions.js";
 import { LocalReviewRouter } from "./local-review/router.js";
 import { LocalReviewSettings } from "./local-review/settings.js";
+import { ProjectRegistry } from "./core/project-registry.js";
 import {
   createCandidateReviewService,
   localReviewCapabilities,
@@ -162,6 +164,24 @@ export async function createApplication(overrides = {}) {
         max: config.limits.rateLimit.max,
       })
     : null;
+  const projectRootsExist = (config.workspaceRoots ?? []).every(
+    (root) => fs.existsSync(root) && fs.statSync(root).isDirectory(),
+  );
+  const shouldCreateProjectRegistry = overrides.config === undefined || projectRootsExist;
+  const projectRegistry = overrides.projectRegistry !== undefined
+    ? overrides.projectRegistry
+    : shouldCreateProjectRegistry
+      ? new ProjectRegistry({
+      stateDir: config.stateDir,
+      workspaceRoots: config.workspaceRoots ?? [],
+      discoveryRoots: config.projectDiscoveryRoots ?? [],
+      audit: (type, payload) => store.audit(type, payload),
+      hasActiveTasks: (projectId) =>
+        store
+          .listByStatus(["queued", "running"])
+          .some((task) => task.project_id === projectId),
+        })
+      : null;
   let executors;
   let defaultProvider;
   if (overrides.executors) {
@@ -206,6 +226,7 @@ export async function createApplication(overrides = {}) {
       store,
       executors,
       defaultProvider,
+      projectRegistry,
     });
   }
   if (overrides.startCodex !== false) {
@@ -229,15 +250,25 @@ export async function createApplication(overrides = {}) {
   });
   const candidateReview =
     overrides.candidateReview ??
-    createCandidateReviewService({ config, orchestrator, store });
-  const getLocalReviewOptions = () => localReviewOptions(config, orchestrator);
+    createCandidateReviewService({
+      config,
+      orchestrator,
+      store,
+      projectRegistry,
+    });
+  const getLocalReviewOptions = () =>
+    localReviewOptions(config, orchestrator, projectRegistry);
   const localReviewSettings =
     overrides.localReviewSettings ??
     new LocalReviewSettings({
       stateDir: config.stateDir,
       getOptions: getLocalReviewOptions,
       validateSelection: (selection) =>
-        validateLocalSelection(config, orchestrator, selection),
+        validateLocalSelection(config, orchestrator, selection, {
+          projectRegistry,
+        }),
+      normalizeWorkspace: (workspace) =>
+        projectRegistry?.referenceForPath(workspace) ?? workspace,
       audit: (type, payload) => store.audit(type, payload),
     });
   const getLocalReviewCapabilities = () =>
@@ -246,6 +277,7 @@ export async function createApplication(overrides = {}) {
       orchestrator,
       localReviewSettings.current(),
       store,
+      projectRegistry,
     );
   const localReview = new LocalReviewRouter({
     service: candidateReview,
@@ -254,6 +286,7 @@ export async function createApplication(overrides = {}) {
     allowedPageOrigins: config.localReview?.allowedPageOrigins,
     getOptions: getLocalReviewOptions,
     getCapabilities: getLocalReviewCapabilities,
+    projectRegistry,
   });
 
   function tokenMatches(request) {
@@ -602,6 +635,7 @@ export async function createApplication(overrides = {}) {
     orchestrator,
     pairingManager,
     candidateReview,
+    projectRegistry,
     server,
     async close() {
       for (const executor of executors.values()) {

@@ -105,11 +105,17 @@ dispatches the structured envelope produced by the web conversation.
 
 The [desktop userscript preview](userscript/README.md) keeps task planning in
 the native ChatGPT or DeepSeek conversation. Start with `@AgentControlPlane`,
-let the web AI clarify the task and select a workspace alias or path, executor,
+let the web AI clarify the task and select a project alias or workspace path, executor,
 profile, advertised model, and reasoning effort in natural language. Reply with
 `执行` to dispatch. Omitted choices use local defaults. Automatic dispatch and
 safe result return are separate local opt-ins. The result sent to the webpage
 contains status, counts, and the non-secret execution ids.
+
+The [project registry](docs/PROJECT-REGISTRY.md) assigns stable project IDs and
+supports multiple cross-drive discovery roots, logical categories, move
+detection, and locally confirmed relinking. A browser conversation can continue
+after a project moves from one drive to another while absolute paths remain
+local.
 
 ```text
 ChatGPT / DeepSeek / Claude
@@ -194,7 +200,8 @@ are operated separately from this repository.
 
 ## Safety and limits
 
-- Workspaces resolve inside configured allowlisted roots.
+- Legacy workspaces resolve inside configured allowlisted roots; project
+  discovery roots are never executable workspaces themselves.
 - The HTTP service accepts loopback binding only.
 - Codex uses workspace-write with network access disabled and checks Windows
   sandbox readiness before execution.

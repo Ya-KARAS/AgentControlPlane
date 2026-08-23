@@ -219,6 +219,37 @@ test("refreshing review invalidates the previous approval secret", () => {
   assert.equal(dispatched.length, 1);
 });
 
+test("local approval is invalidated when the reviewed project path revision changes", () => {
+  let revision = 1;
+  const projectId = "project:11111111-1111-4111-8111-111111111111";
+  const { service, dispatched } = serviceHarness({
+    captureApprovalContext: () => ({
+      project_path_revisions: { [projectId]: revision },
+    }),
+    validateApproval(selection) {
+      return {
+        ...selection,
+        workspace: "C:\\allowed",
+        project_id: projectId,
+        project_path_revision: revision,
+      };
+    },
+  });
+  const created = createCandidate(service);
+  const review = service.beginReview(created.candidate.id, created.reviewSecret);
+  revision = 2;
+  assert.throws(
+    () =>
+      service.approve(created.candidate.id, review.approvalSecret, {
+        workspace: projectId,
+        executor: "opencode",
+        profile: "economy",
+      }),
+    (error) => error.code === "candidate_project_revision_conflict",
+  );
+  assert.equal(dispatched.length, 0);
+});
+
 test("expired candidates cannot be reviewed or dispatched", () => {
   const { service, advance, dispatched } = serviceHarness();
   const created = createCandidate(service);

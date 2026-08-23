@@ -50,7 +50,7 @@ export function controllerPrompt(request = "", capabilities = {}) {
         constraints: ["Important implementation constraints"],
         acceptance_criteria: ["Observable completion criteria"],
         execution: {
-          workspace: "A listed workspace alias, or an absolute path explicitly supplied by the user",
+          workspace: "A listed project alias or stable project id, or an absolute path explicitly supplied by the user",
           executor: "A listed executor id",
           profile: "A listed profile id",
           model: "A model id listed for the selected executor",
@@ -64,7 +64,8 @@ export function controllerPrompt(request = "", capabilities = {}) {
     "The local ACP capability summary below is authoritative for execution choices in this conversation.",
     safeCapabilities,
     "The user may choose workspace, executor, profile, model, and reasoning effort in natural language.",
-    "Use only listed workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
+    "Use only listed project aliases or ids, workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. Prefer a listed project alias so the stable local project identity survives path changes.",
+    "An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
     "Do not select a model or provider whose status is cooldown. Explain the safe failure category and ask the user to choose an available route or wait until retry_after.",
     "Omit an execution field when the user did not choose it; local saved defaults then apply. Credentials always remain local and must never appear in ACP_TASK.",
     "Before staging, state the execution choices that will override defaults and identify every omitted field as using the local default.",

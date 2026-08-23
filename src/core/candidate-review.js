@@ -148,6 +148,7 @@ export class CandidateReviewService {
     ttlMs = 5 * 60 * 1000,
     statusTtlMs = 60 * 60 * 1000,
     resolveTaskStatus = () => null,
+    captureApprovalContext = () => null,
     maxPending = 32,
     now = () => Date.now(),
   }) {
@@ -160,6 +161,7 @@ export class CandidateReviewService {
     this.ttlMs = ttlMs;
     this.statusTtlMs = statusTtlMs;
     this.resolveTaskStatus = resolveTaskStatus;
+    this.captureApprovalContext = captureApprovalContext;
     this.maxPending = maxPending;
     this.now = now;
     this.candidates = new Map();
@@ -261,6 +263,7 @@ export class CandidateReviewService {
     const approvalSecret = crypto.randomBytes(32).toString("base64url");
     candidate.status = "reviewing";
     candidate.approvalSecretHash = secretHash(approvalSecret);
+    candidate.approvalContext = this.captureApprovalContext();
     this.audit("candidate.reviewed", { candidateId: candidate.id });
     return { candidate: publicCandidate(candidate), approvalSecret };
   }
@@ -303,6 +306,20 @@ export class CandidateReviewService {
       ...selection,
       ...(candidate.execution ?? {}),
     });
+    const reviewedRevisions = candidate.approvalContext?.project_path_revisions;
+    if (approved.project_id && reviewedRevisions) {
+      const wasReviewed = Object.hasOwn(reviewedRevisions, approved.project_id);
+      if (
+        !wasReviewed ||
+        reviewedRevisions[approved.project_id] !== approved.project_path_revision
+      ) {
+        throw new ControlPlaneError(
+          "candidate_project_revision_conflict",
+          "The selected project moved after this review page was opened; refresh and confirm again",
+          { project_id: approved.project_id },
+        );
+      }
+    }
     candidate.status = "dispatching";
     candidate.approvalSecretHash = null;
     this.audit(approvalAuditType, {
@@ -319,6 +336,10 @@ export class CandidateReviewService {
         objective: candidate.objective,
         constraints: [...candidate.constraints],
         workspace: approved.workspace,
+        ...(approved.project_id ? { project_id: approved.project_id } : {}),
+        ...(approved.project_path_revision != null
+          ? { project_path_revision: approved.project_path_revision }
+          : {}),
         executor: approved.executor,
         profile: approved.profile,
         ...(approved.model ? { model: approved.model } : {}),

@@ -22,10 +22,18 @@ function defaultSelection(options) {
 }
 
 export class LocalReviewSettings {
-  constructor({ stateDir, getOptions, validateSelection, audit = () => {}, now = () => Date.now() }) {
+  constructor({
+    stateDir,
+    getOptions,
+    validateSelection,
+    normalizeWorkspace = (value) => value,
+    audit = () => {},
+    now = () => Date.now(),
+  }) {
     this.path = path.join(stateDir, "local-review-settings.json");
     this.getOptions = getOptions;
     this.validateSelection = validateSelection;
+    this.normalizeWorkspace = normalizeWorkspace;
     this.audit = audit;
     this.now = now;
     this.formSecrets = new Map();
@@ -56,10 +64,16 @@ export class LocalReviewSettings {
   current() {
     const options = this.getOptions();
     const fallback = defaultSelection(options);
+    const storedWorkspace = this.normalizeWorkspace(this.stored.workspace);
+    const storedProject = (options.projects ?? []).find(
+      (entry) => entry.id === storedWorkspace,
+    );
     const selected = {
-      workspace: (options.workspaces ?? []).includes(this.stored.workspace)
-        ? this.stored.workspace
-        : fallback.workspace,
+      workspace: storedProject
+        ? storedProject.id
+        : (options.workspaces ?? []).includes(storedWorkspace)
+          ? storedWorkspace
+          : fallback.workspace,
       executor: (options.executors ?? []).some(
         (entry) => entry.ready !== false && entry.id === this.stored.executor,
       )
@@ -72,6 +86,7 @@ export class LocalReviewSettings {
     return {
       autoDispatch: this.stored.autoDispatch,
       returnResultToChat: this.stored.returnResultToChat,
+      workspaceStatus: storedProject?.status ?? "available",
       ...selected,
     };
   }
@@ -84,16 +99,7 @@ export class LocalReviewSettings {
   }
 
   save(formSecret, input) {
-    this.#pruneSecrets();
-    const key = hashSecret(formSecret ?? "");
-    const expiresAt = this.formSecrets.get(key);
-    this.formSecrets.delete(key);
-    if (!expiresAt || expiresAt <= this.now()) {
-      throw new ControlPlaneError(
-        "local_settings_denied",
-        "Settings form is invalid or expired",
-      );
-    }
+    this.authorizeFormSecret(formSecret);
     const selection = this.validateSelection({
       workspace: String(input.workspace ?? ""),
       executor: String(input.executor ?? ""),
@@ -115,6 +121,19 @@ export class LocalReviewSettings {
       profile: selection.profile,
     });
     return this.current();
+  }
+
+  authorizeFormSecret(formSecret) {
+    this.#pruneSecrets();
+    const key = hashSecret(formSecret ?? "");
+    const expiresAt = this.formSecrets.get(key);
+    this.formSecrets.delete(key);
+    if (!expiresAt || expiresAt <= this.now()) {
+      throw new ControlPlaneError(
+        "local_settings_denied",
+        "Settings form is invalid or expired",
+      );
+    }
   }
 
   autoDispatchSelection() {

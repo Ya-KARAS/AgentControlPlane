@@ -88,6 +88,7 @@ export class LocalReviewRouter {
     settings,
     getOptions,
     getCapabilities,
+    projectRegistry = null,
     port,
     allowedPageOrigins = null,
   }) {
@@ -95,6 +96,7 @@ export class LocalReviewRouter {
     this.settings = settings;
     this.getOptions = getOptions;
     this.getCapabilities = getCapabilities;
+    this.projectRegistry = projectRegistry;
     this.port = port;
     this.allowedPageOrigins = new Set(allowedPageOrigins ?? DEFAULT_PAGE_ORIGINS);
   }
@@ -107,6 +109,7 @@ export class LocalReviewRouter {
       url.pathname === "/local-review/review" ||
       url.pathname === "/local-review/confirm" ||
       url.pathname === "/local-review/settings"
+      || url.pathname === "/local-review/projects"
     );
   }
 
@@ -238,6 +241,47 @@ export class LocalReviewRouter {
             formSecret: this.settings.issueFormSecret(),
             options: this.getOptions(),
             saved: true,
+          }),
+        );
+        return true;
+      }
+
+      if (request.method === "POST" && url.pathname === "/local-review/projects") {
+        if (!this.projectRegistry) {
+          throw new ControlPlaneError(
+            "project_registry_unavailable",
+            "The local project registry is unavailable",
+          );
+        }
+        const body = await readForm(request);
+        this.settings.authorizeFormSecret(body.form_secret);
+        let notice;
+        if (body.action === "add_root") {
+          this.projectRegistry.addDiscoveryRoot(body.path);
+          notice = "扫描根目录已添加。";
+        } else if (body.action === "scan") {
+          this.projectRegistry.refresh();
+          notice = "项目扫描已完成。";
+        } else if (body.action === "update_category") {
+          this.projectRegistry.updateCategory(body.project_id, body.category);
+          notice = "项目分类已更新。";
+        } else if (body.action === "relink") {
+          this.projectRegistry.relink(body.project_id, body.path);
+          notice = "项目已重新关联，可以在原对话继续。";
+        } else {
+          throw new ControlPlaneError(
+            "invalid_project_action",
+            "Unknown project registry action",
+          );
+        }
+        sendLocalHtml(
+          response,
+          200,
+          settingsPage({
+            settings: this.settings.current(),
+            formSecret: this.settings.issueFormSecret(),
+            options: this.getOptions(),
+            projectNotice: notice,
           }),
         );
         return true;

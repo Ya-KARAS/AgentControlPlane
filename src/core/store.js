@@ -63,6 +63,9 @@ function normalizeTaskRecord(task) {
     executor_capabilities: task.executor_capabilities ?? null,
     idempotency_key: task.idempotency_key ?? null,
     request_fingerprint: task.request_fingerprint ?? null,
+    project_id: task.project_id ?? null,
+    project_path_revision: task.project_path_revision ?? null,
+    workspace_relinked: task.workspace_relinked === true,
   };
 }
 
@@ -328,6 +331,9 @@ export class TaskStore {
     executorCapabilities = null,
     idempotencyKey = null,
     requestFingerprint = null,
+    projectId = null,
+    projectPathRevision = null,
+    workspaceRelinked = false,
   }) {
     this.#pruneTasks();
     const id = crypto.randomUUID();
@@ -340,6 +346,9 @@ export class TaskStore {
       logical_task_id: logicalTaskIdValue,
       parentTaskId,
       workspace,
+      project_id: projectId,
+      project_path_revision: projectPathRevision,
+      workspace_relinked: workspaceRelinked === true,
       brief,
       policy,
       executor,

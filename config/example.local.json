@@ -3,6 +3,10 @@
     "C:\\Users\\YOUR_USER\\Documents\\Github\\AgentControlPlane",
     "C:\\Users\\YOUR_USER\\Documents\\Github\\acp-live-test"
   ],
+  "projectDiscoveryRoots": [
+    "C:\\Users\\YOUR_USER\\Documents\\Github",
+    "D:\\Development"
+  ],
   "server": {
     "host": "127.0.0.1",
     "port": 4318,

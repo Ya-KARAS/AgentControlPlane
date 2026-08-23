@@ -293,9 +293,27 @@ export function loadConfig(configPath = process.env.AGENT_CONTROL_CONFIG) {
   if (!Array.isArray(config.workspaceRoots) || config.workspaceRoots.length === 0) {
     config.workspaceRoots = [path.dirname(projectRoot)];
   }
-  config.workspaceRoots = config.workspaceRoots.map((root) =>
-    fs.realpathSync.native(path.resolve(root)),
-  );
+  config.workspaceRoots = config.workspaceRoots.map((root) => {
+    const resolved = path.resolve(root);
+    return fs.existsSync(resolved)
+      ? fs.realpathSync.native(resolved)
+      : resolved;
+  });
+  if (
+    config.projectDiscoveryRoots !== undefined &&
+    !Array.isArray(config.projectDiscoveryRoots)
+  ) {
+    throw new ControlPlaneError(
+      "invalid_config",
+      "projectDiscoveryRoots must be an array",
+    );
+  }
+  config.projectDiscoveryRoots = (config.projectDiscoveryRoots ?? []).map((root) => {
+    const resolved = path.resolve(root);
+    return fs.existsSync(resolved)
+      ? fs.realpathSync.native(resolved)
+      : resolved;
+  });
   const defaultStateDir =
     process.platform === "win32"
       ? path.join(
@@ -312,7 +330,7 @@ export function loadConfig(configPath = process.env.AGENT_CONTROL_CONFIG) {
   );
   config.version = readPackageVersion();
   if (
-    config.workspaceRoots.some(
+    [...config.workspaceRoots, ...config.projectDiscoveryRoots].some(
       (root) => isInside(root, config.stateDir) || isInside(config.stateDir, root),
     )
   ) {

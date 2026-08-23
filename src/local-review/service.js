@@ -152,7 +152,7 @@ export function publicTaskStatus(task) {
     test_cases: parseTestCases(task.result?.tests),
     blocker_count: boundedCount(task.result?.blockers),
     execution: {
-      workspace: workspaceLabel(task.workspace),
+      workspace: task.project_id ?? workspaceLabel(task.workspace),
       executor: task.executor ?? null,
       profile: task.policy?.name ?? null,
       model: task.policy?.model ?? null,
@@ -169,19 +169,20 @@ export function validateLocalSelection(
   config,
   orchestrator,
   selection,
-  { routeHealth = null } = {},
+  { routeHealth = null, projectRegistry = null } = {},
 ) {
   const requestedWorkspace = String(selection?.workspace ?? "").trim();
   const executor = String(selection?.executor ?? "");
   const profile = String(selection?.profile ?? "");
   const roots = config.workspaceRoots ?? [];
+  const project = projectRegistry?.resolve(requestedWorkspace);
   const exactRoot = roots.find(
     (root) => path.resolve(root).toLowerCase() === path.resolve(requestedWorkspace).toLowerCase(),
   );
   const aliases = roots.filter(
     (root) => path.basename(root).toLowerCase() === requestedWorkspace.toLowerCase(),
   );
-  let workspace = exactRoot ?? (aliases.length === 1 ? aliases[0] : null);
+  let workspace = project?.workspace ?? exactRoot ?? (aliases.length === 1 ? aliases[0] : null);
   if (!workspace) {
     try {
       workspace = resolveWorkspace(requestedWorkspace, roots);
@@ -267,6 +268,10 @@ export function validateLocalSelection(
   }
   return {
     workspace,
+    ...(project?.projectId ? { project_id: project.projectId } : {}),
+    ...(project?.pathRevision != null
+      ? { project_path_revision: project.pathRevision }
+      : {}),
     executor,
     profile,
     model,
@@ -274,21 +279,46 @@ export function validateLocalSelection(
   };
 }
 
-export function createCandidateReviewService({ config, orchestrator, store }) {
+export function createCandidateReviewService({
+  config,
+  orchestrator,
+  store,
+  projectRegistry = null,
+}) {
   return new CandidateReviewService({
     dispatch: (request) => orchestrator.dispatch(request),
     validateApproval: (selection) =>
       validateLocalSelection(config, orchestrator, selection, {
         routeHealth: localRouteHealth(store),
+        projectRegistry,
       }),
     audit: (type, payload) => store.audit(type, payload),
     resolveTaskStatus: (taskId) => publicTaskStatus(store.getTask(taskId)),
+    captureApprovalContext: () =>
+      projectRegistry
+        ? {
+            project_path_revisions: Object.fromEntries(
+              projectRegistry
+                .publicProjects()
+                .map((project) => [project.id, project.path_revision]),
+            ),
+          }
+        : null,
   });
 }
 
-export function localReviewOptions(config, orchestrator) {
+export function localReviewOptions(config, orchestrator, projectRegistry = null) {
+  const projects = projectRegistry?.publicProjects() ?? [];
+  const availableProjects = projects.filter((entry) => entry.status === "available");
   return {
-    workspaces: [...(config.workspaceRoots ?? [])],
+    workspaces: projectRegistry
+      ? availableProjects.map((entry) => entry.id)
+      : [...(config.workspaceRoots ?? [])],
+    workspaceEntries: projectRegistry
+      ? availableProjects.map((entry) => ({ value: entry.id, label: entry.alias }))
+      : (config.workspaceRoots ?? []).map((entry) => ({ value: entry, label: entry })),
+    projects,
+    discoveryRoots: projectRegistry?.discoveryRoots() ?? [],
     executors: orchestrator.getExecutors?.() ?? [],
     profiles: Object.keys(config.profiles ?? {}),
   };
@@ -314,7 +344,13 @@ function configuredExecutorModel(config, executor, catalog) {
   );
 }
 
-export function localReviewCapabilities(config, orchestrator, settings, store = null) {
+export function localReviewCapabilities(
+  config,
+  orchestrator,
+  settings,
+  store = null,
+  projectRegistry = null,
+) {
   const routeHealth = localRouteHealth(store);
   const executors = (orchestrator.getExecutors?.() ?? [])
     .filter((entry) => entry.ready !== false)
@@ -345,12 +381,15 @@ export function localReviewCapabilities(config, orchestrator, settings, store = 
     settings.executor === "codex"
       ? currentProfile.model ?? null
       : configuredExecutorModel(config, settings.executor, currentCatalog);
-  const workspaceLabels = (config.workspaceRoots ?? []).map((root) =>
-    path.basename(root),
-  );
+  const projects = projectRegistry?.publicProjects() ?? [];
+  const workspaceLabels = projectRegistry
+    ? projects.filter((entry) => entry.status === "available").map((entry) => entry.alias)
+    : (config.workspaceRoots ?? []).map((root) => path.basename(root));
+  const selectedProject = projects.find((entry) => entry.id === settings.workspace);
   return {
     current: {
-      workspace: path.basename(settings.workspace ?? "") || null,
+      workspace:
+        selectedProject?.alias ?? (path.basename(settings.workspace ?? "") || null),
       executor: settings.executor,
       profile: settings.profile,
       model: currentModel,
@@ -362,6 +401,7 @@ export function localReviewCapabilities(config, orchestrator, settings, store = 
           (candidate) => candidate.toLowerCase() === label.toLowerCase(),
         ).length === 1,
     ),
+    projects,
     executors,
     profiles: Object.fromEntries(
       Object.entries(config.profiles ?? {}).map(([name, profile]) => [

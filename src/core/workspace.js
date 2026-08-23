@@ -25,15 +25,12 @@ export function resolveWorkspace(inputPath, configuredRoots) {
   }
 
   const actual = canonicalExisting(requested);
-  const roots = configuredRoots.map((root) => {
+  const roots = configuredRoots.flatMap((root) => {
     const resolved = path.resolve(root);
     if (!fs.existsSync(resolved)) {
-      throw new ControlPlaneError(
-        "workspace_root_not_found",
-        `Configured workspace root does not exist: ${resolved}`,
-      );
+      return [];
     }
-    return canonicalExisting(resolved);
+    return [canonicalExisting(resolved)];
   });
 
   if (!roots.some((root) => isInside(root, actual))) {
@@ -45,4 +42,3 @@ export function resolveWorkspace(inputPath, configuredRoots) {
   }
   return actual;
 }
-
