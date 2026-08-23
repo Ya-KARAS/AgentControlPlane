@@ -94,6 +94,11 @@ MCP 接口向每个兼容客户端提供同一组工具。ChatGPT 自定义应�
 和一个可选的通用 HTTPS 聊天站点添加本地面板。面板把所选工作区保留在本机，
 与 ACP 完成一次配对，并派发网页对话生成的结构化任务封装。
 
+[桌面油猴预览脚本](userscript/README.md)把任务规划保留在 ChatGPT 或 DeepSeek
+的原生对话中。发送 `@AgentControlPlane`，让网页 AI 补齐需求，再回复“执行”；
+ACP 会使用本机保存的工作区、执行器和 Profile 派发任务。自动派发与安全结果回传
+是两个独立的本机开关。返回网页的结果只包含状态和数量。
+
 ```text
 ChatGPT / DeepSeek / Claude
               |

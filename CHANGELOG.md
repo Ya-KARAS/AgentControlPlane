@@ -4,18 +4,25 @@
 
 ### Added
 
-- The desktop userscript now uses independent ChatGPT and DeepSeek adapter
-  modules, polls an origin-bound short-lived capability for safe task status,
-  and shows only task state and result counts.
+- The desktop userscript now keeps task planning in the native ChatGPT or
+  DeepSeek conversation. `@AgentControlPlane` starts planning, the web AI emits
+  a bounded task envelope, and a fresh user Send action with `执行` authorizes
+  candidate creation.
+- Independent adapter modules provide composer, Send-control, assistant, and
+  user selectors. The bridge polls task status with an origin-bound short-lived
+  capability and can return a compact `<ACP_RESULT>` to the same conversation.
 - A loopback dispatch-settings page stores a locally selected workspace,
-  executor, and profile. Automatic dispatch is explicit, default-off, and
-  limited to manual userscript submissions.
+  executor, and profile. Automatic dispatch and safe result return are
+  independent, default-off options.
 
 ### Security
 
 - Userscript status responses exclude objectives, summaries, paths, logs,
   credentials, and raw errors. Settings writes require a one-time local form
   secret, and the automatic-dispatch marker is not permitted by webpage CORS.
+- AI replies and DOM changes can stage task data but cannot authorize dispatch.
+  Page-supplied workspace, executor, profile, model, and credential fields are
+  discarded; local ACP settings and policy own those controls.
 
 ## v0.9.0 — 2026-08-21
 

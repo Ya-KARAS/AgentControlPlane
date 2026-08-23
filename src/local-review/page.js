@@ -60,15 +60,16 @@ export function settingsPage({ settings, formSecret, options, saved = false }) {
 <label>默认工作区 Workspace<select name="workspace" required>${workspaces.map((entry) => option(entry, entry, entry === settings.workspace)).join("")}</select></label>
 <label>默认执行器 Executor<select name="executor" required>${executors.map((entry) => option(entry.id, entry.display_name ?? entry.id, entry.id === settings.executor)).join("")}</select></label>
 <label>默认配置 Profile<select name="profile" required>${profiles.map((entry) => option(entry, entry, entry === settings.profile)).join("")}</select></label>
-<label><span><input type="checkbox" name="auto_dispatch"${settings.autoDispatch ? " checked" : ""}> 手动提交候选后自动派发 Auto-dispatch manual candidates</span></label>
+<label><span><input type="checkbox" name="auto_dispatch"${settings.autoDispatch ? " checked" : ""}> 在网页对话中确认后自动派发 Auto-dispatch after chat confirmation</span></label>
+<label><span><input type="checkbox" name="return_result_to_chat"${settings.returnResultToChat ? " checked" : ""}> 任务结束后把安全结果发回网页 AI 对话 Return safe result to web AI</span></label>
 <button type="submit">保存设置 Save settings</button>
 </form>`
     : '<p class="error">本机没有完整的工作区、执行器或配置选项，暂时无法保存。</p>';
   return page(
     "AgentControlPlane 派发设置",
     `${savedNotice}<h1>派发设置<br><span class="muted">Dispatch settings</span></h1>
-<p>设置保存在本机。自动派发默认关闭；开启后，油猴面板中手动提交的候选会使用下面的选择直接创建任务。</p>
-<p class="muted">网页对话不会被读取。关闭自动派发后，每个候选仍需在本机审核页确认。</p>${form}`,
+<p>设置只保存在本机。网页 AI 整理任务后，你需要在对话中明确回复“执行”；开启自动派发后，ACP 会使用下面的选择创建任务。</p>
+<p class="muted">安全结果只包含任务状态、文件数量、测试数量和阻塞项数量，不包含本机路径、日志、密钥或原始错误。</p>${form}`,
   );
 }
 

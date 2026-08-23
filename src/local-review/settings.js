@@ -37,12 +37,19 @@ export class LocalReviewSettings {
       const parsed = JSON.parse(fs.readFileSync(this.path, "utf8"));
       return {
         autoDispatch: parsed.autoDispatch === true,
+        returnResultToChat: parsed.returnResultToChat === true,
         workspace: typeof parsed.workspace === "string" ? parsed.workspace : null,
         executor: typeof parsed.executor === "string" ? parsed.executor : null,
         profile: typeof parsed.profile === "string" ? parsed.profile : null,
       };
     } catch {
-      return { autoDispatch: false, workspace: null, executor: null, profile: null };
+      return {
+        autoDispatch: false,
+        returnResultToChat: false,
+        workspace: null,
+        executor: null,
+        profile: null,
+      };
     }
   }
 
@@ -62,7 +69,11 @@ export class LocalReviewSettings {
         ? this.stored.profile
         : fallback.profile,
     };
-    return { autoDispatch: this.stored.autoDispatch, ...selected };
+    return {
+      autoDispatch: this.stored.autoDispatch,
+      returnResultToChat: this.stored.returnResultToChat,
+      ...selected,
+    };
   }
 
   issueFormSecret() {
@@ -90,6 +101,7 @@ export class LocalReviewSettings {
     });
     this.stored = {
       autoDispatch: input.auto_dispatch === "on",
+      returnResultToChat: input.return_result_to_chat === "on",
       ...selection,
     };
     const temporary = `${this.path}.${process.pid}.tmp`;
@@ -97,6 +109,7 @@ export class LocalReviewSettings {
     fs.renameSync(temporary, this.path);
     this.audit("local_review.settings_updated", {
       autoDispatch: this.stored.autoDispatch,
+      returnResultToChat: this.stored.returnResultToChat,
       workspace: selection.workspace,
       executor: selection.executor,
       profile: selection.profile,

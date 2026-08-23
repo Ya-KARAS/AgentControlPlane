@@ -16,6 +16,20 @@ export function validateAdapter(adapter) {
   if (!Array.isArray(adapter.origins) || adapter.origins.length === 0) {
     throw new TypeError("Web adapter must declare at least one origin");
   }
+  for (const field of ["composer", "send", "assistant", "user"]) {
+    if (
+      !Array.isArray(adapter[field]) ||
+      adapter[field].length === 0 ||
+      adapter[field].some(
+        (selector) =>
+          typeof selector !== "string" ||
+          !selector.trim() ||
+          selector.length > 200,
+      )
+    ) {
+      throw new TypeError(`Web adapter ${field} selectors are invalid`);
+    }
+  }
   for (const origin of adapter.origins) {
     const parsed = new URL(origin);
     if (parsed.origin !== origin || parsed.protocol !== "https:") {
@@ -32,6 +46,10 @@ export function validateAdapter(adapter) {
     displayName: adapter.displayName.trim(),
     matches: Object.freeze([...adapter.matches]),
     origins: Object.freeze([...adapter.origins]),
+    composer: Object.freeze([...adapter.composer]),
+    send: Object.freeze([...adapter.send]),
+    assistant: Object.freeze([...adapter.assistant]),
+    user: Object.freeze([...adapter.user]),
   });
 }
 

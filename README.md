@@ -103,11 +103,12 @@ ChatGPT, DeepSeek, Claude, and an optional generic HTTPS chat site. The panel
 keeps the selected workspace on the local machine, pairs once with ACP, and
 dispatches the structured envelope produced by the web conversation.
 
-The lighter [desktop userscript preview](userscript/README.md) supports
-ChatGPT and DeepSeek through independent site adapters. Its visible **Dispatch
-settings** page lets the local owner choose a default workspace, executor, and
-profile, then opt in to automatic dispatch. The default remains local review
-before dispatch. Its webpage status view exposes state and result counts only.
+The [desktop userscript preview](userscript/README.md) keeps task planning in
+the native ChatGPT or DeepSeek conversation. Start with `@AgentControlPlane`,
+let the web AI clarify the task, then reply with `执行` to dispatch through the
+locally saved workspace, executor, and profile. Automatic dispatch and safe
+result return are separate local opt-ins. The result sent to the webpage
+contains status and counts only.
 
 ```text
 ChatGPT / DeepSeek / Claude

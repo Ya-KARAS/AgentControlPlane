@@ -173,6 +173,8 @@ export class LocalReviewRouter {
             review_url: autoDispatched ? null : reviewUrl.toString(),
             status_secret: created.statusSecret,
             auto_dispatched: autoDispatched,
+            return_result_to_chat:
+              this.settings.current().returnResultToChat === true,
           },
           cors,
         );

@@ -122,6 +122,7 @@ test("candidate creation cannot dispatch or override local choices", async () =>
     assert.match(body.review_url, /^http:\/\/127\.0\.0\.1:\d+\/local-review\/review/);
     assert.match(body.status_secret, /^[A-Za-z0-9_-]{20,128}$/);
     assert.equal(body.auto_dispatched, false);
+    assert.equal(body.return_result_to_chat, false);
     assert.equal(orchestrator.requests.length, 0);
   });
 });
@@ -177,6 +178,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
         executor: "opencode",
         profile: "economy",
         auto_dispatch: "on",
+        return_result_to_chat: "on",
       }),
     });
     assert.equal(saved.status, 200);
@@ -199,6 +201,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
     assert.equal(automatic.status, 201);
     const automaticBody = await automatic.json();
     assert.equal(automaticBody.auto_dispatched, true);
+    assert.equal(automaticBody.return_result_to_chat, true);
     assert.equal(automaticBody.review_url, null);
     assert.equal(automaticBody.candidate.status, "dispatched");
     assert.equal(orchestrator.requests.length, 1);

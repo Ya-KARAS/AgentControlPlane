@@ -6,6 +6,7 @@ import { createAdapterRegistry } from "../userscript/src/adapter-registry.js";
 const root = path.resolve("userscript");
 const adaptersDir = path.join(root, "src", "adapters");
 const runtimePath = path.join(root, "src", "runtime.user.js");
+const protocolPath = path.join(root, "src", "conversation-protocol.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
 
 const adapterFiles = fs.readdirSync(adaptersDir)
@@ -22,19 +23,36 @@ const matchLines = registry.adapters
   .flatMap((adapter) => adapter.matches)
   .map((match) => `// @match        ${match}`)
   .join("\n");
-const publicAdapters = registry.adapters.map(({ id, displayName, origins }) => ({
+const publicAdapters = registry.adapters.map(({
   id,
   displayName,
   origins,
+  composer,
+  send,
+  assistant,
+  user,
+}) => ({
+  id,
+  displayName,
+  origins,
+  composer,
+  send,
+  assistant,
+  user,
 }));
 
 const runtime = fs.readFileSync(runtimePath, "utf8");
+const protocolModule = fs
+  .readFileSync(protocolPath, "utf8")
+  .replace(/^export\s+/gm, "")
+  .trim();
 const built = runtime
   .replace("// @acp-adapter-matches", matchLines)
   .replace(
     "const ADAPTERS = /* @acp-adapters */ [];",
     `const ADAPTERS = Object.freeze(${JSON.stringify(publicAdapters)});`,
-  );
+  )
+  .replace("// @acp-conversation-protocol", protocolModule);
 if (built === runtime) throw new Error("Userscript build markers were not replaced");
 
 if (process.argv.includes("--check")) {
