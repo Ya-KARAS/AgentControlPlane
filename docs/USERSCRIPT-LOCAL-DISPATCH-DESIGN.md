@@ -1,15 +1,13 @@
 # Userscript local-dispatch design
 
-Status: proposed. This document defines the public safety and product contract
-for the first desktop-only userscript dispatch slice. It does not enable task
-dispatch by itself.
+Status: implemented for the desktop-only local candidate-review slice. Mobile,
+relay, remote-access, and webpage-extraction work remains out of scope.
 
 ## Goal
 
 Allow a person on a supported desktop web AI page to prepare a small task
 candidate and hand it to their local AgentControlPlane for review. The local
-AgentControlPlane, not the web page or userscript, owns the final decision to
-dispatch work to an executor.
+AgentControlPlane owns the final decision to dispatch work to an executor.
 
 ## Scope
 
@@ -33,7 +31,7 @@ binding, rate limits, audit records, and executor policy remain in force.
 1. The person opens the ACP panel from the userscript.
 2. The panel starts empty. It does not read or prefill the web AI conversation.
 3. The person manually enters a compact objective and optional constraints.
-4. The panel labels the submission as a candidate, not an executed task.
+4. The panel labels the submission with a pending candidate status.
 5. A local ACP review surface displays the candidate, selected workspace,
    selected executor, and execution impact before any dispatch action exists.
 6. Only a fresh local user confirmation may create a task.
@@ -70,9 +68,26 @@ The candidate contains no workspace path, executor identifier, model,
 credential, conversation transcript, browser identifier, or local file data.
 ACP resolves all local execution choices during the review step.
 
+## Module boundaries
+
+- `src/core/candidate-review.js` owns the transport-neutral candidate state
+  machine, expiration, one-time approval, replay rejection, and dispatch callback.
+- `src/local-review/service.js` adapts local ACP workspace, executor, profile,
+  audit, and orchestrator policy to the core service.
+- `src/local-review/router.js` owns loopback HTTP, origin handling, bounded body
+  parsing, and response status mapping.
+- `src/local-review/page.js` renders the no-script local confirmation surface.
+- `userscript/` is a client adapter. It cannot import server, orchestrator,
+  executor, workspace, or MCP modules.
+
+The core candidate service has no dependency on HTTP, browser APIs, MCP,
+executor implementations, or webpage adapters. Future clients reuse the
+service contract. Their transport layers carry candidate input and review
+responses.
+
 ## Implementation gates
 
-Implementation may begin only after these gates have tests:
+The implementation is accepted only while these gates have tests:
 
 1. A static userscript test proves that no chat extraction, network action, or
    task mutation is present before the local-review feature is added.
@@ -82,8 +97,8 @@ Implementation may begin only after these gates have tests:
    stale candidates, unknown origins, and workspace overrides are rejected.
 4. A security review verifies that existing ACP loopback, authentication,
    workspace, audit, and rate-limit invariants still hold.
-5. A Sol review is required before enabling real dispatch outside a development
-   preview.
+5. Security-sensitive expansion beyond this local-review boundary requires a
+   separate review before implementation.
 
 ## Explicit non-goals
 

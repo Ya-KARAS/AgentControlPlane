@@ -20,6 +20,11 @@ import { PairingManager } from "./companion/pairing-manager.js";
 import { CompanionRouter } from "./companion/router.js";
 import { dashboardHtml } from "./dashboard.js";
 import { usageDimensions, reconcileUsage } from "./core/usage-dimensions.js";
+import { LocalReviewRouter } from "./local-review/router.js";
+import {
+  createCandidateReviewService,
+  localReviewOptions,
+} from "./local-review/service.js";
 
 export function buildExecutor(config, provider) {
   if (provider === "openai-compatible") {
@@ -219,6 +224,15 @@ export async function createApplication(overrides = {}) {
     store,
     config,
   });
+  const candidateReview =
+    overrides.candidateReview ??
+    createCandidateReviewService({ config, orchestrator, store });
+  const localReview = new LocalReviewRouter({
+    service: candidateReview,
+    port: config.server.port,
+    allowedPageOrigins: config.localReview?.allowedPageOrigins,
+    getOptions: () => localReviewOptions(config, orchestrator),
+  });
 
   function tokenMatches(request) {
     if (!config.server.authToken) return true;
@@ -244,7 +258,11 @@ export async function createApplication(overrides = {}) {
     try {
       const { url, parts } = routeParts(request);
 
-      if (!originAllowed(request) && !companion.originAllowed(request, url)) {
+      if (
+        !originAllowed(request) &&
+        !companion.originAllowed(request, url) &&
+        !localReview.originAllowed(request, url)
+      ) {
         sendJson(response, 403, {
           error: { code: "origin_denied", message: "Origin is not allowed 来源不被允许" },
         });
@@ -278,6 +296,10 @@ export async function createApplication(overrides = {}) {
           );
           return;
         }
+      }
+      if (localReview.matches(url)) {
+        await localReview.handle(request, response, url);
+        return;
       }
       if (companion.matches(url)) {
         await companion.handle(request, response, url, parts);
@@ -557,6 +579,7 @@ export async function createApplication(overrides = {}) {
     codex,
     orchestrator,
     pairingManager,
+    candidateReview,
     server,
     async close() {
       for (const executor of executors.values()) {
