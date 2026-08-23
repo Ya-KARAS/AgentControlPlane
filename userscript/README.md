@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.7.1 provides separate Chinese and English interfaces and keeps an
+Version 0.7.2 provides separate Chinese and English interfaces and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
@@ -49,6 +49,20 @@ when the result message changes the page DOM.
    opening another local review page.
 9. Enable safe result return if the terminal task status should be sent back to
    the same web AI conversation.
+
+## Updates
+
+Tampermonkey checks the small
+`agent-control-plane-web-bridge.meta.js` file and downloads the complete
+`.user.js` only after it detects a newer version. Both URLs use the explicit
+GitHub `refs/heads/main` path to avoid stale branch-path cache entries.
+
+If an older installation still uses the legacy `/main/` update URL, install
+0.7.2 once from the current `.user.js`; later releases use the new update
+channel automatically. If update checks still fail, open the browser extension
+details for Tampermonkey and confirm that Site access is set to **On all sites**.
+Tampermonkey documents that restricted runtime host permissions can break
+script updates and `GM_xmlhttpRequest`.
 
 ## Interface language
 

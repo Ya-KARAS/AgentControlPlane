@@ -10,6 +10,7 @@ const protocolPath = path.join(root, "src", "conversation-protocol.js");
 const i18nPath = path.join(root, "src", "i18n.js");
 const stageStatePath = path.join(root, "src", "stage-state.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
+const metaOutputPath = path.join(root, "agent-control-plane-web-bridge.meta.js");
 
 const adapterFiles = fs.readdirSync(adaptersDir)
   .filter((name) => name.endsWith(".js"))
@@ -66,14 +67,24 @@ const built = runtime
   .replace("// @acp-conversation-protocol", protocolModule)
   .replace("// @acp-stage-state", stageStateModule);
 if (built === runtime) throw new Error("Userscript build markers were not replaced");
+const headerEndMarker = "// ==/UserScript==";
+const headerEnd = built.indexOf(headerEndMarker);
+if (headerEnd < 0) throw new Error("Userscript metadata header is missing");
+const meta = `${built.slice(0, headerEnd + headerEndMarker.length)}\n`;
 
 if (process.argv.includes("--check")) {
   const current = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
-  if (current !== built) {
+  const currentMeta = fs.existsSync(metaOutputPath)
+    ? fs.readFileSync(metaOutputPath, "utf8")
+    : "";
+  if (current !== built || currentMeta !== meta) {
     console.error("Generated userscript is stale. Run npm run userscript:build.");
     process.exitCode = 1;
   }
 } else {
   fs.writeFileSync(outputPath, built, "utf8");
-  console.log(`Built ${path.relative(process.cwd(), outputPath)} with ${registry.adapters.length} adapters.`);
+  fs.writeFileSync(metaOutputPath, meta, "utf8");
+  console.log(
+    `Built ${path.relative(process.cwd(), outputPath)} and ${path.relative(process.cwd(), metaOutputPath)} with ${registry.adapters.length} adapters.`,
+  );
 }

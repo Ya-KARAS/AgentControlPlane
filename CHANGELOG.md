@@ -44,6 +44,10 @@
   The local dispatch and project-library pages now persist a separate Chinese
   or English interface choice. The optional project maintenance area is named
   by purpose and no longer exposes internal path revision numbers.
+- Web Bridge 0.7.2 separates update metadata into a small `.meta.js` file and
+  uses GitHub's explicit `refs/heads/main` raw path for both update checks and
+  downloads. This avoids stale `/main/` branch-path responses observed during
+  immediate Tampermonkey update checks.
 
 ### Security
 
