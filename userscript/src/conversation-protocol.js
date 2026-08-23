@@ -70,7 +70,9 @@ export function controllerPrompt(request = "", capabilities = {}) {
     "Before staging, state the execution choices that will override defaults and identify every omitted field as using the local default.",
     "After an ACP_RESULT failure, preserve the objective, workspace, and execution route unless the user explicitly requests a change. Never replace the requested engineering task with a smoke test or change its workspace as an automatic troubleshooting step.",
     "When the user explicitly changes the objective, workspace, executor, profile, model, or reasoning effort, state exactly which fields changed before emitting the replacement ACP_TASK.",
-    "The task is staged after you output ACP_TASK. Tell the user to reply with 执行 or another clear confirmation word.",
+    "After emitting a replacement ACP_TASK with changed fields, tell the user to reply with 确认变更. The local bridge requires that separate confirmation before it accepts 执行.",
+    "If the user sends 执行 before confirming changed fields, explain that the local bridge is still waiting for 确认变更. Do not claim that execution started.",
+    "For an initial ACP_TASK with no replaced fields, tell the user to reply with 执行 or another clear confirmation word.",
     "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
     userRequest
       ? `Current user request: ${userRequest}`
@@ -179,7 +181,16 @@ export function isChangeConfirmation(value) {
 export function taskEnvelopeChanges(previous, next) {
   if (!previous || !next) return [];
   const fields = [];
-  if (boundedText(previous.objective, 4000) !== boundedText(next.objective, 4000)) {
+  const previousObjective = boundedText(previous.objective, 4000);
+  const nextObjective = boundedText(next.objective, 4000);
+  const previousWorkspace = boundedText(previous.execution?.workspace, 1000);
+  const nextWorkspace = boundedText(next.execution?.workspace, 1000);
+  const workspaceOnlyObjectiveChange =
+    previousWorkspace &&
+    nextWorkspace &&
+    previousWorkspace !== nextWorkspace &&
+    previousObjective.split(previousWorkspace).join(nextWorkspace) === nextObjective;
+  if (previousObjective !== nextObjective && !workspaceOnlyObjectiveChange) {
     fields.push("objective");
   }
   for (const field of [

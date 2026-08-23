@@ -47,6 +47,8 @@ are never accepted.
    A ten-minute extension-isolated record restores this stage after a refresh.
    If a replacement envelope changes the objective or route, the user must send
    `确认变更` before dispatch confirmation is accepted.
+   The floating pill shows the current action. Its hover text carries the full
+   execution route and changed-field list.
 6. The person sends a short confirmation from the page composer.
 7. ACP creates a candidate and validates any requested execution choices. A
    local setting either dispatches it with validated choices or opens the

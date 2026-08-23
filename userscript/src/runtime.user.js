@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.5.1
+// @version      0.5.2
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -84,7 +84,7 @@
         changes: Array.isArray(saved.changes) ? saved.changes.slice(0, 6) : [],
         changeConfirmed: saved.changeConfirmed === true,
       };
-      showStagedStatus("已恢复");
+      showStagedStatus("restored");
     } catch {
       await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
     }
@@ -202,18 +202,39 @@
   root.append(style, statusButton);
   document.body.append(root);
 
-  const showStatus = (text) => {
+  const showStatus = (text, detail = text) => {
     statusButton.textContent = `ACP · ${text}`;
-    statusButton.title = `AgentControlPlane · ${text}\n点击打开本机派发设置`;
+    statusButton.title = `AgentControlPlane\n${detail}\n点击打开本机派发设置`;
   };
 
-  const showStagedStatus = (prefix = "") => {
+  const showStagedStatus = (mode = "ready") => {
     if (!staged) return;
+    const route = executionSummary(staged.envelope);
     if (staged.changes?.length && !staged.changeConfirmed) {
-      showStatus(`${prefix ? `${prefix} · ` : ""}配置变化：${staged.changes.join(", ")} · 回复“确认变更”`);
+      const labels = {
+        objective: "任务目标",
+        workspace: "工作区",
+        executor: "执行器",
+        profile: "配置档",
+        model: "模型",
+        reasoning_effort: "推理等级",
+      };
+      const changed = staged.changes.map((field) => labels[field] ?? field).join("、");
+      showStatus(
+        "任务已变更 · 回复“确认变更”",
+        `变更字段：${changed}\n执行配置：${route}\n请回复“确认变更”`,
+      );
       return;
     }
-    showStatus(`${prefix ? `${prefix} · ` : ""}${executionSummary(staged.envelope)} · 回复“执行”`);
+    const label = mode === "restored"
+      ? "任务已恢复"
+      : mode === "change-confirmed"
+        ? "变更已确认"
+        : "任务已就绪";
+    showStatus(
+      `${label} · 回复“执行”`,
+      `${label}\n执行配置：${route}\n请回复“执行”`,
+    );
   };
 
   const validatedReviewUrl = (value, candidateId) => {
@@ -497,7 +518,7 @@
       if (isChangeConfirmation(text)) {
         staged.changeConfirmed = true;
         saveStage();
-        showStagedStatus("变更已确认");
+        showStagedStatus("change-confirmed");
       } else if (isConfirmation(text)) {
         showStagedStatus();
       }

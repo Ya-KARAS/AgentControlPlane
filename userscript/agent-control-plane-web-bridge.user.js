@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.5.1
+// @version      0.5.2
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -92,7 +92,9 @@ function controllerPrompt(request = "", capabilities = {}) {
     "Before staging, state the execution choices that will override defaults and identify every omitted field as using the local default.",
     "After an ACP_RESULT failure, preserve the objective, workspace, and execution route unless the user explicitly requests a change. Never replace the requested engineering task with a smoke test or change its workspace as an automatic troubleshooting step.",
     "When the user explicitly changes the objective, workspace, executor, profile, model, or reasoning effort, state exactly which fields changed before emitting the replacement ACP_TASK.",
-    "The task is staged after you output ACP_TASK. Tell the user to reply with 执行 or another clear confirmation word.",
+    "After emitting a replacement ACP_TASK with changed fields, tell the user to reply with 确认变更. The local bridge requires that separate confirmation before it accepts 执行.",
+    "If the user sends 执行 before confirming changed fields, explain that the local bridge is still waiting for 确认变更. Do not claim that execution started.",
+    "For an initial ACP_TASK with no replaced fields, tell the user to reply with 执行 or another clear confirmation word.",
     "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
     userRequest
       ? `Current user request: ${userRequest}`
@@ -201,7 +203,16 @@ function isChangeConfirmation(value) {
 function taskEnvelopeChanges(previous, next) {
   if (!previous || !next) return [];
   const fields = [];
-  if (boundedText(previous.objective, 4000) !== boundedText(next.objective, 4000)) {
+  const previousObjective = boundedText(previous.objective, 4000);
+  const nextObjective = boundedText(next.objective, 4000);
+  const previousWorkspace = boundedText(previous.execution?.workspace, 1000);
+  const nextWorkspace = boundedText(next.execution?.workspace, 1000);
+  const workspaceOnlyObjectiveChange =
+    previousWorkspace &&
+    nextWorkspace &&
+    previousWorkspace !== nextWorkspace &&
+    previousObjective.split(previousWorkspace).join(nextWorkspace) === nextObjective;
+  if (previousObjective !== nextObjective && !workspaceOnlyObjectiveChange) {
     fields.push("objective");
   }
   for (const field of [
@@ -325,7 +336,7 @@ function safeResultBlock(task) {
         changes: Array.isArray(saved.changes) ? saved.changes.slice(0, 6) : [],
         changeConfirmed: saved.changeConfirmed === true,
       };
-      showStagedStatus("已恢复");
+      showStagedStatus("restored");
     } catch {
       await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
     }
@@ -443,18 +454,39 @@ function safeResultBlock(task) {
   root.append(style, statusButton);
   document.body.append(root);
 
-  const showStatus = (text) => {
+  const showStatus = (text, detail = text) => {
     statusButton.textContent = `ACP · ${text}`;
-    statusButton.title = `AgentControlPlane · ${text}\n点击打开本机派发设置`;
+    statusButton.title = `AgentControlPlane\n${detail}\n点击打开本机派发设置`;
   };
 
-  const showStagedStatus = (prefix = "") => {
+  const showStagedStatus = (mode = "ready") => {
     if (!staged) return;
+    const route = executionSummary(staged.envelope);
     if (staged.changes?.length && !staged.changeConfirmed) {
-      showStatus(`${prefix ? `${prefix} · ` : ""}配置变化：${staged.changes.join(", ")} · 回复“确认变更”`);
+      const labels = {
+        objective: "任务目标",
+        workspace: "工作区",
+        executor: "执行器",
+        profile: "配置档",
+        model: "模型",
+        reasoning_effort: "推理等级",
+      };
+      const changed = staged.changes.map((field) => labels[field] ?? field).join("、");
+      showStatus(
+        "任务已变更 · 回复“确认变更”",
+        `变更字段：${changed}\n执行配置：${route}\n请回复“确认变更”`,
+      );
       return;
     }
-    showStatus(`${prefix ? `${prefix} · ` : ""}${executionSummary(staged.envelope)} · 回复“执行”`);
+    const label = mode === "restored"
+      ? "任务已恢复"
+      : mode === "change-confirmed"
+        ? "变更已确认"
+        : "任务已就绪";
+    showStatus(
+      `${label} · 回复“执行”`,
+      `${label}\n执行配置：${route}\n请回复“执行”`,
+    );
   };
 
   const validatedReviewUrl = (value, candidateId) => {
@@ -738,7 +770,7 @@ function safeResultBlock(task) {
       if (isChangeConfirmation(text)) {
         staged.changeConfirmed = true;
         saveStage();
-        showStagedStatus("变更已确认");
+        showStagedStatus("change-confirmed");
       } else if (isConfirmation(text)) {
         showStagedStatus();
       }

@@ -52,6 +52,8 @@ test("controller prompt keeps planning in the web conversation", () => {
   assert.match(prompt, /credentials always remain local/i);
   assert.match(prompt, /Never replace the requested engineering task with a smoke test/i);
   assert.match(prompt, /status is cooldown/i);
+  assert.match(prompt, /reply with 确认变更/);
+  assert.match(prompt, /Do not claim that execution started/i);
 });
 
 test("task changes require a distinct confirmation from execution", () => {
@@ -70,6 +72,17 @@ test("task changes require a distinct confirmation from execution", () => {
   ]);
   assert.equal(isChangeConfirmation("确认变更"), true);
   assert.equal(isChangeConfirmation("执行"), false);
+
+  assert.deepEqual(taskEnvelopeChanges(
+    {
+      objective: "在 acp-live-test 工作区检查计算器",
+      execution: { workspace: "acp-live-test", model: "model-a" },
+    },
+    {
+      objective: "在 acp-v030-live-test 工作区检查计算器",
+      execution: { workspace: "acp-v030-live-test", model: "model-a" },
+    },
+  ), ["workspace"]);
 });
 
 test("task envelope extraction accepts one bounded JSON object", () => {

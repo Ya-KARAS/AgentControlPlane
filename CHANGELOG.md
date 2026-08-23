@@ -27,6 +27,11 @@
 - Safe task status now separates test commands from parsed test cases and
   includes a bounded failure category. Recent provider failures add a temporary
   cooldown marker to the capability summary.
+- Web Bridge 0.5.2 uses compact Chinese action labels in the floating status
+  pill and moves the complete execution route into hover text. A workspace name
+  synchronized inside the objective is reported as one workspace change.
+- Replacement task prompts now ask for `确认变更`. A premature `执行` response
+  remains in the conversation while the local bridge keeps dispatch blocked.
 
 ### Security
 

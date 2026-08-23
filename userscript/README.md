@@ -16,10 +16,11 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.5.1 keeps an unexpired staged task through a page refresh. If a new
+Version 0.5.2 keeps an unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
-effort before dispatch, the pill lists the changed fields and asks for
-`确认变更` before it accepts `执行`.
+effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
+The pill uses a compact action label. Its hover text contains the changed
+fields and complete execution route.
 
 ## Supported sites
 
