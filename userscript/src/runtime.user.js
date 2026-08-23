@@ -70,7 +70,7 @@
       await Promise.resolve(GM_getValue(currentStorageKey(), null)),
       { scope: activeScope },
     );
-    if (["staged", "dispatched"].includes(record?.state)) {
+    if (record?.state === "staged") {
       try {
         candidateFromEnvelope(record.envelope);
         if (envelopeId(record.envelope) !== record.id) return null;
@@ -109,7 +109,7 @@
     }
     if (saved.state === "dispatched") {
       staged = null;
-      planningBaseline = saved.envelope;
+      planningBaseline = null;
       dispatchingEnvelopeId = saved.id;
       showStatus(
         "本对话任务已封存",
@@ -329,9 +329,15 @@
       if (!observation) return { observation: null, stored, conflict: false };
       candidateFromEnvelope(observation.envelope);
 
+      if (observationWaitsBehindBarrier(stored, observation)) {
+        staged = null;
+        planningBaseline = stored.baselineEnvelope ?? null;
+        return { observation, stored, conflict: false };
+      }
+
       if (observationWasDispatched(stored, observation)) {
         staged = null;
-        planningBaseline = stored.envelope;
+        planningBaseline = null;
         dispatchingEnvelopeId = stored.id;
         return { observation, stored, conflict: false };
       }

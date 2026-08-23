@@ -336,7 +336,6 @@ function createDispatchedRecord(stage, { scope, dispatchedAt }) {
     state: "dispatched",
     scope,
     id: stage.id,
-    envelope: stage.envelope,
     assistantOrdinal: boundedInteger(stage.assistantOrdinal),
     dispatchedAt,
   };
@@ -360,13 +359,16 @@ function readStageRecord(value, { scope, now = Date.now() }) {
     return null;
   }
   if (
-    ["staged", "dispatched"].includes(value.state) &&
+    value.state === "staged" &&
     (typeof value.id !== "string" ||
       !value.id ||
       !value.envelope ||
       typeof value.envelope !== "object" ||
       Array.isArray(value.envelope))
   ) {
+    return null;
+  }
+  if (value.state === "dispatched" && (typeof value.id !== "string" || !value.id)) {
     return null;
   }
   return value;
@@ -398,6 +400,14 @@ function observationWasDispatched(record, observation) {
     (record.id === observation?.id ||
       boundedInteger(observation?.assistantOrdinal) <=
         boundedInteger(record.assistantOrdinal)),
+  );
+}
+
+function observationWaitsBehindBarrier(record, observation) {
+  return Boolean(
+    record?.state === "planning" &&
+    boundedInteger(observation?.assistantOrdinal) <=
+      boundedInteger(record.assistantOrdinal),
   );
 }
 
@@ -449,7 +459,7 @@ function observationWasDispatched(record, observation) {
       await Promise.resolve(GM_getValue(currentStorageKey(), null)),
       { scope: activeScope },
     );
-    if (["staged", "dispatched"].includes(record?.state)) {
+    if (record?.state === "staged") {
       try {
         candidateFromEnvelope(record.envelope);
         if (envelopeId(record.envelope) !== record.id) return null;
@@ -488,7 +498,7 @@ function observationWasDispatched(record, observation) {
     }
     if (saved.state === "dispatched") {
       staged = null;
-      planningBaseline = saved.envelope;
+      planningBaseline = null;
       dispatchingEnvelopeId = saved.id;
       showStatus(
         "本对话任务已封存",
@@ -708,9 +718,15 @@ function observationWasDispatched(record, observation) {
       if (!observation) return { observation: null, stored, conflict: false };
       candidateFromEnvelope(observation.envelope);
 
+      if (observationWaitsBehindBarrier(stored, observation)) {
+        staged = null;
+        planningBaseline = stored.baselineEnvelope ?? null;
+        return { observation, stored, conflict: false };
+      }
+
       if (observationWasDispatched(stored, observation)) {
         staged = null;
-        planningBaseline = stored.envelope;
+        planningBaseline = null;
         dispatchingEnvelopeId = stored.id;
         return { observation, stored, conflict: false };
       }

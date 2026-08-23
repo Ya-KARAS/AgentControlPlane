@@ -66,6 +66,7 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /acp-stage-v2/);
   assert.match(script, /createDispatchedRecord/);
   assert.match(script, /observationWasDispatched/);
+  assert.match(script, /observationWaitsBehindBarrier/);
   assert.match(script, /本对话任务已封存/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);

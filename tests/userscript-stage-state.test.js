@@ -7,6 +7,7 @@ import {
   createStageRecord,
   observationCanReplace,
   observationWasDispatched,
+  observationWaitsBehindBarrier,
   readStageRecord,
   stageLockName,
   stageRecordsMatch,
@@ -61,8 +62,16 @@ test("planning barriers and newer assistant ordinals reject stale tab tasks", ()
     false,
   );
   assert.equal(
+    observationWaitsBehindBarrier(planning, { id: "old", assistantOrdinal: 5 }),
+    true,
+  );
+  assert.equal(
     observationCanReplace(planning, { id: "new", assistantOrdinal: 6 }),
     true,
+  );
+  assert.equal(
+    observationWaitsBehindBarrier(planning, { id: "new", assistantOrdinal: 6 }),
+    false,
   );
 
   const current = createStageRecord({
@@ -91,6 +100,7 @@ test("dispatched records permanently consume the sent task but allow a newer tas
     assistantOrdinal: 8,
   }, { scope, dispatchedAt: 1_500 });
   assert.equal(readStageRecord(dispatched, { scope, now: 9_999_999 }), dispatched);
+  assert.equal("envelope" in dispatched, false);
   assert.equal(
     observationWasDispatched(dispatched, {
       id: "sent-envelope",

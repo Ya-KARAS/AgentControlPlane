@@ -61,7 +61,6 @@ export function createDispatchedRecord(stage, { scope, dispatchedAt }) {
     state: "dispatched",
     scope,
     id: stage.id,
-    envelope: stage.envelope,
     assistantOrdinal: boundedInteger(stage.assistantOrdinal),
     dispatchedAt,
   };
@@ -85,13 +84,16 @@ export function readStageRecord(value, { scope, now = Date.now() }) {
     return null;
   }
   if (
-    ["staged", "dispatched"].includes(value.state) &&
+    value.state === "staged" &&
     (typeof value.id !== "string" ||
       !value.id ||
       !value.envelope ||
       typeof value.envelope !== "object" ||
       Array.isArray(value.envelope))
   ) {
+    return null;
+  }
+  if (value.state === "dispatched" && (typeof value.id !== "string" || !value.id)) {
     return null;
   }
   return value;
@@ -123,5 +125,13 @@ export function observationWasDispatched(record, observation) {
     (record.id === observation?.id ||
       boundedInteger(observation?.assistantOrdinal) <=
         boundedInteger(record.assistantOrdinal)),
+  );
+}
+
+export function observationWaitsBehindBarrier(record, observation) {
+  return Boolean(
+    record?.state === "planning" &&
+    boundedInteger(observation?.assistantOrdinal) <=
+      boundedInteger(record.assistantOrdinal),
   );
 }
