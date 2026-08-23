@@ -13,6 +13,8 @@ const PROJECT_MARKERS = new Set([
   "build.gradle",
   "build.gradle.kts",
 ]);
+const ACP_PROJECT_MARKER = ".agent-control-plane-project.json";
+const PROJECT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function now() {
   return new Date().toISOString();
@@ -42,10 +44,54 @@ function normalizeCategory(value) {
   return category;
 }
 
+function acpProjectMarkerId(projectPath) {
+  const markerPath = path.join(projectPath, ACP_PROJECT_MARKER);
+  try {
+    const stat = fs.lstatSync(markerPath);
+    if (!stat.isFile() || stat.size > 4096) return null;
+    const parsed = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    return parsed?.version === 1 && PROJECT_ID_PATTERN.test(parsed?.id)
+      ? parsed.id.toLowerCase()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function ensureAcpProjectMarker(projectPath) {
+  const markerPath = path.join(projectPath, ACP_PROJECT_MARKER);
+  if (fs.existsSync(markerPath)) {
+    const existing = acpProjectMarkerId(projectPath);
+    if (!existing) {
+      throw new ControlPlaneError(
+        "project_marker_invalid",
+        `${ACP_PROJECT_MARKER} exists but does not contain a valid ACP project identity`,
+      );
+    }
+    return existing;
+  }
+  const id = crypto.randomUUID();
+  try {
+    fs.writeFileSync(
+      markerPath,
+      `${JSON.stringify({ version: 1, id }, null, 2)}\n`,
+      { encoding: "utf8", flag: "wx" },
+    );
+  } catch {
+    throw new ControlPlaneError(
+      "project_marker_write_failed",
+      `ACP could not create ${ACP_PROJECT_MARKER} in the selected folder`,
+    );
+  }
+  return id;
+}
+
 function projectMarkerNames(projectPath) {
-  return [...PROJECT_MARKERS]
+  const markers = [...PROJECT_MARKERS]
     .filter((name) => fs.existsSync(path.join(projectPath, name)))
     .sort();
+  if (acpProjectMarkerId(projectPath)) markers.push(ACP_PROJECT_MARKER);
+  return markers.sort();
 }
 
 function gitRemote(projectPath) {
@@ -65,6 +111,10 @@ function gitRemote(projectPath) {
 }
 
 function fingerprint(projectPath) {
+  const acpId = acpProjectMarkerId(projectPath);
+  if (acpId) {
+    return crypto.createHash("sha256").update(`acp:${acpId}`).digest("hex");
+  }
   const markers = projectMarkerNames(projectPath);
   if (markers.length === 0) return null;
   const remote = gitRemote(projectPath);
@@ -75,7 +125,7 @@ function fingerprint(projectPath) {
 }
 
 function emptyState() {
-  return { version: 1, discovery_roots: [], projects: {} };
+  return { version: 1, discovery_roots: [], projects: {}, ignored_fingerprints: [] };
 }
 
 export class ProjectRegistry {
@@ -159,6 +209,11 @@ export class ProjectRegistry {
           parsed.projects && typeof parsed.projects === "object"
             ? parsed.projects
             : {},
+        ignored_fingerprints: Array.isArray(parsed.ignored_fingerprints)
+          ? parsed.ignored_fingerprints
+              .filter((entry) => /^[0-9a-f]{64}$/i.test(entry))
+              .slice(-this.maxRegistryProjects)
+          : [],
       };
     } catch (error) {
       if (error instanceof ControlPlaneError) throw error;
@@ -207,14 +262,17 @@ export class ProjectRegistry {
 
   addProject(inputPath) {
     const actual = canonicalDirectory(inputPath);
-    if (projectMarkerNames(actual).length === 0) {
-      throw new ControlPlaneError(
-        "project_add_denied",
-        "The selected folder does not look like a supported software project",
-      );
-    }
     const parent = path.dirname(actual);
     this.#addDiscoveryRoot(parent, false);
+    if (projectMarkerNames(actual).length === 0) {
+      ensureAcpProjectMarker(actual);
+    }
+    const projectFingerprint = fingerprint(actual);
+    const ignoredCount = this.state.ignored_fingerprints.length;
+    this.state.ignored_fingerprints = this.state.ignored_fingerprints.filter(
+      (entry) => entry !== projectFingerprint,
+    );
+    if (this.state.ignored_fingerprints.length !== ignoredCount) this.#persist();
     const existing = this.#registeredByPath(actual);
     if (existing) {
       this.refresh();
@@ -381,6 +439,7 @@ export class ProjectRegistry {
         break;
       }
       const candidateFingerprint = fingerprint(candidatePath);
+      if (this.state.ignored_fingerprints.includes(candidateFingerprint)) continue;
       const matches = Object.values(this.state.projects).filter(
         (entry) =>
           entry.status === "missing" &&
@@ -589,6 +648,15 @@ export class ProjectRegistry {
       throw new ControlPlaneError(
         "project_remove_denied",
         "Available projects remain registered until their discovery root is changed",
+      );
+    }
+    if (
+      entry.fingerprint &&
+      !this.state.ignored_fingerprints.includes(entry.fingerprint)
+    ) {
+      this.state.ignored_fingerprints.push(entry.fingerprint);
+      this.state.ignored_fingerprints = this.state.ignored_fingerprints.slice(
+        -this.maxRegistryProjects,
       );
     }
     delete this.state.projects[entry.id];

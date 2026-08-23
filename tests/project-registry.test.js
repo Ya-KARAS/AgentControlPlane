@@ -38,6 +38,35 @@ test("project registry adds one project from its exact folder path", () => {
   assert.deepEqual(registry.discoveryRoots(), [fs.realpathSync.native(path.dirname(target))]);
 });
 
+test("project registry adds and follows a plain folder using an ACP identity marker", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-plain-folder-"));
+  const stateDir = path.join(temp, "state");
+  const rootC = path.join(temp, "C-drive");
+  const rootD = path.join(temp, "D-drive");
+  const original = path.join(rootC, "research-notes");
+  fs.mkdirSync(original, { recursive: true });
+  fs.mkdirSync(rootD, { recursive: true });
+  const registry = new ProjectRegistry({ stateDir });
+
+  const added = registry.addProject(original);
+  const id = `project:${added.id}`;
+  assert.equal(
+    fs.existsSync(path.join(original, ".agent-control-plane-project.json")),
+    true,
+  );
+  assert.equal(registry.resolve(id).workspace, fs.realpathSync.native(original));
+
+  const moved = path.join(rootD, "research-notes");
+  fs.renameSync(original, moved);
+  registry.addDiscoveryRoot(rootD);
+  assert.equal(
+    registry.publicProjects().find((entry) => entry.id === id).relink_candidate_count,
+    1,
+  );
+  registry.relinkSuggested(id);
+  assert.equal(registry.resolve(id).workspace, fs.realpathSync.native(moved));
+});
+
 test("project id survives a confirmed cross-root relink", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-move-"));
   const stateDir = path.join(temp, "state");
@@ -88,15 +117,21 @@ test("project registry confirms a single discovered move candidate", () => {
 test("project registry removes an unavailable record without deleting files", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-remove-"));
   const stateDir = path.join(temp, "state");
-  const root = path.join(temp, "projects");
-  const original = project(root, "calculator");
-  const registry = new ProjectRegistry({ stateDir, discoveryRoots: [root] });
+  const rootC = path.join(temp, "C-drive");
+  const rootD = path.join(temp, "D-drive");
+  const original = project(rootC, "calculator");
+  fs.mkdirSync(rootD, { recursive: true });
+  const registry = new ProjectRegistry({
+    stateDir,
+    discoveryRoots: [rootC, rootD],
+  });
   const id = registry.publicProjects()[0].id;
-  const movedOutsideRoot = path.join(temp, "saved-calculator");
+  const movedOutsideRoot = path.join(rootD, "saved-calculator");
   fs.renameSync(original, movedOutsideRoot);
   registry.refresh();
 
   assert.deepEqual(registry.remove(id), { id, removed: true });
+  registry.refresh();
   assert.equal(registry.publicProjects().length, 0);
   assert.equal(fs.existsSync(movedOutsideRoot), true);
 });

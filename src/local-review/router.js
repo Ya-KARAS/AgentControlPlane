@@ -356,7 +356,15 @@ export class LocalReviewRouter {
     } catch (error) {
       const status = errorStatus(error);
       if (url.pathname.startsWith("/local-review/")) {
-        sendLocalHtml(response, status, reviewErrorPage(error));
+        sendLocalHtml(
+          response,
+          status,
+          reviewErrorPage(error, {
+            projectAction:
+              url.pathname === "/local-review/projects" ||
+              url.pathname === "/local-review/settings",
+          }),
+        );
       } else {
         sendJson(response, status, { error: asErrorPayload(error) }, cors);
       }

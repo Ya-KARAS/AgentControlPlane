@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { settingsPage } from "../src/local-review/page.js";
+import { reviewErrorPage, settingsPage } from "../src/local-review/page.js";
 import { LocalReviewSettings } from "../src/local-review/settings.js";
 
 const projects = [
@@ -65,6 +65,7 @@ test("project library keeps routine actions visible and management controls adva
   });
 
   assert.match(html, /项目文件夹路径/);
+  assert.match(html, /资料目录和空文件夹都可以加入项目库/);
   assert.match(html, /value="add_project"/);
   assert.match(html, /当前默认/);
   assert.match(html, /value="set_default"/);
@@ -74,6 +75,16 @@ test("project library keeps routine actions visible and management controls adva
   assert.match(html, /<summary>高级设置<\/summary>/);
   assert.match(html, /value="add_root"/);
   assert.match(html, /revision 2/);
+});
+
+test("project action errors return to the local project library", () => {
+  const html = reviewErrorPage(new Error("Project folder is unavailable"), {
+    projectAction: true,
+  });
+  assert.match(html, /项目操作未完成/);
+  assert.match(html, /href="\/local-review\/settings"/);
+  assert.match(html, /返回项目库/);
+  assert.doesNotMatch(html, /油猴面板/);
 });
 
 test("setting one project as default preserves the remaining dispatch settings", () => {

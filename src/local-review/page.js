@@ -122,7 +122,7 @@ ${candidateCount === 1 ? `<form method="post" action="/local-review/projects"><i
 <label>分类<input name="category" maxlength="64" value="${escapeHtml(project.category)}" required></label><button class="secondary" type="submit">更新分类</button>
 </form></section>`).join("");
   const projectLibrary = `<h2>项目库 Project library</h2>
-<p>添加一个项目文件夹后，ACP 会保存项目身份。项目移动到其他文件夹或磁盘后，可在这里重新关联并继续原对话。</p>
+<p>代码仓库、资料目录和空文件夹都可以加入项目库。ACP 会保存项目身份；项目移动到其他文件夹或磁盘后，可在这里重新关联并继续原对话。</p>
 <form class="inline" method="post" action="/local-review/projects" autocomplete="off">
 <input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}">
 <input type="hidden" name="action" value="add_project">
@@ -158,7 +158,13 @@ export function dispatchedPage({ candidate, task }) {
   );
 }
 
-export function reviewErrorPage(error) {
+export function reviewErrorPage(error, { projectAction = false } = {}) {
+  if (projectAction) {
+    return page(
+      "AgentControlPlane 项目操作未完成",
+      `<h1 class="error">项目操作未完成</h1><p>${escapeHtml(error?.message ?? "Unknown error")}</p><p><a href="/local-review/settings">返回项目库</a></p>`,
+    );
+  }
   return page(
     "AgentControlPlane 审核失败",
     `<h1 class="error">无法完成审核 Review failed</h1><p>${escapeHtml(error?.message ?? "Unknown error")}</p><p class="muted">请关闭此页面，并从油猴面板重新创建候选。</p>`,

@@ -51,6 +51,14 @@ categories, and path revisions. Adding a project enrolls its parent folder as
 a discovery root so later scans can find the project after a folder or drive
 move.
 
+Git repositories and folders with common build manifests use their existing
+project metadata. ACP adds `.agent-control-plane-project.json` to an explicitly
+added folder that has no recognized software marker. The file contains a
+random project ID and lets ACP identify that folder after a move. Removing the
+registry record leaves this marker and the remaining project files on disk.
+Later scans skip the removed identity; adding the folder explicitly registers
+it again.
+
 ## Moving a project
 
 When a registered path disappears, ACP marks the project `missing`. Scanning
