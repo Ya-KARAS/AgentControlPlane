@@ -146,7 +146,6 @@ export function settingsPage({
 <button type="submit">${escapeHtml(t("saveSettings"))}</button>
 </form>`
     : `<p class="error">${escapeHtml(t("noCompleteOptions"))}</p>`;
-  const roots = options.discoveryRoots ?? [];
   const projects = options.projects ?? [];
   const availableProjects = projects.filter((project) => project.status === "available");
   const unavailableProjects = projects.filter((project) => project.status !== "available");
@@ -176,12 +175,6 @@ ${candidateCount === 1 ? `<form method="post" action="/local-review/projects"><i
 </form></details>
 </section>`;
   }).join("");
-  const advancedProjectRows = projects.map((project) => `<section class="project">
-<strong>${escapeHtml(project.alias)}</strong>
-<form class="inline" method="post" action="/local-review/projects" autocomplete="off">
-<input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}"><input type="hidden" name="action" value="update_category"><input type="hidden" name="project_id" value="${escapeHtml(project.id)}">
-<label>${escapeHtml(t("category"))}<input name="category" maxlength="64" value="${escapeHtml(project.category)}" required></label><button class="secondary" type="submit">${escapeHtml(t("updateCategory"))}</button>
-</form></section>`).join("");
   const projectLibrary = `<h2>${escapeHtml(t("projectLibrary"))}</h2>
 <p>${escapeHtml(t("projectLibraryDescription"))}</p>
 <form class="inline" method="post" action="/local-review/projects" autocomplete="off">
@@ -191,19 +184,7 @@ ${candidateCount === 1 ? `<form method="post" action="/local-review/projects"><i
 <button type="submit">${escapeHtml(t("addProject"))}</button>
 </form>
 <h3>${escapeHtml(t("availableProjects"))}</h3>${availableRows || `<p class="muted">${escapeHtml(t("noAvailableProjects"))}</p>`}
-${unavailableProjects.length ? `<details class="advanced"><summary>${escapeHtml(t("projectsNeedAttention"))} <span class="count">${unavailableProjects.length}</span></summary><div class="advanced-body">${unavailableRows}</div></details>` : ""}
-<details class="advanced"><summary>${escapeHtml(t("projectTools"))}</summary><div class="advanced-body">
-<p class="muted">${escapeHtml(t("projectToolsHint"))}</p>
-<div class="roots">${roots.length ? roots.map((root) => `<div>${escapeHtml(root)}</div>`).join("") : `<span class="muted">${escapeHtml(t("noDiscoveryRoots"))}</span>`}</div>
-<form class="inline" method="post" action="/local-review/projects" autocomplete="off">
-<input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}"><input type="hidden" name="action" value="add_root">
-<label>${escapeHtml(t("scanRoot"))}<input name="path" placeholder="D:\\Development" required></label><button class="secondary" type="submit">${escapeHtml(t("addAndScan"))}</button>
-</form><form method="post" action="/local-review/projects">
-<input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}">
-<input type="hidden" name="action" value="scan">
-<button class="secondary" type="submit">${escapeHtml(t("rescanProjects"))}</button>
-</form>
-<h3>${escapeHtml(t("projectCategories"))}</h3>${advancedProjectRows || `<p class="muted">${escapeHtml(t("noProjectsForCategory"))}</p>`}</div></details>`;
+${unavailableProjects.length ? `<details class="advanced"><summary>${escapeHtml(t("projectsNeedAttention"))} <span class="count">${unavailableProjects.length}</span></summary><div class="advanced-body">${unavailableRows}</div></details>` : ""}`;
   return page(
     t("settingsTitle"),
     `${savedNotice}${projectMessage}${missingNotice}<h1>${escapeHtml(t("settingsHeading"))}</h1>

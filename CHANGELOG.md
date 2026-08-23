@@ -56,6 +56,12 @@
   This avoids inconsistent CDN query handling while keeping future update
   checks lightweight.
 
+### Changed
+
+- The local project library no longer renders the optional project-maintenance
+  section for scan roots, rescans, categories, or internal revisions. Routine
+  project selection, adding, and moved-project recovery remain available.
+
 ### Security
 
 - Userscript status responses exclude objectives, summaries, paths, logs,

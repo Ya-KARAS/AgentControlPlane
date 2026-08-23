@@ -60,7 +60,7 @@ function options() {
   };
 }
 
-test("project library keeps routine actions visible and management controls advanced", () => {
+test("project library keeps routine actions visible without project maintenance controls", () => {
   const html = settingsPage({
     settings: {
       workspace: "project:available",
@@ -90,9 +90,8 @@ test("project library keeps routine actions visible and management controls adva
   assert.match(html, /需要处理的项目/);
   assert.match(html, /确认新位置/);
   assert.match(html, /value="remove"/);
-  assert.match(html, /<summary>项目工具（可选）<\/summary>/);
-  assert.match(html, /日常派发无需操作这里/);
-  assert.match(html, /value="add_root"/);
+  assert.doesNotMatch(html, /高级设置|项目工具（可选）|扫描根目录|重新扫描项目|项目分类/);
+  assert.doesNotMatch(html, /value="add_root"|value="scan"|value="update_category"/);
   assert.doesNotMatch(html, /revision 2/);
 });
 
@@ -116,8 +115,8 @@ test("project library renders a separate English interface", () => {
   assert.match(html, /<html lang="en">/);
   assert.match(html, /Interface language/);
   assert.match(html, /Project library/);
-  assert.match(html, /Project tools \(optional\)/);
-  assert.match(html, /Routine dispatch does not require them/);
+  assert.doesNotMatch(html, /Project tools \(optional\)|Scan root|Rescan projects|Project categories/);
+  assert.doesNotMatch(html, /value="add_root"|value="scan"|value="update_category"/);
   assert.doesNotMatch(html, /高级设置|派发设置|可用项目/);
 });
 
