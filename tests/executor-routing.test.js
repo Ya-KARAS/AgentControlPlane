@@ -176,6 +176,75 @@ test("routes a dispatch to a non-default executor", async () => {
   assert.equal(opencode.turnStarts.length, 1);
 });
 
+test("starts every discovered executor so non-default routes are selectable", async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "acp-start-all-"));
+  const store = new TaskStore(
+    fs.mkdtempSync(path.join(os.tmpdir(), "acp-start-all-state-")),
+    20,
+  );
+  const codex = new RecordingExecutor("codex");
+  const opencode = new RecordingExecutor("opencode");
+  const orchestrator = new Orchestrator({
+    config: testConfig(workspace),
+    store,
+    executors: new Map([
+      ["codex", codex],
+      ["opencode", opencode],
+    ]),
+    defaultProvider: "opencode",
+  });
+
+  await orchestrator.start();
+
+  assert.equal(opencode.ready, true);
+  assert.equal(codex.ready, true);
+  assert.deepEqual(
+    orchestrator
+      .getExecutors()
+      .filter((entry) => entry.ready)
+      .map((entry) => entry.id),
+    ["codex", "opencode"],
+  );
+});
+
+test("keeps the primary executor ready when a secondary start fails", async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "acp-start-fail-"));
+  const store = new TaskStore(
+    fs.mkdtempSync(path.join(os.tmpdir(), "acp-start-fail-state-")),
+    20,
+  );
+  const codex = new RecordingExecutor("codex");
+  codex.start = async () => {
+    throw new Error("secondary unavailable");
+  };
+  const opencode = new RecordingExecutor("opencode");
+  const diagnostics = [];
+  const orchestrator = new Orchestrator({
+    config: testConfig(workspace),
+    store,
+    executors: new Map([
+      ["codex", codex],
+      ["opencode", opencode],
+    ]),
+    defaultProvider: "opencode",
+  });
+  orchestrator.on("diagnostic", (entry) => diagnostics.push(entry));
+
+  await orchestrator.start();
+
+  assert.equal(opencode.ready, true);
+  const failed = orchestrator
+    .getExecutors()
+    .find((entry) => entry.id === "codex");
+  assert.equal(failed.ready, false);
+  assert.equal(failed.discovery.status, "degraded");
+  assert.equal(failed.discovery.reason, "start_failed");
+  assert.match(failed.discovery.detail, /secondary unavailable/);
+  assert.deepEqual(diagnostics, [
+    { source: "codex-start", text: "secondary unavailable" },
+  ]);
+});
+
 test("rejects an unknown executor", async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "acp-route-"));
   const store = new TaskStore(

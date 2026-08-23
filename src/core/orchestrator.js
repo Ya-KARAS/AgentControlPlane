@@ -316,6 +316,31 @@ export class Orchestrator extends EventEmitter {
     const { id, executor: primary } = this.#executorEntry({});
     this.primaryProvider = id;
     await primary.start();
+    await Promise.all(
+      [...this.executors.entries()]
+        .filter(
+          ([executorId]) =>
+            executorId !== id &&
+            this.executorDiscovery[executorId]?.available !== false,
+        )
+        .map(async ([executorId, executor]) => {
+          try {
+            await executor.start();
+          } catch (error) {
+            await Promise.resolve(executor.stop()).catch(() => {});
+            this.executorDiscovery[executorId] = {
+              ...(this.executorDiscovery[executorId] ?? {}),
+              status: "degraded",
+              reason: "start_failed",
+              detail: error.message,
+            };
+            this.emit("diagnostic", {
+              source: `${executorId}-start`,
+              text: error.message,
+            });
+          }
+        }),
+    );
     await this.#refreshModelCatalogs();
     this.modelCatalog = this.modelCatalogs.get(id) ?? [];
     if (process.platform === "win32" && primary.requiresWindowsSandbox) {
