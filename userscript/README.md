@@ -8,15 +8,16 @@ conversation. On ChatGPT or DeepSeek, write:
 ```
 
 The web AI discusses the request, asks for missing details, and prepares a
-structured task. The bridge stages that task. Reply with `执行` when the task is
-ready. In the same conversation, the user can select a workspace alias or an
+structured task. The bridge stages that task. Reply with `执行` in Chinese or
+`Run` in English when the task is ready. In the same conversation, the user can select a workspace alias or an
 explicit path, executor, profile, advertised model, and reasoning effort. Any
 omitted choice comes from the local settings page.
 
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.5.4 keeps an unexpired staged task through a page refresh. If a new
+Version 0.7.0 provides separate Chinese and English interfaces and keeps an
+unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
 The pill uses a compact action label. Its hover text contains the changed
@@ -37,13 +38,27 @@ when the result message changes the page DOM.
 2. Open `agent-control-plane-web-bridge.user.js` from this directory.
 3. Use the userscript manager's install or update action.
 4. Start AgentControlPlane on `127.0.0.1:4318`.
-5. Open a supported web AI page and select the floating **ACP** pill.
-6. Save a workspace and choose Auto or a concrete default for executor, task
+5. Open the Tampermonkey script menu and choose **Follow browser**, **Chinese**,
+   or **English**. The script stores this choice in userscript-isolated storage.
+6. Open a supported web AI page and select the floating **ACP** pill.
+7. Save a workspace and choose Auto or a concrete default for executor, task
    profile, model, and reasoning effort on the local settings page.
-7. Enable automatic dispatch if `执行` should use those saved choices without
+8. Enable automatic dispatch if `执行` or `Run` should use those saved choices without
    opening another local review page.
-8. Enable safe result return if the terminal task status should be sent back to
+9. Enable safe result return if the terminal task status should be sent back to
    the same web AI conversation.
+
+## Interface language
+
+The Tampermonkey script menu provides three persistent choices:
+
+- **Follow browser** selects Chinese for a `zh` browser locale and English for
+  other locales.
+- **Chinese** applies Chinese status text and a Chinese planning controller.
+- **English** applies English status text and an English planning controller.
+
+Changing the language reloads the current web AI page. `<ACP_TASK>` and
+`<ACP_RESULT>` field names remain stable across both languages.
 
 ## Conversation flow
 
@@ -53,7 +68,7 @@ when the result message changes the page DOM.
 3. The web AI asks questions until it can produce one `<ACP_TASK>` envelope.
 4. The bridge stages the envelope. AI-generated text or DOM changes cannot
    dispatch it.
-5. A user presses Send with a short confirmation such as `执行`.
+5. A user presses Send with a short confirmation such as `执行` or `Run`.
 6. The web AI recommends concrete values for fields saved as Auto. ACP validates
    every requested execution choice against local workspace roots and live
    executor capabilities. Concrete saved values supply the defaults.

@@ -37,6 +37,9 @@
   Confirmation and dispatch now fail closed when another tab holds a newer
   task. Safe results include the validated workspace basename so the web AI no
   longer guesses which workspace actually ran.
+- Web Bridge 0.7.0 provides separate Chinese and English status text,
+  confirmation prompts, and planning-controller instructions. The Tampermonkey
+  menu stores Follow browser, Chinese, or English as the interface language.
 
 ### Security
 

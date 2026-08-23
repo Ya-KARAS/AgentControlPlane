@@ -18,13 +18,15 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.6\.1$/m);
+  assert.match(script, /^\/\/ @version\s+0\.7\.0$/m);
+  assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
   assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @grant\s+GM_openInTab$/m);
   assert.match(script, /^\/\/ @grant\s+GM_deleteValue$/m);
   assert.match(script, /^\/\/ @grant\s+GM_getValue$/m);
+  assert.match(script, /^\/\/ @grant\s+GM_registerMenuCommand$/m);
   assert.match(script, /^\/\/ @grant\s+GM_setValue$/m);
   assert.match(script, /^\/\/ @grant\s+GM_xmlhttpRequest$/m);
   assert.match(script, /^\/\/ @run-at\s+document-idle$/m);
@@ -70,7 +72,11 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /observationWaitsBehindBarrier/);
   assert.match(script, /本对话任务已封存/);
   assert.match(script, /stable project id/);
-  assert.match(script, /completed: "✓ 完成"/);
+  assert.match(script, /statusCompleted: "✓ 完成"/);
+  assert.match(script, /statusCompleted: "✓ Completed"/);
+  assert.match(script, /ACP 语言：中文/);
+  assert.match(script, /ACP language: English/);
+  assert.match(script, /acp-ui-language-v1/);
   assert.match(script, /button\[data-state="completed"\]/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);
@@ -109,6 +115,7 @@ test("userscript documentation states the conversation and local safety boundary
   assert.match(readme, /@AgentControlPlane/);
   assert.match(readme, /@ACP/);
   assert.match(readme, /reply with `执行`/i);
+  assert.match(readme, /Follow browser.*Chinese.*English/is);
   assert.match(readme, /does not send local\s+paths,\s+raw\s+logs, credentials, or raw errors/i);
   assert.match(readme, /device pairing, mobile relay support/i);
 });

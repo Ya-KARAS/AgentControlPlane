@@ -54,14 +54,27 @@ test("controller prompt keeps planning in the web conversation", () => {
   assert.match(prompt, /<ACP_TASK>/);
   assert.match(prompt, /<\/ACP_TASK>/);
   assert.match(prompt, /使用 acp-live-test、OpenCode 和 high/);
-  assert.match(prompt, /reply with 执行/);
+  assert.match(prompt, /reply with Run/i);
   assert.match(prompt, /opencode-go\/deepseek-v4-pro/);
   assert.match(prompt, /user may choose workspace, executor, profile, model, and reasoning effort/i);
   assert.match(prompt, /credentials always remain local/i);
   assert.match(prompt, /Never replace the requested engineering task with a smoke test/i);
   assert.match(prompt, /status is cooldown/i);
-  assert.match(prompt, /reply with 确认变更/);
+  assert.match(prompt, /reply with Confirm changes/i);
   assert.match(prompt, /Do not claim that execution started/i);
+});
+
+test("controller prompt uses the selected Chinese conversation language", () => {
+  const prompt = controllerPrompt("检查计算器", {
+    current: { executor: "auto", model: "auto" },
+    executors: [{ id: "opencode", display_name: "OpenCode" }],
+  }, "zh-CN");
+  assert.match(prompt, /全程使用简体中文/);
+  assert.match(prompt, /当前用户请求：检查计算器/);
+  assert.match(prompt, /请用户回复“确认变更”/);
+  assert.match(prompt, /请用户回复“执行”/);
+  assert.match(prompt, /<ACP_TASK>/);
+  assert.match(prompt, /"executor": "已列出的执行器 ID"/);
 });
 
 test("task changes require a distinct confirmation from execution", () => {

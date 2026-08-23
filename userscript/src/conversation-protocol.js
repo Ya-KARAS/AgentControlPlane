@@ -39,16 +39,25 @@ export function parseLaunchCommand(value) {
   };
 }
 
-export function controllerPrompt(request = "", capabilities = {}) {
+export function controllerPrompt(request = "", capabilities = {}, language = "en") {
   const userRequest = boundedText(request, 4000);
   const safeCapabilities = JSON.stringify(capabilities ?? {}, null, 2);
-  return [
-    "You are the planning controller for AgentControlPlane in this conversation.",
-    "Discuss the engineering request with the user in natural language. Ask for missing requirements and resolve ambiguity before staging work.",
-    "When the task is implementation-ready, output exactly one JSON object between <ACP_TASK> and </ACP_TASK>.",
-    TASK_OPEN,
-    JSON.stringify(
-      {
+  const chinese = String(language).toLowerCase().startsWith("zh");
+  const schema = chinese
+    ? {
+        objective: "具体的工程目标",
+        context: "工程执行所需的上下文",
+        constraints: ["重要实现约束"],
+        acceptance_criteria: ["可观察的完成标准"],
+        execution: {
+          workspace: "已列出的项目别名或稳定项目 ID，或用户明确提供的绝对路径",
+          executor: "已列出的执行器 ID",
+          profile: "已列出的配置档 ID",
+          model: "所选执行器列出的模型 ID",
+          reasoning_effort: "所选模型列出的推理等级",
+        },
+      }
+    : {
         objective: "A concrete engineering objective",
         context: "Execution context needed by the engineering agent",
         constraints: ["Important implementation constraints"],
@@ -60,30 +69,61 @@ export function controllerPrompt(request = "", capabilities = {}) {
           model: "A model id listed for the selected executor",
           reasoning_effort: "A reasoning effort listed for the selected model",
         },
-      },
-      null,
-      2,
-    ),
+      };
+  const instructions = chinese
+    ? [
+        "你是本对话中的 AgentControlPlane 任务规划控制器。全程使用简体中文与用户交流。",
+        "通过自然语言讨论工程需求，补齐缺失条件并消除歧义。",
+        "任务达到可执行状态后，在 <ACP_TASK> 和 </ACP_TASK> 之间仅输出一个 JSON 对象。",
+        "下方本机 ACP 能力摘要是本对话选择执行配置的依据。",
+        "用户可以通过自然语言选择工作区、执行器、配置档、模型和推理等级。",
+        "只使用已列出的项目别名或 ID、工作区别名、执行器 ID、配置档 ID、模型 ID 和推理等级。优先使用项目别名，使项目移动后仍能保持稳定身份。",
+        "只有用户明确提供绝对路径时才能使用该路径；不得推测本机路径。",
+        "不得选择处于 cooldown 状态的模型或供应商。说明安全失败类别，并请用户选择可用线路或等待 retry_after。",
+        "capability summary 的 current 对象包含本机保存模式。executor、profile、model 或 reasoning_effort 为 auto 时，根据工程任务推荐一个已列出的具体值，并写入 execution。",
+        "推理等级必须来自推荐模型公布的列表。模型没有可控推理等级时省略 reasoning_effort。",
+        "本机保存的具体值是该字段默认值。用户没有明确要求其他已列出值时，省略对应 execution 字段。",
+        "暂存前说明每个自动推荐值和每个本机具体默认值。凭据始终保留在本机，不得写入 ACP_TASK。",
+        "ACP_RESULT 失败后保留目标、工作区和执行线路，直到用户明确要求更改。排错时不得自动把工程任务替换为 smoke test，也不得更换工作区。",
+        "用户明确更改目标、工作区、执行器、配置档、模型或推理等级时，在输出替换 ACP_TASK 前准确说明变更字段。",
+        "输出带变更字段的替换 ACP_TASK 后，请用户回复“确认变更”。本机桥接收到该独立确认后才接受“执行”。",
+        "用户在确认变更前发送“执行”时，说明本机桥接仍在等待“确认变更”，不得声称任务已启动。",
+        "首次输出 ACP_TASK 且没有替换字段时，请用户回复“执行”或其他明确确认词。",
+        "浏览器桥接观察到用户确认后才开始执行。只有本对话收到 ACP_RESULT 后才能报告执行结果。",
+      ]
+    : [
+        "You are the planning controller for AgentControlPlane in this conversation. Continue in English.",
+        "Discuss the engineering request with the user in natural language. Ask for missing requirements and resolve ambiguity before staging work.",
+        "When the task is implementation-ready, output exactly one JSON object between <ACP_TASK> and </ACP_TASK>.",
+        "The local ACP capability summary below is authoritative for execution choices in this conversation.",
+        "The user may choose workspace, executor, profile, model, and reasoning effort in natural language.",
+        "Use only listed project aliases or ids, workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. Prefer a listed project alias so the stable local project identity survives path changes.",
+        "An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
+        "Do not select a model or provider whose status is cooldown. Explain the safe failure category and ask the user to choose an available route or wait until retry_after.",
+        "The capability summary current object contains the saved local modes. For every executor, profile, model, or reasoning_effort value set to auto, recommend one concrete listed value that fits the engineering task and include it in execution.",
+        "Use only reasoning efforts advertised by the recommended model. Omit reasoning_effort when that model advertises no controllable effort.",
+        "A concrete saved local mode remains the default for that field. Omit that execution field unless the user explicitly requests another listed value.",
+        "Before staging, state each recommended automatic value and each concrete local default. Credentials always remain local and must never appear in ACP_TASK.",
+        "After an ACP_RESULT failure, preserve the objective, workspace, and execution route unless the user explicitly requests a change. Never replace the requested engineering task with a smoke test or change its workspace as an automatic troubleshooting step.",
+        "When the user explicitly changes the objective, workspace, executor, profile, model, or reasoning effort, state exactly which fields changed before emitting the replacement ACP_TASK.",
+        "After emitting a replacement ACP_TASK with changed fields, tell the user to reply with Confirm changes. The local bridge requires that separate confirmation before it accepts Run.",
+        "If the user sends Run before confirming changed fields, explain that the local bridge is still waiting for Confirm changes. Do not claim that execution started.",
+        "For an initial ACP_TASK with no replaced fields, tell the user to reply with Run or another clear confirmation word.",
+        "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
+      ];
+  return [
+    ...instructions.slice(0, 3),
+    TASK_OPEN,
+    JSON.stringify(schema, null, 2),
     TASK_CLOSE,
-    "The local ACP capability summary below is authoritative for execution choices in this conversation.",
+    instructions[3],
     safeCapabilities,
-    "The user may choose workspace, executor, profile, model, and reasoning effort in natural language.",
-    "Use only listed project aliases or ids, workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. Prefer a listed project alias so the stable local project identity survives path changes.",
-    "An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
-    "Do not select a model or provider whose status is cooldown. Explain the safe failure category and ask the user to choose an available route or wait until retry_after.",
-    "The capability summary current object contains the saved local modes. For every executor, profile, model, or reasoning_effort value set to auto, recommend one concrete listed value that fits the engineering task and include it in execution.",
-    "Use only reasoning efforts advertised by the recommended model. Omit reasoning_effort when that model advertises no controllable effort.",
-    "A concrete saved local mode remains the default for that field. Omit that execution field unless the user explicitly requests another listed value.",
-    "Before staging, state each recommended automatic value and each concrete local default. Credentials always remain local and must never appear in ACP_TASK.",
-    "After an ACP_RESULT failure, preserve the objective, workspace, and execution route unless the user explicitly requests a change. Never replace the requested engineering task with a smoke test or change its workspace as an automatic troubleshooting step.",
-    "When the user explicitly changes the objective, workspace, executor, profile, model, or reasoning effort, state exactly which fields changed before emitting the replacement ACP_TASK.",
-    "After emitting a replacement ACP_TASK with changed fields, tell the user to reply with 确认变更. The local bridge requires that separate confirmation before it accepts 执行.",
-    "If the user sends 执行 before confirming changed fields, explain that the local bridge is still waiting for 确认变更. Do not claim that execution started.",
-    "For an initial ACP_TASK with no replaced fields, tell the user to reply with 执行 or another clear confirmation word.",
-    "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
+    ...instructions.slice(4),
     userRequest
-      ? `Current user request: ${userRequest}`
-      : "Use the current conversation to identify the task the user wants to prepare.",
+      ? chinese ? `当前用户请求：${userRequest}` : `Current user request: ${userRequest}`
+      : chinese
+        ? "根据当前对话识别用户要准备的任务。"
+        : "Use the current conversation to identify the task the user wants to prepare.",
   ].join("\n");
 }
 
@@ -150,9 +190,9 @@ export function candidateFromEnvelope(envelope) {
   };
 }
 
-export function executionSummary(envelope) {
+export function executionSummary(envelope, defaultLabel = "本机默认配置") {
   const execution = candidateFromEnvelope(envelope).execution;
-  if (!execution) return "本机默认配置";
+  if (!execution) return defaultLabel;
   const workspace = execution.workspace
     ? execution.workspace.split(/[\\/]/).filter(Boolean).at(-1)
     : null;

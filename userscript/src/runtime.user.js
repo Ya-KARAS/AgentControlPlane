@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
+// @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.6.1
+// @version      0.7.0
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
+// @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -11,6 +13,7 @@
 // @grant        GM_openInTab
 // @grant        GM_deleteValue
 // @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @run-at       document-idle
@@ -19,6 +22,7 @@
 (() => {
   "use strict";
 
+  // @acp-i18n
   // @acp-conversation-protocol
   // @acp-stage-state
 
@@ -39,6 +43,13 @@
     entry.origins.includes(window.location.origin),
   );
   if (!adapter || document.getElementById(ROOT_ID)) return;
+
+  let languageMode = "auto";
+  let uiLanguage = resolveUserscriptLanguage(
+    languageMode,
+    navigator.languages ?? [navigator.language],
+  );
+  const t = (key, values) => userscriptText(uiLanguage, key, values);
 
   let staged = null;
   let dispatchingEnvelopeId = null;
@@ -104,7 +115,7 @@
     if (saved.state === "planning") {
       staged = null;
       planningBaseline = saved.baselineEnvelope ?? null;
-      showStatus("网页 AI 正在整理任务");
+      showStatus(t("planning"));
       return;
     }
     if (saved.state === "dispatched") {
@@ -112,8 +123,8 @@
       planningBaseline = null;
       dispatchingEnvelopeId = saved.id;
       showStatus(
-        "本对话任务已封存",
-        "已派发的任务不会从页面历史中重复执行。可继续描述新任务。",
+        t("archived"),
+        t("archivedDetail"),
       );
       return;
     }
@@ -250,7 +261,7 @@
 
   const root = document.createElement("section");
   root.id = ROOT_ID;
-  root.setAttribute("aria-label", "AgentControlPlane web bridge");
+  root.setAttribute("aria-label", t("ariaLabel"));
 
   const style = document.createElement("style");
   style.textContent = `
@@ -260,8 +271,8 @@
   `;
   const statusButton = document.createElement("button");
   statusButton.type = "button";
-  statusButton.textContent = "ACP · 就绪";
-  statusButton.title = "点击打开本机派发设置";
+  statusButton.textContent = `ACP · ${t("ready")}`;
+  statusButton.title = t("openSettings");
   statusButton.addEventListener("click", () => {
     GM_openInTab(`${LOCAL_BASE_URL}/local-review/settings`, {
       active: true,
@@ -272,45 +283,82 @@
   root.append(style, statusButton);
   document.body.append(root);
 
+  const registerLanguageMenu = () => {
+    if (typeof GM_registerMenuCommand !== "function") return;
+    for (const [mode, labelKey] of [
+      ["auto", "menuAuto"],
+      ["zh-CN", "menuChinese"],
+      ["en", "menuEnglish"],
+    ]) {
+      GM_registerMenuCommand(
+        `${languageMode === mode ? "✓ " : ""}${t(labelKey)}`,
+        async () => {
+          await Promise.resolve(GM_setValue(USERSCRIPT_LANGUAGE_KEY, mode));
+          window.location.reload();
+        },
+      );
+    }
+  };
+
+  const initializeLanguage = async () => {
+    languageMode = normalizeUserscriptLanguage(
+      await Promise.resolve(GM_getValue(USERSCRIPT_LANGUAGE_KEY, "auto")),
+    );
+    uiLanguage = resolveUserscriptLanguage(
+      languageMode,
+      navigator.languages ?? [navigator.language],
+    );
+    root.setAttribute("aria-label", t("ariaLabel"));
+    statusButton.textContent = `ACP · ${t("ready")}`;
+    statusButton.title = t("openSettings");
+    registerLanguageMenu();
+  };
+
   const showStatus = (text, detail = text, state = "default") => {
     statusButton.textContent = `ACP · ${text}`;
-    statusButton.title = `AgentControlPlane\n${detail}\n点击打开本机派发设置`;
+    statusButton.title = `AgentControlPlane\n${detail}\n${t("openSettings")}`;
     statusButton.dataset.state = state;
   };
 
   const showStagedStatus = (mode = "ready") => {
     if (!staged) return;
-    const route = executionSummary(staged.envelope);
+    const route = executionSummary(staged.envelope, t("localDefaults"));
     if (staged.changes?.length && !staged.changeConfirmed) {
       const labels = {
-        objective: "任务目标",
-        workspace: "工作区",
-        executor: "执行器",
-        profile: "配置档",
-        model: "模型",
-        reasoning_effort: "推理等级",
+        objective: t("fieldObjective"),
+        workspace: t("fieldWorkspace"),
+        executor: t("fieldExecutor"),
+        profile: t("fieldProfile"),
+        model: t("fieldModel"),
+        reasoning_effort: t("fieldReasoning"),
       };
-      const changed = staged.changes.map((field) => labels[field] ?? field).join("、");
+      const changed = staged.changes
+        .map((field) => labels[field] ?? field)
+        .join(uiLanguage === "zh-CN" ? "、" : ", ");
       showStatus(
-        "任务已变更 · 回复“确认变更”",
-        `变更字段：${changed}\n执行配置：${route}\n请回复“确认变更”`,
+        t("taskChanged"),
+        [
+          t("changedFields", { fields: changed }),
+          t("executionRoute", { route }),
+          t("replyConfirmChanges"),
+        ].join("\n"),
       );
       return;
     }
     const label = mode === "restored"
-      ? "任务已恢复"
+      ? t("taskRestored")
       : mode === "change-confirmed"
-        ? "变更已确认"
-        : "任务已就绪";
+        ? t("changesConfirmed")
+        : t("taskReady");
     showStatus(
-      `${label} · 回复“执行”`,
-      `${label}\n执行配置：${route}\n请回复“执行”`,
+      `${label} · ${t("replyRun")}`,
+      [label, t("executionRoute", { route }), t("replyRunDetail")].join("\n"),
     );
   };
 
   const showStageConflict = () => showStatus(
-    "任务版本冲突 · 请刷新页面",
-    "当前标签页中的任务不是最新暂存版本。为防止派发旧工作区或旧模型，ACP 已停止执行。请刷新页面后重新确认。",
+    t("stageConflict"),
+    t("stageConflictDetail"),
   );
 
   const stageFromRecord = (record) => ({
@@ -452,33 +500,33 @@
   };
 
   const taskStatusText = (body) => {
-    if (!body.task) return "等待本机确认";
+    if (!body.task) return t("waitingLocalReview");
     const labels = {
-      queued: "任务排队中",
-      running: "任务执行中",
-      completed: "✓ 完成",
-      failed: "任务失败",
-      blocked: "任务被阻塞",
-      partial: "任务部分完成",
-      cancelled: "任务已取消",
+      queued: t("statusQueued"),
+      running: t("statusRunning"),
+      completed: t("statusCompleted"),
+      failed: t("statusFailed"),
+      blocked: t("statusBlocked"),
+      partial: t("statusPartial"),
+      cancelled: t("statusCancelled"),
     };
     const taskId = String(body.task.id ?? "").slice(0, 8);
     const elapsed = tracking?.startedAt
       ? `${Math.max(0, Math.floor((Date.now() - tracking.startedAt) / 1000))}s`
       : null;
     const failureLabels = {
-      insufficient_balance: "余额不足",
-      usage_limit: "额度已用尽",
-      rate_limited: "请求限流",
-      authentication_failed: "认证失败",
-      executor_unavailable: "执行器不可用",
-      provider_unavailable: "模型服务不可用",
-      task_failed: "工程任务失败",
+      insufficient_balance: t("failureBalance"),
+      usage_limit: t("failureUsage"),
+      rate_limited: t("failureRate"),
+      authentication_failed: t("failureAuth"),
+      executor_unavailable: t("failureExecutor"),
+      provider_unavailable: t("failureProvider"),
+      task_failed: t("failureTask"),
     };
     const detail = body.task.status === "failed"
-      ? failureLabels[body.task.failure_category] ?? "原因未知"
+      ? failureLabels[body.task.failure_category] ?? t("reasonUnknown")
       : elapsed;
-    return [labels[body.task.status] ?? "状态已更新", taskId, detail]
+    return [labels[body.task.status] ?? t("statusUpdated"), taskId, detail]
       .filter(Boolean)
       .join(" · ");
   };
@@ -528,7 +576,7 @@
     if (tracking !== activeTracking) return;
     if (Date.now() >= activeTracking.expiresAt) {
       stopTracking();
-      showStatus("状态查看已过期");
+      showStatus(t("statusExpired"));
       return;
     }
     try {
@@ -559,10 +607,10 @@
       if (tracking !== activeTracking) return;
       if (["candidate_status_expired", "candidate_status_denied"].includes(error.message)) {
         stopTracking();
-        showStatus("无法继续读取状态");
+        showStatus(t("statusReadStopped"));
         return;
       }
-      showStatus("本机状态暂不可用");
+      showStatus(t("localStatusUnavailable"));
     }
     if (tracking === activeTracking) {
       pollTimer = setTimeout(() => pollStatus(activeTracking), 2000);
@@ -593,7 +641,7 @@
           return;
         }
         dispatchingEnvelopeId = activeEnvelope.id;
-        showStatus("正在派发");
+        showStatus(t("dispatching"));
         const idempotencyKey = await stableIdempotencyKey(activeEnvelope);
         const response = await request({
           method: "POST",
@@ -638,7 +686,7 @@
           startedAt: Date.now(),
           returnResultToChat: body.return_result_to_chat === true,
         };
-        showStatus(body.auto_dispatched ? "任务已派发" : "等待本机确认");
+        showStatus(body.auto_dispatched ? t("dispatched") : t("waitingLocalReview"));
         pollStatus(tracking);
         if (!body.auto_dispatched) {
           const reviewUrl = validatedReviewUrl(body.review_url, candidateId);
@@ -647,16 +695,16 @@
       });
     } catch (error) {
       dispatchingEnvelopeId = null;
-      showStatus(
-        error.message === "timeout"
-          ? "连接本机超时"
-          : error.message === "network_error"
-            ? "本机 ACP 未连接"
-            : error.message === "stage_lock_unavailable"
-              ? "浏览器不支持安全派发"
+        showStatus(
+          error.message === "timeout"
+            ? t("connectionTimeout")
+            : error.message === "network_error"
+              ? t("localDisconnected")
+              : error.message === "stage_lock_unavailable"
+                ? t("browserDispatchUnsupported")
             : error.message === "candidate_route_cooldown"
-              ? "所选模型暂时冷却"
-              : "派发失败",
+              ? t("routeCooldown")
+              : t("dispatchFailed"),
       );
     }
   };
@@ -666,7 +714,7 @@
     try {
       await refreshStageFromConversation();
     } catch {
-      showStatus("任务格式无效");
+      showStatus(t("taskInvalid"));
     }
   };
 
@@ -701,24 +749,24 @@
       event.stopImmediatePropagation();
       if (launchPending) return;
       if (!launch.request && !latestText(adapter.user) && !latestText(adapter.assistant)) {
-        showStatus("请在 @ACP 后描述任务");
+        showStatus(t("describeTask"));
         return;
       }
       launchPending = true;
-      showStatus("正在读取本机可选配置");
+      showStatus(t("readingCapabilities"));
       try {
         await beginPlanning();
         const capabilities = await readCapabilities();
-        writeComposer(controllerPrompt(launch.request, capabilities), composer);
-        showStatus("网页 AI 正在整理任务");
+        writeComposer(controllerPrompt(launch.request, capabilities, uiLanguage), composer);
+        showStatus(t("planning"));
         await submitComposer();
       } catch (error) {
         showStatus(
           error.message === "timeout"
-            ? "连接本机超时"
+            ? t("connectionTimeout")
             : error.message === "network_error"
-              ? "本机 ACP 未连接"
-              : "无法读取本机配置",
+              ? t("localDisconnected")
+              : t("readConfigFailed"),
         );
       } finally {
         launchPending = false;
@@ -731,8 +779,8 @@
     } catch (error) {
       showStatus(
         error.message === "stage_lock_unavailable"
-          ? "浏览器不支持安全派发"
-          : "任务状态无法校验",
+          ? t("browserDispatchUnsupported")
+          : t("taskStatusUnverified"),
       );
       return;
     }
@@ -762,5 +810,6 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") void refreshStageFromConversation();
   });
-  restoreStage().finally(scheduleInspection);
+  initializeLanguage()
+    .finally(() => restoreStage().finally(scheduleInspection));
 })();
