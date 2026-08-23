@@ -15,6 +15,12 @@ const metaPath = path.resolve(
   "userscript",
   "agent-control-plane-web-bridge.meta.js",
 );
+const releasePath = path.resolve(
+  "userscript",
+  "releases",
+  "0.7.4",
+  "agent-control-plane-web-bridge.user.js",
+);
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
 
 test("userscript declares the natural-language bridge metadata and supported sites", () => {
@@ -22,9 +28,9 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.7\.3$/m);
+  assert.match(script, /^\/\/ @version\s+0\.7\.4$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.user\.js\?version=0\.7\.3$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.7\.4\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @grant\s+GM_openInTab$/m);
@@ -46,12 +52,14 @@ test("userscript declares the natural-language bridge metadata and supported sit
 test("userscript update metadata is small and matches the install header", () => {
   const script = readScript();
   const meta = fs.readFileSync(metaPath, "utf8");
+  const release = fs.readFileSync(releasePath, "utf8");
   const marker = "// ==/UserScript==";
   const expected = `${script.slice(0, script.indexOf(marker) + marker.length)}\n`;
 
   assert.equal(meta, expected);
-  assert.match(meta, /^\/\/ @version\s+0\.7\.3$/m);
-  assert.match(meta, /agent-control-plane-web-bridge\.user\.js\?version=0\.7\.3/);
+  assert.equal(release, script);
+  assert.match(meta, /^\/\/ @version\s+0\.7\.4$/m);
+  assert.match(meta, /userscript\/releases\/0\.7\.4\/agent-control-plane-web-bridge\.user\.js/);
   assert.match(meta, /agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);

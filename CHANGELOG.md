@@ -51,6 +51,10 @@
 - Web Bridge 0.7.3 adds a release-version query to the full script download URL.
   A successful metadata check can therefore no longer download an older script
   body from a previously cached branch URL.
+- Web Bridge 0.7.4 replaces the query-based download with an immutable
+  versioned release path generated alongside the latest script and metadata.
+  This avoids inconsistent CDN query handling while keeping future update
+  checks lightweight.
 
 ### Security
 

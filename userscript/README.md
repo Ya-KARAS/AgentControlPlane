@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.7.3 provides separate Chinese and English interfaces and keeps an
+Version 0.7.4 provides separate Chinese and English interfaces and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
@@ -55,11 +55,12 @@ when the result message changes the page DOM.
 Tampermonkey checks the small
 `agent-control-plane-web-bridge.meta.js` file and downloads the complete
 `.user.js` only after it detects a newer version. Both URLs use the explicit
-GitHub `refs/heads/main` path. The full download URL also carries the release
-version, so a newly detected release cannot reuse an older cached script body.
+GitHub `refs/heads/main` path. Every full release has its own versioned path
+under `userscript/releases/`, so a newly detected release cannot reuse an older
+cached script body.
 
 If an older installation still uses the legacy `/main/` update URL, install
-0.7.3 once from the current `.user.js`; later releases use the new update
+0.7.4 once from the current `.user.js`; later releases use the new update
 channel automatically. If update checks still fail, open the browser extension
 details for Tampermonkey and confirm that Site access is set to **On all sites**.
 Tampermonkey documents that restricted runtime host permissions can break

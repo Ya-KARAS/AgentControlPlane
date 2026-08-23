@@ -71,20 +71,33 @@ const headerEndMarker = "// ==/UserScript==";
 const headerEnd = built.indexOf(headerEndMarker);
 if (headerEnd < 0) throw new Error("Userscript metadata header is missing");
 const meta = `${built.slice(0, headerEnd + headerEndMarker.length)}\n`;
+const versionMatch = built.match(/^\/\/ @version\s+(\S+)$/m);
+if (!versionMatch) throw new Error("Userscript version metadata is missing");
+const releaseOutputPath = path.join(
+  root,
+  "releases",
+  versionMatch[1],
+  "agent-control-plane-web-bridge.user.js",
+);
 
 if (process.argv.includes("--check")) {
   const current = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
   const currentMeta = fs.existsSync(metaOutputPath)
     ? fs.readFileSync(metaOutputPath, "utf8")
     : "";
-  if (current !== built || currentMeta !== meta) {
+  const currentRelease = fs.existsSync(releaseOutputPath)
+    ? fs.readFileSync(releaseOutputPath, "utf8")
+    : "";
+  if (current !== built || currentMeta !== meta || currentRelease !== built) {
     console.error("Generated userscript is stale. Run npm run userscript:build.");
     process.exitCode = 1;
   }
 } else {
   fs.writeFileSync(outputPath, built, "utf8");
   fs.writeFileSync(metaOutputPath, meta, "utf8");
+  fs.mkdirSync(path.dirname(releaseOutputPath), { recursive: true });
+  fs.writeFileSync(releaseOutputPath, built, "utf8");
   console.log(
-    `Built ${path.relative(process.cwd(), outputPath)} and ${path.relative(process.cwd(), metaOutputPath)} with ${registry.adapters.length} adapters.`,
+    `Built ${path.relative(process.cwd(), outputPath)}, ${path.relative(process.cwd(), metaOutputPath)}, and ${path.relative(process.cwd(), releaseOutputPath)} with ${registry.adapters.length} adapters.`,
   );
 }
