@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.4.0
+// @version      0.5.0
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -21,6 +21,7 @@
   const ROOT_ID = "acp-web-bridge-preview";
   const LOCAL_BASE_URL = "http://127.0.0.1:4318";
   const CANDIDATE_URL = `${LOCAL_BASE_URL}/v1/local-review/candidates`;
+  const CAPABILITIES_URL = `${LOCAL_BASE_URL}/v1/local-review/capabilities`;
   const ADAPTERS = /* @acp-adapters */ [];
   const TERMINAL_TASK_STATUSES = new Set([
     "completed",
@@ -42,6 +43,7 @@
   let pendingResultExpiresAt = 0;
   let suppressCapture = false;
   let inspectTimer = null;
+  let launchPending = false;
 
   const request = (options) => new Promise((resolve, reject) => {
     GM_xmlhttpRequest({
@@ -173,6 +175,24 @@
       cancelled: "任务已取消",
     };
     return labels[body.task.status] ?? "状态已更新";
+  };
+
+  const readCapabilities = async () => {
+    const response = await request({
+      method: "GET",
+      url: CAPABILITIES_URL,
+      headers: { "x-acp-page-origin": window.location.origin },
+    });
+    const body = JSON.parse(response.responseText);
+    if (
+      response.status !== 200 ||
+      !body.capabilities ||
+      typeof body.capabilities !== "object" ||
+      Array.isArray(body.capabilities)
+    ) {
+      throw new Error(body.error?.code ?? `http_${response.status}`);
+    }
+    return body.capabilities;
   };
 
   const stopTracking = () => {
@@ -308,7 +328,7 @@
       const id = envelopeId(envelope);
       if (id === dispatchingEnvelopeId || id === staged?.id) return;
       staged = { id, envelope };
-      showStatus("任务已准备，请回复“执行”");
+      showStatus(`${executionSummary(envelope)} · 回复“执行”`);
     } catch {
       showStatus("任务格式无效");
     }
@@ -319,7 +339,7 @@
     inspectTimer = setTimeout(inspectConversation, 250);
   };
 
-  const captureOrExpandComposer = (event) => {
+  const captureOrExpandComposer = async (event) => {
     if (suppressCapture || !event.isTrusted) return;
     const composer = findComposer();
     if (!composer) return;
@@ -343,13 +363,29 @@
     if (launch) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (launchPending) return;
       if (!launch.request && !latestText(adapter.user) && !latestText(adapter.assistant)) {
         showStatus("请在 @AgentControlPlane 后描述任务");
         return;
       }
-      writeComposer(controllerPrompt(launch.request), composer);
-      showStatus("网页 AI 正在整理任务");
-      submitComposer();
+      launchPending = true;
+      showStatus("正在读取本机可选配置");
+      try {
+        const capabilities = await readCapabilities();
+        writeComposer(controllerPrompt(launch.request, capabilities), composer);
+        showStatus("网页 AI 正在整理任务");
+        await submitComposer();
+      } catch (error) {
+        showStatus(
+          error.message === "timeout"
+            ? "连接本机超时"
+            : error.message === "network_error"
+              ? "本机 ACP 未连接"
+              : "无法读取本机配置",
+        );
+      } finally {
+        launchPending = false;
+      }
       return;
     }
 

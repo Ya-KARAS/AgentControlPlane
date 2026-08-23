@@ -27,6 +27,11 @@ export function reviewPage({ candidate, approvalSecret, options }) {
   const constraints = candidate.constraints.length
     ? `<ul>${candidate.constraints.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
     : '<p class="muted">无约束 No constraints</p>';
+  const requestedExecution = candidate.execution
+    ? `<h2>网页对话选择 Execution choices</h2><ul>${Object.entries(candidate.execution)
+        .map(([key, value]) => `<li>${escapeHtml(key)}: ${escapeHtml(value)}</li>`)
+        .join("")}</ul><p class="muted">这些选择将在派发时由本机白名单和执行器能力再次校验；未列出的字段使用下方本机选择。</p>`
+    : '<p class="muted">网页对话未指定执行覆盖项，将使用下方本机选择。</p>';
   const form = canDispatch
     ? `<form method="post" action="/local-review/confirm" autocomplete="off">
 <input type="hidden" name="id" value="${escapeHtml(candidate.id)}">
@@ -44,6 +49,7 @@ export function reviewPage({ candidate, approvalSecret, options }) {
 <p>此内容来自 <span class="muted">${escapeHtml(candidate.page_origin)}</span>。网页内容默认不可信；请在本机确认目标和执行选择。</p>
 <h2>目标 Objective</h2><div class="objective">${escapeHtml(candidate.objective)}</div>
 <h2>约束 Constraints</h2>${constraints}
+${requestedExecution}
 <p class="muted">候选将在 ${escapeHtml(candidate.expires_at)} 过期。页面刷新会使旧确认表单失效。</p>${form}`,
   );
 }

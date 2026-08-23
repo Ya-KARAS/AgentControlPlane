@@ -105,10 +105,11 @@ dispatches the structured envelope produced by the web conversation.
 
 The [desktop userscript preview](userscript/README.md) keeps task planning in
 the native ChatGPT or DeepSeek conversation. Start with `@AgentControlPlane`,
-let the web AI clarify the task, then reply with `执行` to dispatch through the
-locally saved workspace, executor, and profile. Automatic dispatch and safe
-result return are separate local opt-ins. The result sent to the webpage
-contains status and counts only.
+let the web AI clarify the task and select a workspace alias or path, executor,
+profile, advertised model, and reasoning effort in natural language. Reply with
+`执行` to dispatch. Omitted choices use local defaults. Automatic dispatch and
+safe result return are separate local opt-ins. The result sent to the webpage
+contains status, counts, and the non-secret execution ids.
 
 ```text
 ChatGPT / DeepSeek / Claude

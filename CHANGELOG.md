@@ -14,6 +14,13 @@
 - A loopback dispatch-settings page stores a locally selected workspace,
   executor, and profile. Automatic dispatch and safe result return are
   independent, default-off options.
+- The userscript can now discuss and stage a workspace alias or user-supplied
+  path, executor, profile, advertised model, and advertised reasoning effort.
+  Omitted fields continue to use local defaults. OpenCode receives an explicit
+  reasoning choice through its `--variant` option.
+- A loopback capability endpoint gives supported web pages a bounded list of
+  workspace aliases, ready executors, profiles, models, and reasoning efforts
+  for natural-language planning.
 
 ### Security
 
@@ -21,8 +28,9 @@
   credentials, and raw errors. Settings writes require a one-time local form
   secret, and the automatic-dispatch marker is not permitted by webpage CORS.
 - AI replies and DOM changes can stage task data but cannot authorize dispatch.
-  Page-supplied workspace, executor, profile, model, and credential fields are
-  discarded; local ACP settings and policy own those controls.
+  Requested execution choices remain untrusted until ACP validates them against
+  local workspace roots and live executor capabilities. Credential fields and
+  unsupported execution fields are discarded or rejected.
 
 ## v0.9.0 — 2026-08-21
 

@@ -24,6 +24,7 @@ import { LocalReviewRouter } from "./local-review/router.js";
 import { LocalReviewSettings } from "./local-review/settings.js";
 import {
   createCandidateReviewService,
+  localReviewCapabilities,
   localReviewOptions,
   validateLocalSelection,
 } from "./local-review/service.js";
@@ -239,12 +240,19 @@ export async function createApplication(overrides = {}) {
         validateLocalSelection(config, orchestrator, selection),
       audit: (type, payload) => store.audit(type, payload),
     });
+  const getLocalReviewCapabilities = () =>
+    localReviewCapabilities(
+      config,
+      orchestrator,
+      localReviewSettings.current(),
+    );
   const localReview = new LocalReviewRouter({
     service: candidateReview,
     settings: localReviewSettings,
     port: config.server.port,
     allowedPageOrigins: config.localReview?.allowedPageOrigins,
     getOptions: getLocalReviewOptions,
+    getCapabilities: getLocalReviewCapabilities,
   });
 
   function tokenMatches(request) {

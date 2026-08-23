@@ -58,6 +58,57 @@ test("candidate fields cannot select local execution options", () => {
   assert.equal(dispatched.length, 0);
 });
 
+test("candidate stages bounded execution preferences for later validation", () => {
+  const { service, dispatched } = serviceHarness();
+  const created = createCandidate(service, {
+    execution: {
+      workspace: "C:\\allowed",
+      executor: "opencode",
+      profile: "economy",
+      model: "opencode-go/deepseek-v4-pro",
+      reasoning_effort: "high",
+    },
+  });
+  assert.deepEqual(created.candidate.execution, {
+    workspace: "C:\\allowed",
+    executor: "opencode",
+    profile: "economy",
+    model: "opencode-go/deepseek-v4-pro",
+    reasoning_effort: "high",
+  });
+  assert.equal(dispatched.length, 0);
+  assert.throws(
+    () => createCandidate(service, { execution: { api_key: "secret" } }),
+    (error) => error.code === "candidate_execution_fields_denied",
+  );
+});
+
+test("fresh approval applies staged execution preferences", () => {
+  const { service, dispatched } = serviceHarness();
+  const created = createCandidate(service, {
+    execution: {
+      executor: "opencode",
+      model: "opencode-go/deepseek-v4-pro",
+      reasoning_effort: "high",
+    },
+  });
+  const review = service.beginReview(created.candidate.id, created.reviewSecret);
+  service.approve(created.candidate.id, review.approvalSecret, {
+    workspace: "C:\\allowed",
+    executor: "codex",
+    profile: "economy",
+  });
+  assert.deepEqual(dispatched[0], {
+    objective: "Create a local review test",
+    constraints: ["Touch one file"],
+    workspace: "C:\\allowed",
+    executor: "opencode",
+    profile: "economy",
+    model: "opencode-go/deepseek-v4-pro",
+    reasoning_effort: "high",
+  });
+});
+
 test("a candidate cannot dispatch before local review creates an approval secret", () => {
   const { service, dispatched } = serviceHarness();
   const created = createCandidate(service);

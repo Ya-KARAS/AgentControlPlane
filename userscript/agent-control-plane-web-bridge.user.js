@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.4.0
+// @version      0.5.0
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -47,8 +47,9 @@ function parseLaunchCommand(value) {
   };
 }
 
-function controllerPrompt(request = "") {
+function controllerPrompt(request = "", capabilities = {}) {
   const userRequest = boundedText(request, 4000);
+  const safeCapabilities = JSON.stringify(capabilities ?? {}, null, 2);
   return [
     "You are the planning controller for AgentControlPlane in this conversation.",
     "Discuss the engineering request with the user in natural language. Ask for missing requirements and resolve ambiguity before staging work.",
@@ -60,12 +61,24 @@ function controllerPrompt(request = "") {
         context: "Execution context needed by the engineering agent",
         constraints: ["Important implementation constraints"],
         acceptance_criteria: ["Observable completion criteria"],
+        execution: {
+          workspace: "A listed workspace alias, or an absolute path explicitly supplied by the user",
+          executor: "A listed executor id",
+          profile: "A listed profile id",
+          model: "A model id listed for the selected executor",
+          reasoning_effort: "A reasoning effort listed for the selected model",
+        },
       },
       null,
       2,
     ),
     TASK_CLOSE,
-    "AgentControlPlane resolves workspace, executor, profile, model, and credentials from local settings.",
+    "The local ACP capability summary below is authoritative for execution choices in this conversation.",
+    safeCapabilities,
+    "The user may choose workspace, executor, profile, model, and reasoning effort in natural language.",
+    "Use only listed workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
+    "Omit an execution field when the user did not choose it; local saved defaults then apply. Credentials always remain local and must never appear in ACP_TASK.",
+    "Before staging, state the execution choices that will override defaults and identify every omitted field as using the local default.",
     "The task is staged after you output ACP_TASK. Tell the user to reply with 执行 or another clear confirmation word.",
     "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
     userRequest
@@ -113,11 +126,43 @@ function candidateFromEnvelope(envelope) {
     const value = boundedText(entry, 980);
     if (value) constraints.push(`Acceptance: ${value}`);
   }
+  const executionLimits = {
+    workspace: 1000,
+    executor: 64,
+    profile: 64,
+    model: 200,
+    reasoning_effort: 32,
+  };
+  const execution = envelope?.execution &&
+    typeof envelope.execution === "object" &&
+    !Array.isArray(envelope.execution)
+    ? Object.fromEntries(
+        Object.entries(executionLimits)
+          .map(([key, limit]) => [key, boundedText(envelope.execution[key], limit)])
+          .filter(([, value]) => value),
+      )
+    : null;
   return {
     objective,
     constraints: constraints.slice(0, 16),
+    ...(execution && Object.keys(execution).length ? { execution } : {}),
     source: "userscript-preview",
   };
+}
+
+function executionSummary(envelope) {
+  const execution = candidateFromEnvelope(envelope).execution;
+  if (!execution) return "本机默认配置";
+  const workspace = execution.workspace
+    ? execution.workspace.split(/[\\/]/).filter(Boolean).at(-1)
+    : null;
+  return [
+    workspace,
+    execution.executor,
+    execution.profile,
+    execution.model,
+    execution.reasoning_effort,
+  ].filter(Boolean).join(" · ");
 }
 
 function isConfirmation(value) {
@@ -151,12 +196,20 @@ function safeResultBlock(task) {
       failed: Number(task?.tests?.failed ?? 0),
     },
     blocker_count: Number(task?.blocker_count ?? 0),
+    execution: {
+      executor: boundedText(task?.execution?.executor, 64) || null,
+      profile: boundedText(task?.execution?.profile, 64) || null,
+      model: boundedText(task?.execution?.model, 200) || null,
+      reasoning_effort:
+        boundedText(task?.execution?.reasoning_effort, 32) || null,
+    },
   }, null, 2)}\n</ACP_RESULT>`;
 }
 
   const ROOT_ID = "acp-web-bridge-preview";
   const LOCAL_BASE_URL = "http://127.0.0.1:4318";
   const CANDIDATE_URL = `${LOCAL_BASE_URL}/v1/local-review/candidates`;
+  const CAPABILITIES_URL = `${LOCAL_BASE_URL}/v1/local-review/capabilities`;
   const ADAPTERS = Object.freeze([{"id":"chatgpt","displayName":"ChatGPT","origins":["https://chatgpt.com"],"composer":["#prompt-textarea","textarea"],"send":["button[data-testid=\"send-button\"]","button[aria-label*=\"Send\"]"],"assistant":["[data-message-author-role=\"assistant\"]"],"user":["[data-message-author-role=\"user\"]"]},{"id":"deepseek","displayName":"DeepSeek","origins":["https://chat.deepseek.com"],"composer":["textarea","[contenteditable=\"true\"]"],"send":["button[aria-label*=\"Send\"]","button[aria-label*=\"发送\"]"],"assistant":[".ds-markdown","[data-role=\"assistant\"]",".markdown-body"],"user":["[data-message-author-role=\"user\"]","[data-role=\"user\"]",".ds-chat [class*=\"user\"]","main [class*=\"user\"]"]}]);
   const TERMINAL_TASK_STATUSES = new Set([
     "completed",
@@ -178,6 +231,7 @@ function safeResultBlock(task) {
   let pendingResultExpiresAt = 0;
   let suppressCapture = false;
   let inspectTimer = null;
+  let launchPending = false;
 
   const request = (options) => new Promise((resolve, reject) => {
     GM_xmlhttpRequest({
@@ -309,6 +363,24 @@ function safeResultBlock(task) {
       cancelled: "任务已取消",
     };
     return labels[body.task.status] ?? "状态已更新";
+  };
+
+  const readCapabilities = async () => {
+    const response = await request({
+      method: "GET",
+      url: CAPABILITIES_URL,
+      headers: { "x-acp-page-origin": window.location.origin },
+    });
+    const body = JSON.parse(response.responseText);
+    if (
+      response.status !== 200 ||
+      !body.capabilities ||
+      typeof body.capabilities !== "object" ||
+      Array.isArray(body.capabilities)
+    ) {
+      throw new Error(body.error?.code ?? `http_${response.status}`);
+    }
+    return body.capabilities;
   };
 
   const stopTracking = () => {
@@ -444,7 +516,7 @@ function safeResultBlock(task) {
       const id = envelopeId(envelope);
       if (id === dispatchingEnvelopeId || id === staged?.id) return;
       staged = { id, envelope };
-      showStatus("任务已准备，请回复“执行”");
+      showStatus(`${executionSummary(envelope)} · 回复“执行”`);
     } catch {
       showStatus("任务格式无效");
     }
@@ -455,7 +527,7 @@ function safeResultBlock(task) {
     inspectTimer = setTimeout(inspectConversation, 250);
   };
 
-  const captureOrExpandComposer = (event) => {
+  const captureOrExpandComposer = async (event) => {
     if (suppressCapture || !event.isTrusted) return;
     const composer = findComposer();
     if (!composer) return;
@@ -479,13 +551,29 @@ function safeResultBlock(task) {
     if (launch) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (launchPending) return;
       if (!launch.request && !latestText(adapter.user) && !latestText(adapter.assistant)) {
         showStatus("请在 @AgentControlPlane 后描述任务");
         return;
       }
-      writeComposer(controllerPrompt(launch.request), composer);
-      showStatus("网页 AI 正在整理任务");
-      submitComposer();
+      launchPending = true;
+      showStatus("正在读取本机可选配置");
+      try {
+        const capabilities = await readCapabilities();
+        writeComposer(controllerPrompt(launch.request, capabilities), composer);
+        showStatus("网页 AI 正在整理任务");
+        await submitComposer();
+      } catch (error) {
+        showStatus(
+          error.message === "timeout"
+            ? "连接本机超时"
+            : error.message === "network_error"
+              ? "本机 ACP 未连接"
+              : "无法读取本机配置",
+        );
+      } finally {
+        launchPending = false;
+      }
       return;
     }
 

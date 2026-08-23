@@ -4,7 +4,16 @@ import { ControlPlaneError } from "./errors.js";
 const ALLOWED_CANDIDATE_FIELDS = new Set([
   "objective",
   "constraints",
+  "execution",
   "source",
+]);
+
+const ALLOWED_EXECUTION_FIELDS = new Set([
+  "workspace",
+  "executor",
+  "profile",
+  "model",
+  "reasoning_effort",
 ]);
 
 function secretHash(value) {
@@ -61,7 +70,48 @@ function normalizeCandidate(input) {
       "source must be userscript-preview",
     );
   }
-  return { objective, constraints, source: input.source };
+  let execution = null;
+  if (input.execution !== undefined && input.execution !== null) {
+    if (typeof input.execution !== "object" || Array.isArray(input.execution)) {
+      throw new ControlPlaneError(
+        "invalid_candidate_execution",
+        "execution must be an object",
+      );
+    }
+    const unexpectedExecution = Object.keys(input.execution).filter(
+      (key) => !ALLOWED_EXECUTION_FIELDS.has(key),
+    );
+    if (unexpectedExecution.length) {
+      throw new ControlPlaneError(
+        "candidate_execution_fields_denied",
+        "execution contains unsupported fields",
+        { fields: unexpectedExecution.sort() },
+      );
+    }
+    const limits = {
+      workspace: 1000,
+      executor: 64,
+      profile: 64,
+      model: 200,
+      reasoning_effort: 32,
+    };
+    execution = Object.fromEntries(
+      Object.entries(limits)
+        .map(([key, limit]) => [key, String(input.execution[key] ?? "").trim(), limit])
+        .filter(([, value]) => value)
+        .map(([key, value, limit]) => {
+          if (value.length > limit) {
+            throw new ControlPlaneError(
+              "invalid_candidate_execution",
+              `execution.${key} is too long`,
+            );
+          }
+          return [key, value];
+        }),
+    );
+    if (Object.keys(execution).length === 0) execution = null;
+  }
+  return { objective, constraints, execution, source: input.source };
 }
 
 function publicCandidate(candidate) {
@@ -70,6 +120,7 @@ function publicCandidate(candidate) {
     status: candidate.status,
     objective: candidate.objective,
     constraints: [...candidate.constraints],
+    execution: candidate.execution ? { ...candidate.execution } : null,
     source: candidate.source,
     page_origin: candidate.pageOrigin,
     created_at: candidate.createdAt,
@@ -243,7 +294,10 @@ export class CandidateReviewService {
   }
 
   #dispatchCandidate(candidate, selection, approvalAuditType) {
-    const approved = this.validateApproval(selection);
+    const approved = this.validateApproval({
+      ...selection,
+      ...(candidate.execution ?? {}),
+    });
     candidate.status = "dispatching";
     candidate.approvalSecretHash = null;
     this.audit(approvalAuditType, {
@@ -260,6 +314,10 @@ export class CandidateReviewService {
         workspace: approved.workspace,
         executor: approved.executor,
         profile: approved.profile,
+        ...(approved.model ? { model: approved.model } : {}),
+        ...(approved.reasoning_effort
+          ? { reasoning_effort: approved.reasoning_effort }
+          : {}),
       });
       candidate.status = "dispatched";
       candidate.taskId = task.id;

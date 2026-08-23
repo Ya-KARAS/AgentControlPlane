@@ -9,8 +9,9 @@ conversation. On ChatGPT or DeepSeek, write:
 
 The web AI discusses the request, asks for missing details, and prepares a
 structured task. The bridge stages that task. Reply with `执行` when the task is
-ready. ACP then uses the workspace, executor, and profile saved on the local
-settings page.
+ready. In the same conversation, the user can select a workspace alias or an
+explicit path, executor, profile, advertised model, and reasoning effort. Any
+omitted choice comes from the local settings page.
 
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
@@ -27,7 +28,7 @@ contain a second task form.
 3. Use the userscript manager's install or update action.
 4. Start AgentControlPlane on `127.0.0.1:4318`.
 5. Open a supported web AI page and select the floating **ACP** pill.
-6. Save a workspace, executor, and profile on the local settings page.
+6. Save a default workspace, executor, and profile on the local settings page.
 7. Enable automatic dispatch if `执行` should use those saved choices without
    opening another local review page.
 8. Enable safe result return if the terminal task status should be sent back to
@@ -41,20 +42,24 @@ contain a second task form.
 4. The bridge stages the envelope. AI-generated text or DOM changes cannot
    dispatch it.
 5. A user presses Send with a short confirmation such as `执行`.
-6. ACP creates the task with locally saved execution choices and applies its
-   workspace and executor policy.
+6. ACP validates the requested execution choices against local workspace roots
+   and live executor capabilities. Omitted choices use locally saved defaults.
 7. If safe result return is enabled, the bridge sends an `<ACP_RESULT>` block
    to the same conversation after the task reaches a terminal state.
 
-The result block contains task status plus file, test, and blocker counts. It
-does not send local paths, raw logs, credentials, or raw errors to the webpage.
+The result block contains task status, file/test/blocker counts, and non-secret
+executor, profile, model, and reasoning ids. It does not send local paths, raw
+logs, credentials, or raw errors to the webpage.
 
 ## Local safety boundary
 
 - ACP listens on loopback; the userscript does not expose it on a public URL.
-- Workspace, executor, profile, model routing, and credentials remain local.
-- The webpage supplies only an objective, context, constraints, and acceptance
-  criteria. Page-supplied execution controls are discarded.
+- The bridge gives the web AI workspace aliases and the ids of ready executors,
+  profiles, advertised models, and reasoning efforts. It does not provide full
+  local paths or credentials.
+- The webpage may request those execution choices in a bounded nested object.
+  ACP treats the request as untrusted and validates it locally. A full path is
+  accepted only when the user supplied it and it is inside a configured root.
 - Dispatch requires a fresh user Send action containing a recognized short
   confirmation. Reading an AI reply or observing a DOM change is insufficient.
 - The origin-bound status capability expires and stays in userscript memory.

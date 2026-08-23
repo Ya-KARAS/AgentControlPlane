@@ -4,6 +4,7 @@ import {
   candidateFromEnvelope,
   controllerPrompt,
   envelopeId,
+  executionSummary,
   extractTaskEnvelope,
   isConfirmation,
   parseLaunchCommand,
@@ -22,12 +23,31 @@ test("launch command requires an exact AgentControlPlane mention boundary", () =
 });
 
 test("controller prompt keeps planning in the web conversation", () => {
-  const prompt = controllerPrompt("实现自然语言派发");
+  const prompt = controllerPrompt("使用 acp-live-test、OpenCode 和 high", {
+    current: {
+      workspace: "acp-live-test",
+      executor: "opencode",
+      profile: "economy",
+      model: null,
+      reasoning_effort: "low",
+    },
+    workspaces: ["acp-live-test"],
+    executors: [{ id: "opencode", display_name: "OpenCode" }],
+    profiles: { economy: { reasoning_effort: "low" } },
+    models: {
+      opencode: [{
+        id: "opencode-go/deepseek-v4-pro",
+        reasoning_efforts: ["high", "max"],
+      }],
+    },
+  });
   assert.match(prompt, /<ACP_TASK>/);
   assert.match(prompt, /<\/ACP_TASK>/);
-  assert.match(prompt, /实现自然语言派发/);
+  assert.match(prompt, /使用 acp-live-test、OpenCode 和 high/);
   assert.match(prompt, /reply with 执行/);
-  assert.match(prompt, /workspace, executor, profile, model, and credentials from local settings/);
+  assert.match(prompt, /opencode-go\/deepseek-v4-pro/);
+  assert.match(prompt, /user may choose workspace, executor, profile, model, and reasoning effort/i);
+  assert.match(prompt, /credentials always remain local/i);
 });
 
 test("task envelope extraction accepts one bounded JSON object", () => {
@@ -41,7 +61,7 @@ test("task envelope extraction accepts one bounded JSON object", () => {
   assert.equal(extractTaskEnvelope("<ACP_TASK>{}</ACP_TASK>"), null);
 });
 
-test("candidate conversion ignores page-selected execution controls and enforces bounds", () => {
+test("candidate conversion accepts bounded nested execution choices only", () => {
   const candidate = candidateFromEnvelope({
     objective: ` Build feature ${"x".repeat(5000)} `,
     context: "Repository already has tests",
@@ -50,6 +70,14 @@ test("candidate conversion ignores page-selected execution controls and enforces
     workspace: "C:\\attacker",
     executor: "codex",
     model: "untrusted",
+    execution: {
+      workspace: "acp-live-test",
+      executor: "opencode",
+      profile: "economy",
+      model: "opencode-go/deepseek-v4-pro",
+      reasoning_effort: "high",
+      api_key: "must-be-ignored",
+    },
   });
   assert.equal(candidate.objective.length, 4000);
   assert.deepEqual(candidate.constraints, [
@@ -57,9 +85,32 @@ test("candidate conversion ignores page-selected execution controls and enforces
     "No network",
     "Acceptance: All tests pass",
   ]);
-  assert.deepEqual(Object.keys(candidate).sort(), ["constraints", "objective", "source"]);
+  assert.deepEqual(candidate.execution, {
+    workspace: "acp-live-test",
+    executor: "opencode",
+    profile: "economy",
+    model: "opencode-go/deepseek-v4-pro",
+    reasoning_effort: "high",
+  });
+  assert.deepEqual(Object.keys(candidate).sort(), ["constraints", "execution", "objective", "source"]);
   assert.equal(candidate.source, "userscript-preview");
   assert.throws(() => candidateFromEnvelope({}), /task_objective_missing/);
+});
+
+test("execution summary shows a safe workspace label and explicit route", () => {
+  assert.equal(
+    executionSummary({
+      objective: "Test",
+      execution: {
+        workspace: "C:\\Users\\private\\acp-live-test",
+        executor: "opencode",
+        model: "opencode-go/deepseek-v4-pro",
+        reasoning_effort: "high",
+      },
+    }),
+    "acp-live-test · opencode · opencode-go/deepseek-v4-pro · high",
+  );
+  assert.equal(executionSummary({ objective: "Test" }), "本机默认配置");
 });
 
 test("confirmation is a short explicit user action", () => {
@@ -71,7 +122,7 @@ test("confirmation is a short explicit user action", () => {
   }
 });
 
-test("envelope identity is stable and safe result excludes private execution detail", () => {
+test("envelope identity is stable and safe result excludes private detail", () => {
   const envelope = { objective: "One task", constraints: ["One file"] };
   assert.equal(envelopeId(envelope), envelopeId(envelope));
   assert.notEqual(envelopeId(envelope), envelopeId({ objective: "Other" }));
@@ -86,9 +137,18 @@ test("envelope identity is stable and safe result excludes private execution det
     workspace: "C:\\private",
     error: "private error",
     logs: ["private log"],
+    execution: {
+      executor: "opencode",
+      profile: "economy",
+      model: "opencode-go/deepseek-v4-pro",
+      reasoning_effort: "high",
+      workspace: "C:\\private",
+    },
   });
   assert.match(result, /^<ACP_RESULT>/);
   assert.match(result, /"task_id": "task-1"/);
   assert.match(result, /"changed_files_count": 2/);
+  assert.match(result, /"executor": "opencode"/);
+  assert.match(result, /"reasoning_effort": "high"/);
   assert.doesNotMatch(result, /private|workspace|summary|error|logs/i);
 });

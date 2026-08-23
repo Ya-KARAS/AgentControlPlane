@@ -83,10 +83,18 @@ function errorStatus(error) {
 }
 
 export class LocalReviewRouter {
-  constructor({ service, settings, getOptions, port, allowedPageOrigins = null }) {
+  constructor({
+    service,
+    settings,
+    getOptions,
+    getCapabilities,
+    port,
+    allowedPageOrigins = null,
+  }) {
     this.service = service;
     this.settings = settings;
     this.getOptions = getOptions;
+    this.getCapabilities = getCapabilities;
     this.port = port;
     this.allowedPageOrigins = new Set(allowedPageOrigins ?? DEFAULT_PAGE_ORIGINS);
   }
@@ -95,6 +103,7 @@ export class LocalReviewRouter {
     return (
       url.pathname === "/v1/local-review/candidates" ||
       /^\/v1\/local-review\/candidates\/[^/]+\/status$/.test(url.pathname) ||
+      url.pathname === "/v1/local-review/capabilities" ||
       url.pathname === "/local-review/review" ||
       url.pathname === "/local-review/confirm" ||
       url.pathname === "/local-review/settings"
@@ -129,10 +138,30 @@ export class LocalReviewRouter {
     try {
       if (
         request.method === "OPTIONS" &&
-        url.pathname.startsWith("/v1/local-review/candidates")
+        url.pathname.startsWith("/v1/local-review/")
       ) {
         response.writeHead(204, cors);
         response.end();
+        return true;
+      }
+
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/local-review/capabilities"
+      ) {
+        const pageOrigin = request.headers["x-acp-page-origin"];
+        if (!this.allowedPageOrigins.has(pageOrigin)) {
+          throw new ControlPlaneError(
+            "candidate_origin_denied",
+            "The page origin is not allowed to read local capabilities",
+          );
+        }
+        sendJson(
+          response,
+          200,
+          { capabilities: this.getCapabilities() },
+          cors,
+        );
         return true;
       }
 

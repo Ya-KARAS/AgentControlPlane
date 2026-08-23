@@ -29,21 +29,25 @@ mutation, page load, navigation, AI-generated text, or an older user message
 cannot satisfy this confirmation. When automatic dispatch is disabled, ACP
 also opens its local one-time review page.
 
-ACP owns workspace, executor, profile, model routing, credentials, allowlists,
-rate limits, audit records, and executor policy. Fields that attempt to select
-those controls in a webpage task envelope are discarded.
+ACP owns workspace roots, executor readiness, model capabilities, credentials,
+rate limits, audit records, and executor policy. The webpage may request a
+workspace, executor, profile, advertised model, and advertised reasoning effort.
+ACP validates every requested value locally. Credentials and unsupported fields
+are never accepted.
 
 ## User flow
 
 1. The person sends `@AgentControlPlane` followed by an engineering request.
-2. The bridge replaces that command with a controller prompt sent to the web AI.
+2. The bridge reads a bounded local capability summary, then replaces that
+   command with a controller prompt sent to the web AI.
 3. The web AI discusses the task and asks for missing information.
 4. When ready, the web AI emits one JSON object between `<ACP_TASK>` tags.
 5. The bridge validates and stages the envelope, then reports that it is waiting
    for `执行`.
 6. The person sends a short confirmation from the page composer.
-7. ACP creates a candidate. A local setting either dispatches it with saved
-   choices or opens the one-time local review page.
+7. ACP creates a candidate and validates any requested execution choices. A
+   local setting either dispatches it with validated choices or opens the
+   one-time local review page. Omitted fields use saved defaults.
 8. The bridge polls task status with a short-lived, origin-bound capability.
 9. If the local result-return setting is enabled, a terminal `<ACP_RESULT>`
    projection is sent to the same conversation.
@@ -57,7 +61,14 @@ The webpage envelope can contain:
   "objective": "A concrete engineering objective",
   "context": "Execution context needed by the engineering agent",
   "constraints": ["Important implementation constraints"],
-  "acceptance_criteria": ["Observable completion criteria"]
+  "acceptance_criteria": ["Observable completion criteria"],
+  "execution": {
+    "workspace": "registered-project-alias",
+    "executor": "opencode",
+    "profile": "economy",
+    "model": "opencode-go/deepseek-v4-pro",
+    "reasoning_effort": "high"
+  }
 }
 ```
 
@@ -67,12 +78,24 @@ The bridge converts it to the existing candidate contract:
 {
   "objective": "string",
   "constraints": ["bounded strings"],
+  "execution": {
+    "workspace": "bounded string",
+    "executor": "bounded string",
+    "profile": "bounded string",
+    "model": "bounded string",
+    "reasoning_effort": "bounded string"
+  },
   "source": "userscript-preview"
 }
 ```
 
-The candidate contains no workspace path, executor, profile, model, credential,
-conversation transcript, browser identifier, or local file content.
+The execution object is optional. The bridge copies only its five named fields,
+and ACP validates them against local configuration. The candidate contains no
+credential, conversation transcript, browser identifier, or local file content.
+
+Before planning, `GET /v1/local-review/capabilities` returns workspace basenames,
+ready executor ids, profile ids, model ids, and reasoning effort ids. It does
+not return configured workspace roots, credentials, logs, or file contents.
 
 ## ACP-to-page contract
 
@@ -84,7 +107,13 @@ The optional result projection contains only:
   "status": "completed",
   "changed_files_count": 0,
   "tests": { "total": 0, "passed": 0, "failed": 0 },
-  "blocker_count": 0
+  "blocker_count": 0,
+  "execution": {
+    "executor": "opencode",
+    "profile": "economy",
+    "model": "opencode-go/deepseek-v4-pro",
+    "reasoning_effort": "high"
+  }
 }
 ```
 
@@ -112,14 +141,14 @@ modules. The candidate service has no browser or adapter dependency.
 ## Required gates
 
 1. Protocol tests cover exact mention parsing, bounded task extraction,
-   confirmation words, ignored page execution controls, stable envelope ids,
-   and result redaction.
+   confirmation words, bounded execution choices, stable envelope ids, and
+   result redaction.
 2. Static userscript tests require native-conversation markers and reject task
    forms, browser storage, credentials, raw task APIs, and HTML injection.
 3. Local integration tests prove automatic dispatch and result return are
    default-off settings protected by a one-time local form secret.
-4. Candidate tests reject unknown fields, origins, workspace overrides, replay,
-   stale capabilities, and missing approval.
+4. Candidate tests reject unknown fields, origins, choices outside local
+   allowlists, replay, stale capabilities, and missing approval.
 5. The full `npm run verify` gate must pass without live model calls.
 
 ## Feedback

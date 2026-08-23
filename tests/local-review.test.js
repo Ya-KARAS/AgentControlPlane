@@ -32,8 +32,19 @@ class ReviewOrchestrator {
     ];
   }
 
-  getModels() {
-    return [];
+  getModels(executorId) {
+    if (executorId !== "opencode") return [];
+    return [
+      {
+        id: "opencode-go/deepseek-v4-pro",
+        model: "opencode-go/deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "high" },
+          { reasoningEffort: "max" },
+        ],
+      },
+    ];
   }
 
   getRuntimeHealth() {
@@ -104,6 +115,36 @@ const validCandidate = {
   constraints: ["Touch one file"],
   source: "userscript-preview",
 };
+
+test("capability summary exposes safe natural-language choices", async () => {
+  await withReviewServer(async ({ baseUrl }) => {
+    const response = await fetch(`${baseUrl}/v1/local-review/capabilities`, {
+      headers: {
+        origin: "https://chatgpt.com",
+        "x-acp-page-origin": "https://chatgpt.com",
+      },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.capabilities.current.workspace, "allowed");
+    assert.equal(body.capabilities.current.executor, "opencode");
+    assert.deepEqual(body.capabilities.workspaces, ["allowed"]);
+    assert.deepEqual(body.capabilities.models.opencode[0], {
+      id: "opencode-go/deepseek-v4-pro",
+      display_name: "DeepSeek V4 Pro",
+      reasoning_efforts: ["high", "max"],
+    });
+    assert.doesNotMatch(JSON.stringify(body), /C:\\\\allowed/);
+
+    const denied = await fetch(`${baseUrl}/v1/local-review/capabilities`, {
+      headers: {
+        origin: "https://attacker.example",
+        "x-acp-page-origin": "https://attacker.example",
+      },
+    });
+    assert.equal(denied.status, 403);
+  });
+});
 
 test("candidate creation cannot dispatch or override local choices", async () => {
   await withReviewServer(async ({ baseUrl, orchestrator }) => {
@@ -211,6 +252,37 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
       workspace: "C:\\allowed",
       executor: "opencode",
       profile: "economy",
+    });
+
+    const overridden = await fetch(`${baseUrl}/v1/local-review/candidates`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://chatgpt.com",
+        "x-acp-client": "userscript-v1",
+        "x-acp-page-origin": "https://chatgpt.com",
+      },
+      body: JSON.stringify({
+        ...validCandidate,
+        execution: {
+          workspace: "allowed",
+          executor: "opencode",
+          profile: "economy",
+          model: "opencode-go/deepseek-v4-pro",
+          reasoning_effort: "high",
+        },
+      }),
+    });
+    assert.equal(overridden.status, 201);
+    assert.equal((await overridden.json()).auto_dispatched, true);
+    assert.deepEqual(orchestrator.requests[1], {
+      objective: validCandidate.objective,
+      constraints: validCandidate.constraints,
+      workspace: "C:\\allowed",
+      executor: "opencode",
+      profile: "economy",
+      model: "opencode-go/deepseek-v4-pro",
+      reasoning_effort: "high",
     });
 
     const preflight = await fetch(`${baseUrl}/v1/local-review/candidates`, {

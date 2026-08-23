@@ -5,6 +5,70 @@ import { ControlPlaneError } from "../core/errors.js";
 import { ExecutorAdapter, formatCliExitError } from "./executor.js";
 import { probeCommandExecutor } from "./discovery.js";
 
+const MODEL_LINE = /^[^\s{}]+\/[^\s{}]+$/;
+
+export function parseOpenCodeModels(output) {
+  const models = [];
+  let model = null;
+  let json = "";
+  for (const rawLine of String(output ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!model && MODEL_LINE.test(line)) {
+      model = line;
+      json = "";
+      continue;
+    }
+    if (!model) continue;
+    json += `${rawLine}\n`;
+    let metadata;
+    try {
+      metadata = JSON.parse(json);
+    } catch {
+      continue;
+    }
+    const efforts = Object.keys(
+      metadata?.variants && typeof metadata.variants === "object"
+        ? metadata.variants
+        : {},
+    );
+    models.push({
+      id: model,
+      model,
+      displayName: String(metadata?.name ?? model),
+      isDefault: false,
+      status: metadata?.status ?? null,
+      capabilities: {
+        chat: true,
+        tools: metadata?.capabilities?.toolcall === true,
+        vision: metadata?.capabilities?.input?.image === true,
+      },
+      context: Number.isFinite(metadata?.limit?.context)
+        ? { window: metadata.limit.context }
+        : null,
+      supportedReasoningEfforts: efforts.map((reasoningEffort) => ({
+        reasoningEffort,
+      })),
+    });
+    model = null;
+    json = "";
+  }
+  return models;
+}
+
+export function buildOpenCodeRunArgs(
+  prompt,
+  { model = null, effort = null, cwd = null, agent = null, autoApprove = false } = {},
+) {
+  const args = ["run", prompt, "--format", "json"];
+  if (cwd) args.push("--dir", cwd);
+  if (model) args.push("--model", model);
+  if (effort) args.push("--variant", effort);
+  if (agent) args.push("--agent", agent);
+  if (autoApprove) args.push("--auto");
+  args.push("--print-logs");
+  return args;
+}
+
 // Matches `opencode run --format json`: newline-delimited JSON events with a
 // top-level `type` and a `part` object. Text parts carry `part.text`; each
 // `step_finish` part carries per-step marginal `part.tokens` (input/output/
@@ -117,7 +181,37 @@ export class OpenCodeExecutor extends ExecutorAdapter {
   respond() {}
 
   async listModels() {
-    return { data: [] };
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (data) => {
+        if (settled) return;
+        settled = true;
+        resolve({ data });
+      };
+      const child = spawn(this.command, ["models", "--verbose"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env: process.env,
+      });
+      let stdout = "";
+      const timer = setTimeout(() => child.kill(), 15_000);
+      child.stdout.on("data", (chunk) => {
+        stdout = `${stdout}${chunk.toString("utf8")}`.slice(-2_000_000);
+      });
+      child.stderr.resume();
+      child.on("error", () => {
+        clearTimeout(timer);
+        finish([]);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        const data = code === 0 ? parseOpenCodeModels(stdout) : [];
+        for (const entry of data) {
+          entry.isDefault = Boolean(this.model && entry.id === this.model);
+        }
+        finish(data);
+      });
+    });
   }
 
   async getSandboxReadiness() {
@@ -177,11 +271,12 @@ export class OpenCodeExecutor extends ExecutorAdapter {
   }
 
   async startTurn(params) {
-    const { threadId, input, model, cwd, outputSchema } = params ?? {};
+    const { threadId, input, model, effort, cwd, outputSchema } = params ?? {};
     const turnId = randomUUID();
     const child = this.#spawnOpenCode(
       this.#buildPrompt(input, outputSchema),
       model ?? this.model,
+      effort,
       cwd,
     );
     this.turns.set(turnId, { child, threadId });
@@ -200,13 +295,14 @@ export class OpenCodeExecutor extends ExecutorAdapter {
     return {};
   }
 
-  #spawnOpenCode(prompt, model, cwd) {
-    const args = ["run", prompt, "--format", "json"];
-    if (cwd) args.push("--dir", cwd);
-    if (model) args.push("--model", model);
-    if (this.agent) args.push("--agent", this.agent);
-    if (this.autoApprove) args.push("--auto");
-    args.push("--print-logs");
+  #spawnOpenCode(prompt, model, effort, cwd) {
+    const args = buildOpenCodeRunArgs(prompt, {
+      model,
+      effort,
+      cwd,
+      agent: this.agent,
+      autoApprove: this.autoApprove,
+    });
     const child = spawn(this.command, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
