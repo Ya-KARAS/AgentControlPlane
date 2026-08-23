@@ -2,14 +2,15 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.7.4
+// @version      0.8.0
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.7.4/agent-control-plane-web-bridge.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.0/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
+// @connect      acp.asterroute.com
 // @grant        GM_openInTab
 // @grant        GM_deleteValue
 // @grant        GM_getValue
@@ -30,6 +31,8 @@
   const LOCAL_BASE_URL = "http://127.0.0.1:4318";
   const CANDIDATE_URL = `${LOCAL_BASE_URL}/v1/local-review/candidates`;
   const CAPABILITIES_URL = `${LOCAL_BASE_URL}/v1/local-review/capabilities`;
+  const REMOTE_RELAY_KEY = "acp-remote-relay-v1";
+  const DEFAULT_REMOTE_RELAY_URL = "https://acp.asterroute.com";
   const ADAPTERS = /* @acp-adapters */ [];
   const STAGE_TTL_MS = 10 * 60 * 1000;
   const TERMINAL_TASK_STATUSES = new Set([
@@ -66,6 +69,7 @@
   let revisionSequence = 0;
   let activeScope = conversationScope(window.location);
   let planningBaseline = null;
+  let remoteRelay = null;
 
   const nextRevision = () =>
     `${Date.now().toString(36)}:${TAB_ID}:${revisionSequence += 1}`;
@@ -179,6 +183,79 @@
     });
   });
 
+  const normalizeRemoteUrl = (value) => {
+    const url = new URL(String(value ?? "").trim());
+    if (url.protocol !== "https:") throw new Error("remote_url_invalid");
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return url.toString().replace(/\/$/, "");
+  };
+
+  const loadRemoteRelay = async () => {
+    const saved = await Promise.resolve(GM_getValue(REMOTE_RELAY_KEY, null));
+    try {
+      if (
+        !saved ||
+        typeof saved !== "object" ||
+        typeof saved.token !== "string" ||
+        !/^[A-Za-z0-9_-]{32,256}$/.test(saved.token)
+      ) return null;
+      return {
+        baseUrl: normalizeRemoteUrl(saved.baseUrl),
+        token: saved.token,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const remoteHeaders = (extra = {}) => ({
+    ...extra,
+    authorization: `Bearer ${remoteRelay.token}`,
+  });
+
+  const pairRemoteRelay = async () => {
+    const baseUrl = window.prompt(
+      t("remoteUrlPrompt"),
+      remoteRelay?.baseUrl ?? DEFAULT_REMOTE_RELAY_URL,
+    );
+    if (!baseUrl) return;
+    const code = window.prompt(t("remoteCodePrompt"), "");
+    if (!code) return;
+    showStatus(t("remotePairing"));
+    try {
+      const normalizedUrl = normalizeRemoteUrl(baseUrl);
+      const response = await request({
+        method: "POST",
+        url: `${normalizedUrl}/api/acp/pairings/claim`,
+        headers: { "content-type": "application/json" },
+        data: JSON.stringify({
+          code: code.trim().toUpperCase().replaceAll("-", ""),
+          kind: "browser",
+          label: `${adapter.displayName} · ${navigator.platform || "browser"}`.slice(0, 80),
+        }),
+      });
+      const body = JSON.parse(response.responseText);
+      if (response.status !== 201 || !/^[A-Za-z0-9_-]{32,256}$/.test(body.token ?? "")) {
+        throw new Error(body.error?.code ?? `http_${response.status}`);
+      }
+      remoteRelay = { baseUrl: normalizedUrl, token: body.token };
+      await Promise.resolve(GM_setValue(REMOTE_RELAY_KEY, remoteRelay));
+      showStatus(t("remoteConnected"));
+    } catch {
+      showStatus(t("remotePairFailed"));
+    }
+  };
+
+  const disconnectRemoteRelay = async () => {
+    remoteRelay = null;
+    await Promise.resolve(GM_deleteValue(REMOTE_RELAY_KEY));
+    showStatus(t("remoteDisconnected"));
+  };
+
   const visibleElements = (selectors) => {
     const found = [];
     for (const selector of selectors) {
@@ -275,7 +352,7 @@
   statusButton.textContent = `ACP · ${t("ready")}`;
   statusButton.title = t("openSettings");
   statusButton.addEventListener("click", () => {
-    GM_openInTab(`${LOCAL_BASE_URL}/local-review/settings`, {
+    GM_openInTab(remoteRelay?.baseUrl ?? `${LOCAL_BASE_URL}/local-review/settings`, {
       active: true,
       insert: true,
       setParent: true,
@@ -316,9 +393,14 @@
         },
       );
     }
+    GM_registerMenuCommand(t("menuConnectRemote"), pairRemoteRelay);
+    if (remoteRelay) {
+      GM_registerMenuCommand(t("menuDisconnectRemote"), disconnectRemoteRelay);
+    }
   };
 
   const initializeLanguage = async () => {
+    remoteRelay = await loadRemoteRelay();
     languageMode = normalizeUserscriptLanguage(
       await Promise.resolve(GM_getValue(USERSCRIPT_LANGUAGE_KEY, "auto")),
     );
@@ -553,11 +635,21 @@
   };
 
   const readCapabilities = async () => {
-    const response = await request({
-      method: "GET",
-      url: CAPABILITIES_URL,
-      headers: { "x-acp-page-origin": window.location.origin },
-    });
+    let response;
+    try {
+      response = await request({
+        method: "GET",
+        url: CAPABILITIES_URL,
+        headers: { "x-acp-page-origin": window.location.origin },
+      });
+    } catch (localError) {
+      if (!remoteRelay) throw localError;
+      response = await request({
+        method: "GET",
+        url: `${remoteRelay.baseUrl}/api/acp/capabilities`,
+        headers: remoteHeaders(),
+      });
+    }
     const body = JSON.parse(response.responseText);
     if (
       response.status !== 200 ||
@@ -601,14 +693,20 @@
       return;
     }
     try {
-      const response = await request({
-        method: "GET",
-        url: `${CANDIDATE_URL}/${encodeURIComponent(activeTracking.id)}/status`,
-        headers: {
-          "x-acp-page-origin": window.location.origin,
-          "x-acp-status-secret": activeTracking.secret,
-        },
-      });
+      const response = activeTracking.remote
+        ? await request({
+            method: "GET",
+            url: `${activeTracking.baseUrl}/api/acp/tasks/${encodeURIComponent(activeTracking.id)}`,
+            headers: { authorization: `Bearer ${activeTracking.token}` },
+          })
+        : await request({
+            method: "GET",
+            url: `${CANDIDATE_URL}/${encodeURIComponent(activeTracking.id)}/status`,
+            headers: {
+              "x-acp-page-origin": window.location.origin,
+              "x-acp-status-secret": activeTracking.secret,
+            },
+          });
       const body = JSON.parse(response.responseText);
       if (response.status !== 200) {
         throw new Error(body.error?.code ?? `http_${response.status}`);
@@ -664,29 +762,49 @@
         dispatchingEnvelopeId = activeEnvelope.id;
         showStatus(t("dispatching"));
         const idempotencyKey = await stableIdempotencyKey(activeEnvelope);
-        const response = await request({
-          method: "POST",
-          url: CANDIDATE_URL,
-          headers: {
-            "content-type": "application/json",
-            "x-acp-client": "userscript-v1",
-            "x-acp-idempotency-key": idempotencyKey,
-            "x-acp-page-origin": window.location.origin,
-          },
-          data: JSON.stringify(candidateFromEnvelope(activeEnvelope.envelope)),
-        });
+        let response;
+        let usedRemote = false;
+        try {
+          response = await request({
+            method: "POST",
+            url: CANDIDATE_URL,
+            headers: {
+              "content-type": "application/json",
+              "x-acp-client": "userscript-v1",
+              "x-acp-idempotency-key": idempotencyKey,
+              "x-acp-page-origin": window.location.origin,
+            },
+            data: JSON.stringify(candidateFromEnvelope(activeEnvelope.envelope)),
+          });
+        } catch (localError) {
+          if (!remoteRelay) throw localError;
+          usedRemote = true;
+          response = await request({
+            method: "POST",
+            url: `${remoteRelay.baseUrl}/api/acp/tasks`,
+            headers: remoteHeaders({
+              "content-type": "application/json",
+              "x-acp-idempotency-key": idempotencyKey,
+            }),
+            data: JSON.stringify({ candidate: candidateFromEnvelope(activeEnvelope.envelope) }),
+          });
+        }
         const body = JSON.parse(response.responseText);
-        const candidateId = body.candidate?.id;
+        const candidateId = usedRemote ? body.task?.id : body.candidate?.id;
         if (
           response.status !== 201 ||
           typeof candidateId !== "string" ||
           !/^[0-9a-f-]{36}$/i.test(candidateId) ||
-          typeof body.status_secret !== "string" ||
-          !/^[A-Za-z0-9_-]{20,128}$/.test(body.status_secret)
+          (!usedRemote && (
+            typeof body.status_secret !== "string" ||
+            !/^[A-Za-z0-9_-]{20,128}$/.test(body.status_secret)
+          ))
         ) {
           throw new Error(body.error?.code ?? `http_${response.status}`);
         }
-        const expiresAt = Date.parse(body.candidate.status_expires_at);
+        const expiresAt = usedRemote
+          ? Date.now() + 24 * 60 * 60 * 1000
+          : Date.parse(body.candidate.status_expires_at);
         if (!Number.isFinite(expiresAt)) {
           throw new Error("ACP returned an invalid status expiry");
         }
@@ -702,14 +820,17 @@
         stopTracking();
         tracking = {
           id: candidateId,
-          secret: body.status_secret,
+          secret: usedRemote ? null : body.status_secret,
           expiresAt,
           startedAt: Date.now(),
-          returnResultToChat: body.return_result_to_chat === true,
+          returnResultToChat: usedRemote || body.return_result_to_chat === true,
+          remote: usedRemote,
+          baseUrl: usedRemote ? remoteRelay.baseUrl : null,
+          token: usedRemote ? remoteRelay.token : null,
         };
-        showStatus(body.auto_dispatched ? t("dispatched") : t("waitingLocalReview"));
+        showStatus(usedRemote || body.auto_dispatched ? t("dispatched") : t("waitingLocalReview"));
         pollStatus(tracking);
-        if (!body.auto_dispatched) {
+        if (!usedRemote && !body.auto_dispatched) {
           const reviewUrl = validatedReviewUrl(body.review_url, candidateId);
           GM_openInTab(reviewUrl, { active: true, insert: true, setParent: true });
         }

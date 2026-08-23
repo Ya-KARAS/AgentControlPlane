@@ -32,6 +32,8 @@ import {
   localReviewOptions,
   validateLocalSelection,
 } from "./local-review/service.js";
+import { RemoteRelayCredentials } from "./remote-relay/credentials.js";
+import { RemoteRelayWorker } from "./remote-relay/worker.js";
 
 export function buildExecutor(config, provider) {
   if (provider === "openai-compatible") {
@@ -303,6 +305,31 @@ export async function createApplication(overrides = {}) {
       store,
       projectRegistry,
     );
+  const remoteRelayCredentials =
+    overrides.remoteRelayCredentials ??
+    new RemoteRelayCredentials({ stateDir: config.stateDir });
+  const remoteRelayWorker =
+    overrides.remoteRelayWorker ??
+    new RemoteRelayWorker({
+      credentials: remoteRelayCredentials,
+      candidateReview,
+      settings: localReviewSettings,
+      store,
+      getCapabilities: getLocalReviewCapabilities,
+    });
+  const remoteRelay = {
+    status: () => remoteRelayWorker.status(),
+    async pair(input) {
+      const result = await remoteRelayCredentials.pair(input);
+      remoteRelayWorker.wake();
+      return result;
+    },
+    disconnect() {
+      const result = remoteRelayCredentials.disconnect();
+      remoteRelayWorker.wake();
+      return result;
+    },
+  };
   const localReview = new LocalReviewRouter({
     service: candidateReview,
     settings: localReviewSettings,
@@ -311,7 +338,9 @@ export async function createApplication(overrides = {}) {
     getOptions: getLocalReviewOptions,
     getCapabilities: getLocalReviewCapabilities,
     projectRegistry,
+    remoteRelay,
   });
+  remoteRelayWorker.start();
 
   function tokenMatches(request) {
     if (!config.server.authToken) return true;
@@ -660,8 +689,10 @@ export async function createApplication(overrides = {}) {
     pairingManager,
     candidateReview,
     projectRegistry,
+    remoteRelayWorker,
     server,
     async close() {
+      remoteRelayWorker.stop();
       for (const executor of executors.values()) {
         await Promise.resolve(executor.stop()).catch(() => {});
       }

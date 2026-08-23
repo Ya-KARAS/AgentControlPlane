@@ -16,7 +16,8 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.7.4 provides separate Chinese and English interfaces and keeps an
+Version 0.8.0 provides separate Chinese and English interfaces, local/remote
+transport selection, and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
@@ -37,7 +38,9 @@ when the result message changes the page DOM.
 1. Install a userscript manager such as Tampermonkey in a desktop browser.
 2. Open `agent-control-plane-web-bridge.user.js` from this directory.
 3. Use the userscript manager's install or update action.
-4. Start AgentControlPlane on `127.0.0.1:4318`.
+4. For desktop-local use, start AgentControlPlane on `127.0.0.1:4318`. For
+   phone or remote use, create a browser pairing code in the HTTPS ACP portal,
+   then choose **ACP: Connect phone/remote portal** from the userscript menu.
 5. Use the visible language selector beside the floating ACP status button to
    choose **Auto**, **中文**, or **English**. The Tampermonkey script menu keeps
    the same choices as a fallback. The script stores this choice in
@@ -152,6 +155,8 @@ extension-isolated userscript storage for refresh and replay protection.
 
 ## Current boundary
 
-This release covers desktop ChatGPT and DeepSeek pages connected to a local ACP
-instance. Device pairing, mobile relay support, remote access, and automatic
-adaptation to unknown web AI layouts remain separate roadmap work.
+This release covers ChatGPT and DeepSeek pages connected either to the local
+ACP loopback service or to an explicitly paired HTTPS ACP portal. The remote
+mode stores a scoped browser token in userscript-managed storage, sends only
+the bounded ACP task envelope, and receives only the safe task projection.
+Unknown web AI layouts still require a separate adapter module.

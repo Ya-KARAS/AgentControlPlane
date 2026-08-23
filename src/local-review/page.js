@@ -116,6 +116,9 @@ export function settingsPage({
   options,
   saved = false,
   projectNotice = null,
+  remoteRelay = null,
+  remoteNotice = null,
+  relayPrefill = null,
 }) {
   const language = normalizeLocalReviewLanguage(settings.language);
   const t = (key, values) => localReviewText(language, key, values);
@@ -127,6 +130,9 @@ export function settingsPage({
   const savedNotice = saved ? `<p class="ok">${escapeHtml(t("settingsSaved"))}</p>` : "";
   const projectMessage = projectNotice
     ? `<p class="ok">${escapeHtml(projectNotice)}</p>`
+    : "";
+  const remoteMessage = remoteNotice
+    ? `<p class="ok">${escapeHtml(remoteNotice)}</p>`
     : "";
   const missingNotice = settings.workspaceStatus !== "available"
     ? `<p class="warn">${escapeHtml(t("missingProject"))}</p>`
@@ -185,11 +191,24 @@ ${candidateCount === 1 ? `<form method="post" action="/local-review/projects"><i
 </form>
 <h3>${escapeHtml(t("availableProjects"))}</h3>${availableRows || `<p class="muted">${escapeHtml(t("noAvailableProjects"))}</p>`}
 ${unavailableProjects.length ? `<details class="advanced"><summary>${escapeHtml(t("projectsNeedAttention"))} <span class="count">${unavailableProjects.length}</span></summary><div class="advanced-body">${unavailableRows}</div></details>` : ""}`;
+  const remoteState = remoteRelay?.state ?? "not_configured";
+  const remoteSection = `<h2>${escapeHtml(t("remoteRelayHeading"))}</h2>
+<p>${escapeHtml(t("remoteRelayIntro"))}</p>
+${remoteRelay?.configured
+    ? `<section class="project"><div class="project-head"><div><strong>${escapeHtml(remoteRelay.label ?? t("remoteComputer"))}</strong> <span class="${remoteState === "degraded" ? "warn" : "ok"}">${escapeHtml(t(`remoteState_${remoteState}`))}</span><p class="muted">${escapeHtml(remoteRelay.base_url ?? "")}</p></div><form method="post" action="/local-review/remote-relay"><input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}"><input type="hidden" name="action" value="disconnect"><button class="danger" type="submit">${escapeHtml(t("remoteDisconnect"))}</button></form></div></section>`
+    : `<form method="post" action="/local-review/remote-relay" autocomplete="off">
+<input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}"><input type="hidden" name="action" value="pair">
+<label>${escapeHtml(t("remoteRelayUrl"))}<input name="base_url" type="url" value="${escapeHtml(relayPrefill?.baseUrl ?? "")}" placeholder="https://acp.example.com" required></label>
+<label>${escapeHtml(t("remotePairCode"))}<input name="code" value="${escapeHtml(relayPrefill?.code ?? "")}" maxlength="20" required></label>
+<label>${escapeHtml(t("remoteComputerName"))}<input name="label" value="${escapeHtml(t("remoteComputer"))}" maxlength="80" required></label>
+<button type="submit">${escapeHtml(t("remotePair"))}</button>
+</form>`}
+<p class="muted">${escapeHtml(t("remoteAutoDispatchHint"))}</p>`;
   return page(
     t("settingsTitle"),
-    `${savedNotice}${projectMessage}${missingNotice}<h1>${escapeHtml(t("settingsHeading"))}</h1>
+    `${savedNotice}${projectMessage}${remoteMessage}${missingNotice}<h1>${escapeHtml(t("settingsHeading"))}</h1>
 <p>${escapeHtml(t("settingsIntro"))}</p>
-<p class="muted">${escapeHtml(t("safeResultHint"))}</p>${form}${projectLibrary}`,
+<p class="muted">${escapeHtml(t("safeResultHint"))}</p>${form}${remoteSection}${projectLibrary}`,
     language,
   );
 }

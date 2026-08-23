@@ -73,6 +73,7 @@ test("project library keeps routine actions visible without project maintenance 
     },
     formSecret: "local-secret",
     options: options(),
+    remoteRelay: { configured: false, state: "not_configured" },
   });
 
   assert.match(html, /项目文件夹路径/);
@@ -83,6 +84,9 @@ test("project library keeps routine actions visible without project maintenance 
   assert.match(html, /默认任务档位/);
   assert.match(html, /默认模型/);
   assert.match(html, /默认推理等级/);
+  assert.match(html, /手机与远程网页/);
+  assert.match(html, /name="base_url"/);
+  assert.match(html, /name="code"/);
   assert.equal((html.match(/网页 AI 推荐（本机校验）/g) ?? []).length, 4);
   assert.match(html, /value="add_project"/);
   assert.match(html, /当前默认/);
@@ -110,11 +114,14 @@ test("project library renders a separate English interface", () => {
     },
     formSecret: "local-secret",
     options: options(),
+    remoteRelay: { configured: true, state: "ready", base_url: "https://acp.example.com", label: "Desk" },
   });
 
   assert.match(html, /<html lang="en">/);
   assert.match(html, /Interface language/);
   assert.match(html, /Project library/);
+  assert.match(html, /Phone and remote web AI/);
+  assert.match(html, /Connected · ready/);
   assert.doesNotMatch(html, /Project tools \(optional\)|Scan root|Rescan projects|Project categories/);
   assert.doesNotMatch(html, /value="add_root"|value="scan"|value="update_category"/);
   assert.doesNotMatch(html, /高级设置|派发设置|可用项目/);

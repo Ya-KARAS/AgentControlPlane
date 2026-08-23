@@ -90,6 +90,7 @@ export class LocalReviewRouter {
     getOptions,
     getCapabilities,
     projectRegistry = null,
+    remoteRelay = null,
     port,
     allowedPageOrigins = null,
   }) {
@@ -98,6 +99,7 @@ export class LocalReviewRouter {
     this.getOptions = getOptions;
     this.getCapabilities = getCapabilities;
     this.projectRegistry = projectRegistry;
+    this.remoteRelay = remoteRelay;
     this.port = port;
     this.allowedPageOrigins = new Set(allowedPageOrigins ?? DEFAULT_PAGE_ORIGINS);
   }
@@ -110,6 +112,7 @@ export class LocalReviewRouter {
       url.pathname === "/local-review/review" ||
       url.pathname === "/local-review/confirm" ||
       url.pathname === "/local-review/settings"
+      || url.pathname === "/local-review/remote-relay"
       || url.pathname === "/local-review/projects"
     );
   }
@@ -226,6 +229,11 @@ export class LocalReviewRouter {
             settings: this.settings.current(),
             formSecret: this.settings.issueFormSecret(),
             options: this.getOptions(),
+            remoteRelay: this.remoteRelay?.status?.() ?? null,
+            relayPrefill: {
+              baseUrl: url.searchParams.get("relay") ?? "",
+              code: url.searchParams.get("code") ?? "",
+            },
           }),
         );
         return true;
@@ -241,7 +249,48 @@ export class LocalReviewRouter {
             settings: saved,
             formSecret: this.settings.issueFormSecret(),
             options: this.getOptions(),
+            remoteRelay: this.remoteRelay?.status?.() ?? null,
             saved: true,
+          }),
+        );
+        return true;
+      }
+
+      if (request.method === "POST" && url.pathname === "/local-review/remote-relay") {
+        if (!this.remoteRelay) {
+          throw new ControlPlaneError(
+            "remote_relay_unavailable",
+            "Remote relay support is unavailable",
+          );
+        }
+        const body = await readForm(request);
+        this.settings.authorizeFormSecret(body.form_secret);
+        let notice;
+        if (body.action === "pair") {
+          await this.remoteRelay.pair({
+            baseUrl: body.base_url,
+            code: body.code,
+            label: body.label,
+          });
+          notice = localReviewText(this.settings.current().language, "remotePaired");
+        } else if (body.action === "disconnect") {
+          this.remoteRelay.disconnect();
+          notice = localReviewText(this.settings.current().language, "remoteDisconnected");
+        } else {
+          throw new ControlPlaneError(
+            "remote_relay_action_invalid",
+            "Unknown remote relay action",
+          );
+        }
+        sendLocalHtml(
+          response,
+          200,
+          settingsPage({
+            settings: this.settings.current(),
+            formSecret: this.settings.issueFormSecret(),
+            options: this.getOptions(),
+            remoteRelay: this.remoteRelay.status(),
+            remoteNotice: notice,
           }),
         );
         return true;
@@ -298,6 +347,7 @@ export class LocalReviewRouter {
             settings: this.settings.current(),
             formSecret: this.settings.issueFormSecret(),
             options: this.getOptions(),
+            remoteRelay: this.remoteRelay?.status?.() ?? null,
             projectNotice: notice,
           }),
         );
