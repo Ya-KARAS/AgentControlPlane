@@ -18,7 +18,7 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.6\.0$/m);
+  assert.match(script, /^\/\/ @version\s+0\.6\.1$/m);
   assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
@@ -40,6 +40,7 @@ test("userscript declares the natural-language bridge metadata and supported sit
 test("userscript keeps routine operation inside the native web AI conversation", () => {
   const script = readScript();
   assert.match(script, /@AgentControlPlane/);
+  assert.match(script, /@ACP/);
   assert.match(script, /<ACP_TASK>/);
   assert.match(script, /<ACP_RESULT>/);
   assert.match(script, /MutationObserver/);
@@ -106,6 +107,7 @@ test("userscript documentation states the conversation and local safety boundary
   const readme = fs.readFileSync(path.resolve("userscript", "README.md"), "utf8");
   assert.match(readme, /native web AI\s+conversation/i);
   assert.match(readme, /@AgentControlPlane/);
+  assert.match(readme, /@ACP/);
   assert.match(readme, /reply with `执行`/i);
   assert.match(readme, /does not send local\s+paths,\s+raw\s+logs, credentials, or raw errors/i);
   assert.match(readme, /device pairing, mobile relay support/i);

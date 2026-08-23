@@ -104,7 +104,8 @@ keeps the selected workspace on the local machine, pairs once with ACP, and
 dispatches the structured envelope produced by the web conversation.
 
 The [desktop userscript preview](userscript/README.md) keeps task planning in
-the native ChatGPT or DeepSeek conversation. Start with `@AgentControlPlane`,
+the native ChatGPT or DeepSeek conversation. Start with `@ACP` (the
+`@acp` and `@AgentControlPlane` forms are also accepted),
 let the web AI clarify the task and select a project alias or workspace path, executor,
 profile, advertised model, and reasoning effort in natural language. Reply with
 `执行` to dispatch. Omitted choices use local defaults. Automatic dispatch and

@@ -37,7 +37,8 @@ are never accepted.
 
 ## User flow
 
-1. The person sends `@AgentControlPlane` followed by an engineering request.
+1. The person sends `@ACP` followed by an engineering request. The parser also
+   accepts `@acp` and `@AgentControlPlane`.
 2. The bridge reads a bounded local capability summary, then replaces that
    command with a controller prompt sent to the web AI.
 3. The web AI discusses the task and asks for missing information.
@@ -49,7 +50,7 @@ are never accepted.
    `确认变更` before dispatch confirmation is accepted.
    The floating pill shows the current action. Its hover text carries the full
    execution route and changed-field list.
-   A new `@AgentControlPlane` request writes a conversation-scoped planning
+   A new ACP mention request writes a conversation-scoped planning
    barrier. Confirmation and dispatch re-read the latest task and persisted
    revision under a browser-wide lock; a stale tab fails closed.
 6. The person sends a short confirmation from the page composer.

@@ -13,15 +13,23 @@ import {
   taskEnvelopeChanges,
 } from "../userscript/src/conversation-protocol.js";
 
-test("launch command requires an exact AgentControlPlane mention boundary", () => {
+test("launch command accepts ACP aliases with an exact mention boundary", () => {
   assert.deepEqual(parseLaunchCommand("@AgentControlPlane 修复测试"), {
     request: "修复测试",
   });
   assert.deepEqual(parseLaunchCommand("  @agentcontrolplane\n继续当前任务  "), {
     request: "继续当前任务",
   });
+  assert.deepEqual(parseLaunchCommand("@ACP 修复测试"), {
+    request: "修复测试",
+  });
+  assert.deepEqual(parseLaunchCommand("@acp\n继续当前任务"), {
+    request: "继续当前任务",
+  });
   assert.equal(parseLaunchCommand("@AgentControlPlaneFake do work"), null);
+  assert.equal(parseLaunchCommand("@ACPFake do work"), null);
   assert.equal(parseLaunchCommand("please @AgentControlPlane do work"), null);
+  assert.equal(parseLaunchCommand("please @ACP do work"), null);
 });
 
 test("controller prompt keeps planning in the web conversation", () => {

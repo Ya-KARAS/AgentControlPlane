@@ -1,4 +1,5 @@
 export const ACP_MENTION = "@AgentControlPlane";
+export const ACP_MENTIONS = Object.freeze([ACP_MENTION, "@ACP"]);
 export const TASK_OPEN = "<ACP_TASK>";
 export const TASK_CLOSE = "</ACP_TASK>";
 
@@ -27,11 +28,14 @@ function boundedText(value, limit) {
 
 export function parseLaunchCommand(value) {
   const text = String(value ?? "").trim();
-  if (!text.toLowerCase().startsWith(ACP_MENTION.toLowerCase())) return null;
-  const boundary = text.slice(ACP_MENTION.length, ACP_MENTION.length + 1);
+  const mention = ACP_MENTIONS.find((candidate) =>
+    text.toLowerCase().startsWith(candidate.toLowerCase()),
+  );
+  if (!mention) return null;
+  const boundary = text.slice(mention.length, mention.length + 1);
   if (boundary && !/\s/.test(boundary)) return null;
   return {
-    request: boundedText(text.slice(ACP_MENTION.length), 4000),
+    request: boundedText(text.slice(mention.length), 4000),
   };
 }
 

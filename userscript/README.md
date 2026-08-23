@@ -4,7 +4,7 @@ This desktop preview keeps routine ACP operation inside the native web AI
 conversation. On ChatGPT or DeepSeek, write:
 
 ```text
-@AgentControlPlane describe the engineering work
+@ACP describe the engineering work
 ```
 
 The web AI discusses the request, asks for missing details, and prepares a
@@ -46,7 +46,8 @@ when the result message changes the page DOM.
 
 ## Conversation flow
 
-1. A user sends `@AgentControlPlane` followed by a request.
+1. A user sends `@ACP` followed by a request. `@acp` and
+   `@AgentControlPlane` are accepted aliases.
 2. The bridge expands that message into a controller instruction for the web AI.
 3. The web AI asks questions until it can produce one `<ACP_TASK>` envelope.
 4. The bridge stages the envelope. AI-generated text or DOM changes cannot

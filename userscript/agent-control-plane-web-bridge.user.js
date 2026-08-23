@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.6.0
+// @version      0.6.1
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -21,6 +21,7 @@
   "use strict";
 
   const ACP_MENTION = "@AgentControlPlane";
+const ACP_MENTIONS = Object.freeze([ACP_MENTION, "@ACP"]);
 const TASK_OPEN = "<ACP_TASK>";
 const TASK_CLOSE = "</ACP_TASK>";
 
@@ -49,11 +50,14 @@ function boundedText(value, limit) {
 
 function parseLaunchCommand(value) {
   const text = String(value ?? "").trim();
-  if (!text.toLowerCase().startsWith(ACP_MENTION.toLowerCase())) return null;
-  const boundary = text.slice(ACP_MENTION.length, ACP_MENTION.length + 1);
+  const mention = ACP_MENTIONS.find((candidate) =>
+    text.toLowerCase().startsWith(candidate.toLowerCase()),
+  );
+  if (!mention) return null;
+  const boundary = text.slice(mention.length, mention.length + 1);
   if (boundary && !/\s/.test(boundary)) return null;
   return {
-    request: boundedText(text.slice(ACP_MENTION.length), 4000),
+    request: boundedText(text.slice(mention.length), 4000),
   };
 }
 
@@ -1091,7 +1095,7 @@ function observationWaitsBehindBarrier(record, observation) {
       event.stopImmediatePropagation();
       if (launchPending) return;
       if (!launch.request && !latestText(adapter.user) && !latestText(adapter.assistant)) {
-        showStatus("请在 @AgentControlPlane 后描述任务");
+        showStatus("请在 @ACP 后描述任务");
         return;
       }
       launchPending = true;

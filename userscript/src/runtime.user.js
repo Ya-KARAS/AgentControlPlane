@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.6.0
+// @version      0.6.1
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -701,7 +701,7 @@
       event.stopImmediatePropagation();
       if (launchPending) return;
       if (!launch.request && !latestText(adapter.user) && !latestText(adapter.assistant)) {
-        showStatus("请在 @AgentControlPlane 后描述任务");
+        showStatus("请在 @ACP 后描述任务");
         return;
       }
       launchPending = true;
