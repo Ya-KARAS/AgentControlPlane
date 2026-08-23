@@ -13,6 +13,7 @@ import { CodexExecutor } from "./executors/codex-executor.js";
 import { ClaudeCodeExecutor } from "./executors/claude-code-executor.js";
 import { OpenCodeExecutor } from "./executors/opencode-executor.js";
 import { KimiCodeExecutor } from "./executors/kimi-code-executor.js";
+import { ZCodeExecutor } from "./executors/zcode-executor.js";
 import { OpenAICompatibleExecutor } from "./executors/openai-compatible-executor.js";
 import { assertExecutor } from "./executors/executor.js";
 import { assertLifecycle } from "./executors/lifecycle.js";
@@ -93,6 +94,17 @@ export function buildExecutor(config, provider) {
       workspaceRoots: config.workspaceRoots,
     });
   }
+  if (provider === "zcode") {
+    const options = config.executor.zcode ?? {};
+    return new ZCodeExecutor({
+      command: options.command ?? null,
+      model: options.model ?? null,
+      mode: options.mode ?? "yolo",
+      workspaceRoots: config.workspaceRoots,
+      storageRoot: options.storageRoot ?? undefined,
+      desktopRoot: options.desktopRoot ?? undefined,
+    });
+  }
   return new CodexExecutor({
     command: config.codex.command,
     disabledFeatures: config.codex.disabledFeatures,
@@ -107,6 +119,7 @@ export function buildExecutors(config) {
     "claude",
     "opencode",
     "kimi",
+    "zcode",
   ];
   const executors = new Map();
   for (const provider of providers) {

@@ -35,6 +35,13 @@ test("buildExecutors includes the Kimi Code built-in executor", () => {
   assert.equal(kimi.describe().capabilities.persistentThreads, false);
 });
 
+test("buildExecutors includes the ZCode built-in executor", () => {
+  const zcode = buildExecutors(relayConfig([])).get("zcode");
+  assert.ok(zcode);
+  assert.equal(zcode.describe().display_name, "ZCode");
+  assert.equal(zcode.describe().capabilities.tokenUsage, true);
+});
+
 test("buildExecutors registers each relay as a model-endpoint executor", () => {
   const executors = buildExecutors(
     relayConfig([

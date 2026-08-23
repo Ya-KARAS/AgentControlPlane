@@ -11,9 +11,9 @@
 
 Turn a web-AI conversation into a verified local coding task.
 
-AgentControlPlane sends a compact brief to OpenCode, Codex, Claude Code, or an
-OpenAI-compatible executor, then returns status, changed files, test evidence,
-usage, and continuation state.
+AgentControlPlane sends a compact brief to OpenCode, Codex, Claude Code,
+Kimi Code, ZCode, or an OpenAI-compatible executor, then returns status,
+changed files, test evidence, usage, and continuation state.
 
 [Run the live demo](#run-the-live-demo) · [Connect a web AI](#connect-a-web-ai) ·
 [Architecture](docs/ARCHITECTURE.md) · [中文文档](README.zh-CN.md)
@@ -82,7 +82,8 @@ web AI <- result/evidence <- persisted task  <- local executor
 - Structured delegation: the web conversation produces an objective,
   constraints, acceptance criteria, profile, executor, and optional model.
 - Executor routing: automatic discovery selects a ready executor; each task
-  can select OpenCode, Codex, Claude Code, or a configured model endpoint.
+  can select OpenCode, Codex, Claude Code, Kimi Code, ZCode, or a configured
+  model endpoint.
 - Persistent results: tasks record status, changed files, test evidence,
   token usage, executor history, and continuation packages.
 - Cross-executor continuation: an explicit follow-up can select a compatible
@@ -125,7 +126,7 @@ ChatGPT / DeepSeek / Claude
               |
       AgentControlPlane :4318
               |
- OpenCode / Codex / Claude Code / model endpoint
+ OpenCode / Codex / Claude Code / Kimi Code / ZCode / model endpoint
 ```
 
 ## Supported executors
@@ -136,17 +137,27 @@ ChatGPT / DeepSeek / Claude
 | Codex | App Server | installed client, account quota, and Windows sandbox readiness |
 | Claude Code | CLI | Claude Pro/Max login or an Anthropic API key |
 | Kimi Code | CLI | installed CLI with a Kimi login and configured model |
+| ZCode | bundled CLI | installed ZCode desktop with an enabled BigModel or Z.ai model provider |
 | OpenCodex | OpenAI-compatible endpoint | reachable endpoint, configured model, and verified tool capability |
 | DeepSeek Harness | OpenAI-compatible endpoint | DeepSeek API configuration and verified tool capability |
 
 Run `npm run doctor` to list discovery status and the automatic default. A task
-can set `executor: "opencode"`, `"codex"`, `"claude"`, `"kimi"`,
+can set `executor: "opencode"`, `"codex"`, `"claude"`, `"kimi"`, `"zcode"`,
 `"openai-compatible"`, or `"deepseek"`.
 
 Kimi Code can use its managed membership login or a provider configured with a
 Kimi Platform API key. ACP reads readiness from the installed Kimi CLI and does
 not store either credential in the repository. See the
 [official Kimi provider guide](https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/providers).
+
+ZCode is discovered from the official Windows desktop installation even when
+`zcode` is not on `PATH`. ACP reads the active desktop provider and model
+catalog, writes only non-secret CLI model metadata, and passes the desktop
+credential to the child process in memory. For a desktop Start Plan that
+requires interactive verification, ACP prefers an available Coding Plan
+credential for headless work. ZCode currently uses its configured reasoning
+default because the bundled headless CLI does not expose a working effort flag.
+See the [official ZCode model setup guide](https://zcode.z.ai/en/docs/configuration).
 
 ## Dispatch from a connected web AI
 

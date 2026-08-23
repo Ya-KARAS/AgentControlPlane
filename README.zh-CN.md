@@ -11,8 +11,8 @@
 
 把网页 AI 对话转成经过验证的本地工程任务。
 
-AgentControlPlane 将精简简报发送给 OpenCode、Codex、Claude Code 或
-OpenAI-compatible 执行器，再返回状态、变更文件、测试证据、用量和延续状态。
+AgentControlPlane 将精简简报发送给 OpenCode、Codex、Claude Code、Kimi Code、
+ZCode 或 OpenAI-compatible 执行器，再返回状态、变更文件、测试证据、用量和延续状态。
 
 [运行真实 Demo](#运行真实-demo) · [连接网页 AI](#连接网页-ai) ·
 [架构](docs/ARCHITECTURE.zh-CN.md) · [English](README.md)
@@ -76,8 +76,8 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 ```
 
 - 结构化委派：网页对话生成目标、约束、验收标准、配置档、执行器和可选模型。
-- 执行器路由：自动发现会选择就绪执行器；每项任务也可以指定 OpenCode、
-  Codex、Claude Code 或已配置的模型端点。
+- 执行器路由：自动发现会选择就绪执行器；每项任务也可以指定 OpenCode、Codex、
+  Claude Code、Kimi Code、ZCode 或已配置的模型端点。
 - 持久化结果：任务记录状态、变更文件、测试证据、Token 用量、执行器历史和
   延续包。
 - 跨执行器延续：显式跟进可以选择兼容执行器，并保留逻辑任务链路。基础设施
@@ -112,7 +112,7 @@ ChatGPT / DeepSeek / Claude
               |
       AgentControlPlane :4318
               |
- OpenCode / Codex / Claude Code / 模型端点
+ OpenCode / Codex / Claude Code / Kimi Code / ZCode / 模型端点
 ```
 
 ## 支持的执行器
@@ -120,14 +120,24 @@ ChatGPT / DeepSeek / Claude
 | 执行器 | 接口 | 就绪条件 |
 |---|---|---|
 | OpenCode | CLI | 已安装 CLI，并配置可用模型 |
+| ZCode | 桌面版内置 CLI | 已安装 ZCode 桌面版，并启用 BigModel 或 Z.ai 模型通道 |
 | Codex | App Server | 已安装客户端、账户额度和 Windows 沙箱就绪 |
 | Claude Code | CLI | Claude Pro/Max 登录或 Anthropic API 密钥 |
+| Kimi Code | CLI | 已安装 CLI，已登录 Kimi，并配置可用模型 |
 | OpenCodex | OpenAI-compatible 端点 | 端点可访问、模型已配置、工具能力已验证 |
 | DeepSeek Harness | OpenAI-compatible 端点 | DeepSeek API 已配置、工具能力已验证 |
 
 运行 `npm run doctor` 可查看发现状态和自动默认项。任务可以设置
-`executor: "opencode"`、`"codex"`、`"claude"`、
+`executor: "opencode"`、`"codex"`、`"claude"`、`"kimi"`、`"zcode"`、
 `"openai-compatible"` 或 `"deepseek"`。
+
+ACP 即使在 `PATH` 中找不到 `zcode`，也会发现官方 Windows 桌面版附带的
+ZCode CLI。ACP 读取桌面版当前的模型目录，只把不含密钥的模型信息写入
+ZCode CLI 配置；凭据仅通过子进程内存环境传递。若桌面 Start Plan 要求交互式
+验证码，而本机已有 Coding Plan 凭据，ACP 会优先使用可无界面调用的 Coding
+Plan。当前 ZCode 无界面 CLI 不提供可用的推理等级参数，因此任务使用 ZCode
+自身配置的默认推理等级。配置方法见
+[ZCode 官方模型接入说明](https://zcode.z.ai/en/docs/configuration)。
 
 ## 从网页 AI 派发
 
