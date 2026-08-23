@@ -40,6 +40,10 @@
 - Web Bridge 0.7.0 provides separate Chinese and English status text,
   confirmation prompts, and planning-controller instructions. The Tampermonkey
   menu stores Follow browser, Chinese, or English as the interface language.
+- Web Bridge 0.7.1 moves the language selector into the visible floating UI.
+  The local dispatch and project-library pages now persist a separate Chinese
+  or English interface choice. The optional project maintenance area is named
+  by purpose and no longer exposes internal path revision numbers.
 
 ### Security
 

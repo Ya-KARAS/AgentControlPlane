@@ -66,6 +66,7 @@ test("project library keeps routine actions visible and management controls adva
       workspace: "project:available",
       executor: "opencode",
       profile: "economy",
+      language: "zh-CN",
       autoDispatch: false,
       returnResultToChat: false,
       workspaceStatus: "available",
@@ -76,6 +77,8 @@ test("project library keeps routine actions visible and management controls adva
 
   assert.match(html, /项目文件夹路径/);
   assert.match(html, /资料目录和空文件夹都可以加入项目库/);
+  assert.match(html, /界面语言/);
+  assert.match(html, /name="language"/);
   assert.match(html, /默认执行器/);
   assert.match(html, /默认任务档位/);
   assert.match(html, /默认模型/);
@@ -87,9 +90,35 @@ test("project library keeps routine actions visible and management controls adva
   assert.match(html, /需要处理的项目/);
   assert.match(html, /确认新位置/);
   assert.match(html, /value="remove"/);
-  assert.match(html, /<summary>高级设置<\/summary>/);
+  assert.match(html, /<summary>项目工具（可选）<\/summary>/);
+  assert.match(html, /日常派发无需操作这里/);
   assert.match(html, /value="add_root"/);
-  assert.match(html, /revision 2/);
+  assert.doesNotMatch(html, /revision 2/);
+});
+
+test("project library renders a separate English interface", () => {
+  const html = settingsPage({
+    settings: {
+      workspace: "project:available",
+      executor: "opencode",
+      profile: "economy",
+      model: "auto",
+      reasoning_effort: "auto",
+      language: "en",
+      autoDispatch: false,
+      returnResultToChat: false,
+      workspaceStatus: "available",
+    },
+    formSecret: "local-secret",
+    options: options(),
+  });
+
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, /Interface language/);
+  assert.match(html, /Project library/);
+  assert.match(html, /Project tools \(optional\)/);
+  assert.match(html, /Routine dispatch does not require them/);
+  assert.doesNotMatch(html, /高级设置|派发设置|可用项目/);
 });
 
 test("project action errors return to the local project library", () => {
@@ -111,11 +140,12 @@ test("setting one project as default preserves the remaining dispatch settings",
   });
 
   settings.save(settings.issueFormSecret(), {
-    workspace: "project:available",
-    executor: "opencode",
+      workspace: "project:available",
+      executor: "opencode",
       profile: "economy",
       model: "auto",
       reasoning_effort: "auto",
+      language: "en",
     auto_dispatch: "on",
     return_result_to_chat: "on",
   });
@@ -129,6 +159,7 @@ test("setting one project as default preserves the remaining dispatch settings",
   assert.equal(saved.profile, "economy");
   assert.equal(saved.model, "auto");
   assert.equal(saved.reasoning_effort, "auto");
+  assert.equal(saved.language, "en");
   assert.equal(saved.autoDispatch, true);
   assert.equal(saved.returnResultToChat, true);
 });

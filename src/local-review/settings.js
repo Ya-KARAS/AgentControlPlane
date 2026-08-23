@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ControlPlaneError } from "../core/errors.js";
+import { normalizeLocalReviewLanguage } from "./i18n.js";
 
 function hashSecret(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
@@ -43,6 +44,7 @@ export class LocalReviewSettings {
       return {
         autoDispatch: parsed.autoDispatch === true,
         returnResultToChat: parsed.returnResultToChat === true,
+        language: normalizeLocalReviewLanguage(parsed.language),
         workspace: typeof parsed.workspace === "string" ? parsed.workspace : null,
         executor: typeof parsed.executor === "string" ? parsed.executor : null,
         profile: typeof parsed.profile === "string" ? parsed.profile : null,
@@ -56,6 +58,7 @@ export class LocalReviewSettings {
       return {
         autoDispatch: false,
         returnResultToChat: false,
+        language: "zh-CN",
         workspace: null,
         executor: null,
         profile: null,
@@ -99,6 +102,7 @@ export class LocalReviewSettings {
     return {
       autoDispatch: this.stored.autoDispatch,
       returnResultToChat: this.stored.returnResultToChat,
+      language: normalizeLocalReviewLanguage(this.stored.language),
       workspaceStatus: storedProject?.status ?? "available",
       ...selected,
     };
@@ -123,12 +127,14 @@ export class LocalReviewSettings {
     this.stored = {
       autoDispatch: input.auto_dispatch === "on",
       returnResultToChat: input.return_result_to_chat === "on",
+      language: normalizeLocalReviewLanguage(input.language),
       ...selection,
     };
     this.#persist();
     this.audit("local_review.settings_updated", {
       autoDispatch: this.stored.autoDispatch,
       returnResultToChat: this.stored.returnResultToChat,
+      language: this.stored.language,
       workspace: selection.workspace,
       executor: selection.executor,
       profile: selection.profile,

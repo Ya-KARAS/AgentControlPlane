@@ -18,7 +18,7 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.7\.0$/m);
+  assert.match(script, /^\/\/ @version\s+0\.7\.1$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
   assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
@@ -77,6 +77,9 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /ACP 语言：中文/);
   assert.match(script, /ACP language: English/);
   assert.match(script, /acp-ui-language-v1/);
+  assert.match(script, /languageSelect/);
+  assert.match(script, /<select|document\.createElement\("select"\)/);
+  assert.match(script, /ACP interface language/);
   assert.match(script, /button\[data-state="completed"\]/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);

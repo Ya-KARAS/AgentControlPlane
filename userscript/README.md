@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.7.0 provides separate Chinese and English interfaces and keeps an
+Version 0.7.1 provides separate Chinese and English interfaces and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
 effort before dispatch, the pill asks for `确认变更` before it accepts `执行`.
@@ -38,8 +38,10 @@ when the result message changes the page DOM.
 2. Open `agent-control-plane-web-bridge.user.js` from this directory.
 3. Use the userscript manager's install or update action.
 4. Start AgentControlPlane on `127.0.0.1:4318`.
-5. Open the Tampermonkey script menu and choose **Follow browser**, **Chinese**,
-   or **English**. The script stores this choice in userscript-isolated storage.
+5. Use the visible language selector beside the floating ACP status button to
+   choose **Auto**, **中文**, or **English**. The Tampermonkey script menu keeps
+   the same choices as a fallback. The script stores this choice in
+   userscript-isolated storage.
 6. Open a supported web AI page and select the floating **ACP** pill.
 7. Save a workspace and choose Auto or a concrete default for executor, task
    profile, model, and reasoning effort on the local settings page.
@@ -50,7 +52,8 @@ when the result message changes the page DOM.
 
 ## Interface language
 
-The Tampermonkey script menu provides three persistent choices:
+The floating ACP control and the Tampermonkey script menu provide three
+persistent choices:
 
 - **Follow browser** selects Chinese for a `zh` browser locale and English for
   other locales.
@@ -59,6 +62,10 @@ The Tampermonkey script menu provides three persistent choices:
 
 Changing the language reloads the current web AI page. `<ACP_TASK>` and
 `<ACP_RESULT>` field names remain stable across both languages.
+
+The local dispatch-settings and project-library page has its own visible
+Chinese/English selector. This preference stays in ACP's local settings and is
+independent from the userscript preference.
 
 ## Conversation flow
 

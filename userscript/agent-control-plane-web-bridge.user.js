@@ -2,7 +2,7 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.7.0
+// @version      0.7.1
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
@@ -33,6 +33,7 @@ const MESSAGES = Object.freeze({
     menuAuto: "ACP 语言：跟随浏览器",
     menuChinese: "ACP 语言：中文",
     menuEnglish: "ACP 语言：英文",
+    languageLabel: "ACP 界面语言",
     ready: "就绪",
     planning: "网页 AI 正在整理任务",
     archived: "本对话任务已封存",
@@ -94,6 +95,7 @@ const MESSAGES = Object.freeze({
     menuAuto: "ACP language: Follow browser",
     menuChinese: "ACP language: Chinese",
     menuEnglish: "ACP language: English",
+    languageLabel: "ACP interface language",
     ready: "Ready",
     planning: "Web AI is preparing the task",
     archived: "Conversation task archived",
@@ -853,9 +855,10 @@ function observationWaitsBehindBarrier(record, observation) {
 
   const style = document.createElement("style");
   style.textContent = `
-    #${ROOT_ID} { bottom: 20px; font-family: system-ui, sans-serif; position: fixed; right: 20px; z-index: 2147483647; }
+    #${ROOT_ID} { align-items: center; bottom: 20px; display: flex; font-family: system-ui, sans-serif; gap: 7px; position: fixed; right: 20px; z-index: 2147483647; }
     #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; transition: background-color .18s ease, box-shadow .18s ease; white-space: nowrap; }
     #${ROOT_ID} button[data-state="completed"] { background: #16803d; box-shadow: 0 8px 24px rgba(22, 128, 61, .3); }
+    #${ROOT_ID} select { appearance: auto; background: #161b22; border: 1px solid #536af5; border-radius: 999px; color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; padding: 8px 9px; }
   `;
   const statusButton = document.createElement("button");
   statusButton.type = "button";
@@ -868,7 +871,24 @@ function observationWaitsBehindBarrier(record, observation) {
       setParent: true,
     });
   });
-  root.append(style, statusButton);
+  const languageSelect = document.createElement("select");
+  languageSelect.setAttribute("aria-label", t("languageLabel"));
+  for (const [value, label] of [
+    ["auto", "Auto"],
+    ["zh-CN", "中文"],
+    ["en", "English"],
+  ]) {
+    const languageOption = document.createElement("option");
+    languageOption.value = value;
+    languageOption.textContent = label;
+    languageSelect.append(languageOption);
+  }
+  languageSelect.addEventListener("change", async () => {
+    const mode = normalizeUserscriptLanguage(languageSelect.value);
+    await Promise.resolve(GM_setValue(USERSCRIPT_LANGUAGE_KEY, mode));
+    window.location.reload();
+  });
+  root.append(style, languageSelect, statusButton);
   document.body.append(root);
 
   const registerLanguageMenu = () => {
@@ -896,6 +916,9 @@ function observationWaitsBehindBarrier(record, observation) {
       languageMode,
       navigator.languages ?? [navigator.language],
     );
+    languageSelect.value = languageMode;
+    languageSelect.setAttribute("aria-label", t("languageLabel"));
+    languageSelect.title = t("languageLabel");
     root.setAttribute("aria-label", t("ariaLabel"));
     statusButton.textContent = `ACP · ${t("ready")}`;
     statusButton.title = t("openSettings");

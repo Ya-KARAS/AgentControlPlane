@@ -25,6 +25,8 @@ test("Chinese and English UI messages are separate and support interpolation", (
   assert.deepEqual(userscriptMessageKeys("zh-CN"), userscriptMessageKeys("en"));
   assert.equal(userscriptText("zh-CN", "ready"), "就绪");
   assert.equal(userscriptText("en", "ready"), "Ready");
+  assert.equal(userscriptText("zh-CN", "languageLabel"), "ACP 界面语言");
+  assert.equal(userscriptText("en", "languageLabel"), "ACP interface language");
   assert.equal(
     userscriptText("zh-CN", "executionRoute", { route: "OpenCode · economy" }),
     "执行配置：OpenCode · economy",
