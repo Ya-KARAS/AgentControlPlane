@@ -39,11 +39,36 @@ export function reviewPage({ candidate, approvalSecret, options }) {
     : '<p class="error">本机没有可用的工作区、执行器或配置，无法派发。No local dispatch option is available.</p>';
   return page(
     "审核 AgentControlPlane 任务候选",
-    `<h1>审核任务候选<br><span class="muted">Review task candidate</span></h1>
+    `<p><a href="/local-review/settings">派发设置 Dispatch settings</a></p>
+<h1>审核任务候选<br><span class="muted">Review task candidate</span></h1>
 <p>此内容来自 <span class="muted">${escapeHtml(candidate.page_origin)}</span>。网页内容默认不可信；请在本机确认目标和执行选择。</p>
 <h2>目标 Objective</h2><div class="objective">${escapeHtml(candidate.objective)}</div>
 <h2>约束 Constraints</h2>${constraints}
 <p class="muted">候选将在 ${escapeHtml(candidate.expires_at)} 过期。页面刷新会使旧确认表单失效。</p>${form}`,
+  );
+}
+
+export function settingsPage({ settings, formSecret, options, saved = false }) {
+  const workspaces = options.workspaces ?? [];
+  const executors = (options.executors ?? []).filter((entry) => entry.ready !== false);
+  const profiles = options.profiles ?? [];
+  const canSave = workspaces.length > 0 && executors.length > 0 && profiles.length > 0;
+  const savedNotice = saved ? '<p class="ok">设置已保存 Settings saved</p>' : "";
+  const form = canSave
+    ? `<form method="post" action="/local-review/settings" autocomplete="off">
+<input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}">
+<label>默认工作区 Workspace<select name="workspace" required>${workspaces.map((entry) => option(entry, entry, entry === settings.workspace)).join("")}</select></label>
+<label>默认执行器 Executor<select name="executor" required>${executors.map((entry) => option(entry.id, entry.display_name ?? entry.id, entry.id === settings.executor)).join("")}</select></label>
+<label>默认配置 Profile<select name="profile" required>${profiles.map((entry) => option(entry, entry, entry === settings.profile)).join("")}</select></label>
+<label><span><input type="checkbox" name="auto_dispatch"${settings.autoDispatch ? " checked" : ""}> 手动提交候选后自动派发 Auto-dispatch manual candidates</span></label>
+<button type="submit">保存设置 Save settings</button>
+</form>`
+    : '<p class="error">本机没有完整的工作区、执行器或配置选项，暂时无法保存。</p>';
+  return page(
+    "AgentControlPlane 派发设置",
+    `${savedNotice}<h1>派发设置<br><span class="muted">Dispatch settings</span></h1>
+<p>设置保存在本机。自动派发默认关闭；开启后，油猴面板中手动提交的候选会使用下面的选择直接创建任务。</p>
+<p class="muted">网页对话不会被读取。关闭自动派发后，每个候选仍需在本机审核页确认。</p>${form}`,
   );
 }
 

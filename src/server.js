@@ -21,9 +21,11 @@ import { CompanionRouter } from "./companion/router.js";
 import { dashboardHtml } from "./dashboard.js";
 import { usageDimensions, reconcileUsage } from "./core/usage-dimensions.js";
 import { LocalReviewRouter } from "./local-review/router.js";
+import { LocalReviewSettings } from "./local-review/settings.js";
 import {
   createCandidateReviewService,
   localReviewOptions,
+  validateLocalSelection,
 } from "./local-review/service.js";
 
 export function buildExecutor(config, provider) {
@@ -227,11 +229,22 @@ export async function createApplication(overrides = {}) {
   const candidateReview =
     overrides.candidateReview ??
     createCandidateReviewService({ config, orchestrator, store });
+  const getLocalReviewOptions = () => localReviewOptions(config, orchestrator);
+  const localReviewSettings =
+    overrides.localReviewSettings ??
+    new LocalReviewSettings({
+      stateDir: config.stateDir,
+      getOptions: getLocalReviewOptions,
+      validateSelection: (selection) =>
+        validateLocalSelection(config, orchestrator, selection),
+      audit: (type, payload) => store.audit(type, payload),
+    });
   const localReview = new LocalReviewRouter({
     service: candidateReview,
+    settings: localReviewSettings,
     port: config.server.port,
     allowedPageOrigins: config.localReview?.allowedPageOrigins,
-    getOptions: () => localReviewOptions(config, orchestrator),
+    getOptions: getLocalReviewOptions,
   });
 
   function tokenMatches(request) {

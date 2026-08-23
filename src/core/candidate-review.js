@@ -74,6 +74,17 @@ function publicCandidate(candidate) {
     page_origin: candidate.pageOrigin,
     created_at: candidate.createdAt,
     expires_at: candidate.expiresAt,
+    status_expires_at: candidate.statusExpiresAt,
+    task_id: candidate.taskId ?? null,
+  };
+}
+
+function publicStatus(candidate) {
+  return {
+    id: candidate.id,
+    status: candidate.status,
+    created_at: candidate.createdAt,
+    status_expires_at: candidate.statusExpiresAt,
     task_id: candidate.taskId ?? null,
   };
 }
@@ -84,6 +95,8 @@ export class CandidateReviewService {
     validateApproval,
     audit = () => {},
     ttlMs = 5 * 60 * 1000,
+    statusTtlMs = 60 * 60 * 1000,
+    resolveTaskStatus = () => null,
     maxPending = 32,
     now = () => Date.now(),
   }) {
@@ -94,6 +107,8 @@ export class CandidateReviewService {
     this.validateApproval = validateApproval;
     this.audit = audit;
     this.ttlMs = ttlMs;
+    this.statusTtlMs = statusTtlMs;
+    this.resolveTaskStatus = resolveTaskStatus;
     this.maxPending = maxPending;
     this.now = now;
     this.candidates = new Map();
@@ -114,6 +129,7 @@ export class CandidateReviewService {
 
     const id = crypto.randomUUID();
     const reviewSecret = crypto.randomBytes(32).toString("base64url");
+    const statusSecret = crypto.randomBytes(32).toString("base64url");
     const createdAtMs = this.now();
     const candidate = {
       id,
@@ -122,7 +138,9 @@ export class CandidateReviewService {
       status: "pending",
       createdAt: new Date(createdAtMs).toISOString(),
       expiresAt: new Date(createdAtMs + this.ttlMs).toISOString(),
+      statusExpiresAt: new Date(createdAtMs + this.statusTtlMs).toISOString(),
       reviewSecretHash: secretHash(reviewSecret),
+      statusSecretHash: secretHash(statusSecret),
       approvalSecretHash: null,
       taskId: null,
     };
@@ -132,7 +150,42 @@ export class CandidateReviewService {
       source: candidate.source,
       pageOrigin: candidate.pageOrigin,
     });
-    return { candidate: publicCandidate(candidate), reviewSecret };
+    return {
+      candidate: publicCandidate(candidate),
+      reviewSecret,
+      statusSecret,
+    };
+  }
+
+  readStatus(id, statusSecret, { pageOrigin }) {
+    const candidate = this.candidates.get(String(id ?? ""));
+    if (!candidate) {
+      throw new ControlPlaneError("candidate_not_found", "Candidate not found");
+    }
+    if (Date.parse(candidate.statusExpiresAt) <= this.now()) {
+      throw new ControlPlaneError(
+        "candidate_status_expired",
+        "Candidate status access has expired",
+      );
+    }
+    if (candidate.pageOrigin !== pageOrigin) {
+      throw new ControlPlaneError(
+        "candidate_status_denied",
+        "Candidate status origin is invalid",
+      );
+    }
+    if (!secretMatches(candidate.statusSecretHash, statusSecret)) {
+      throw new ControlPlaneError(
+        "candidate_status_denied",
+        "Candidate status secret is invalid",
+      );
+    }
+    return {
+      candidate: publicStatus(candidate),
+      task: candidate.taskId
+        ? this.resolveTaskStatus(candidate.taskId)
+        : null,
+    };
   }
 
   beginReview(id, reviewSecret) {
@@ -171,10 +224,29 @@ export class CandidateReviewService {
       );
     }
 
+    return this.#dispatchCandidate(candidate, selection, "candidate.approved");
+  }
+
+  dispatchTrusted(id, selection) {
+    const candidate = this.#activeCandidate(id);
+    if (!["pending", "reviewing"].includes(candidate.status)) {
+      throw new ControlPlaneError(
+        "candidate_state_conflict",
+        `Candidate cannot be auto-dispatched from status ${candidate.status}`,
+      );
+    }
+    return this.#dispatchCandidate(
+      candidate,
+      selection,
+      "candidate.auto_approved",
+    );
+  }
+
+  #dispatchCandidate(candidate, selection, approvalAuditType) {
     const approved = this.validateApproval(selection);
     candidate.status = "dispatching";
     candidate.approvalSecretHash = null;
-    this.audit("candidate.approved", {
+    this.audit(approvalAuditType, {
       candidateId: candidate.id,
       workspace: approved.workspace,
       executor: approved.executor,

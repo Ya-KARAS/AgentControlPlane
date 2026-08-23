@@ -4,8 +4,7 @@
 // @version      0.3.0
 // @description  Send a manual task candidate to local review and show a safe status summary.
 // @author       Ya-KARAS
-// @match        https://chatgpt.com/*
-// @match        https://chat.deepseek.com/*
+// @acp-adapter-matches
 // @connect      127.0.0.1
 // @grant        GM_openInTab
 // @grant        GM_xmlhttpRequest
@@ -18,7 +17,7 @@
   const ROOT_ID = "acp-web-bridge-preview";
   const LOCAL_BASE_URL = "http://127.0.0.1:4318";
   const CANDIDATE_URL = `${LOCAL_BASE_URL}/v1/local-review/candidates`;
-  const ADAPTERS = Object.freeze([{"id":"chatgpt","displayName":"ChatGPT","origins":["https://chatgpt.com"]},{"id":"deepseek","displayName":"DeepSeek","origins":["https://chat.deepseek.com"]}]);
+  const ADAPTERS = /* @acp-adapters */ [];
   const TERMINAL_TASK_STATUSES = new Set([
     "completed",
     "failed",

@@ -22,6 +22,7 @@ function serviceHarness(overrides = {}) {
     },
     now: () => currentTime,
     ttlMs: 60_000,
+    statusTtlMs: 120_000,
     ...overrides,
   });
   return {
@@ -143,6 +144,54 @@ test("expired candidates cannot be reviewed or dispatched", () => {
     (error) => error.code === "candidate_expired",
   );
   assert.equal(dispatched.length, 0);
+});
+
+test("status access is origin-bound, secret-bound, and longer-lived than review", () => {
+  const { service, advance } = serviceHarness({
+    resolveTaskStatus: (taskId) => ({ id: taskId, status: "queued" }),
+  });
+  const created = createCandidate(service);
+  assert.throws(
+    () => service.readStatus(created.candidate.id, "wrong", {
+      pageOrigin: "https://chatgpt.com",
+    }),
+    (error) => error.code === "candidate_status_denied",
+  );
+  assert.throws(
+    () => service.readStatus(created.candidate.id, created.statusSecret, {
+      pageOrigin: "https://attacker.example",
+    }),
+    (error) => error.code === "candidate_status_denied",
+  );
+
+  const pending = service.readStatus(
+    created.candidate.id,
+    created.statusSecret,
+    { pageOrigin: "https://chatgpt.com" },
+  );
+  assert.equal(pending.candidate.status, "pending");
+  assert.equal("objective" in pending.candidate, false);
+  assert.equal(pending.task, null);
+
+  advance(60_001);
+  assert.throws(
+    () => service.beginReview(created.candidate.id, created.reviewSecret),
+    (error) => error.code === "candidate_expired",
+  );
+  assert.equal(
+    service.readStatus(created.candidate.id, created.statusSecret, {
+      pageOrigin: "https://chatgpt.com",
+    }).candidate.status,
+    "expired",
+  );
+
+  advance(60_000);
+  assert.throws(
+    () => service.readStatus(created.candidate.id, created.statusSecret, {
+      pageOrigin: "https://chatgpt.com",
+    }),
+    (error) => error.code === "candidate_status_expired",
+  );
 });
 
 test("candidate core remains independent from transports and executors", () => {

@@ -1,6 +1,11 @@
 import { asErrorPayload, ControlPlaneError } from "../core/errors.js";
 import { readJson, sendJson } from "../core/http.js";
-import { dispatchedPage, reviewErrorPage, reviewPage } from "./page.js";
+import {
+  dispatchedPage,
+  reviewErrorPage,
+  reviewPage,
+  settingsPage,
+} from "./page.js";
 
 const DEFAULT_PAGE_ORIGINS = new Set([
   "https://chatgpt.com",
@@ -21,14 +26,19 @@ function isLoopbackOrigin(origin) {
   }
 }
 
+function isUserscriptRequest(request) {
+  return request.headers["x-acp-client"] === "userscript-v1";
+}
+
 function candidateCors(request) {
   const origin = request.headers.origin;
   const declared = request.headers["x-acp-page-origin"];
   if (!origin || origin !== declared) return {};
   return {
     "access-control-allow-origin": origin,
-    "access-control-allow-methods": "POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-acp-page-origin",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers":
+      "content-type, x-acp-page-origin, x-acp-status-secret",
     "access-control-max-age": "600",
     vary: "Origin",
   };
@@ -73,8 +83,9 @@ function errorStatus(error) {
 }
 
 export class LocalReviewRouter {
-  constructor({ service, getOptions, port, allowedPageOrigins = null }) {
+  constructor({ service, settings, getOptions, port, allowedPageOrigins = null }) {
     this.service = service;
+    this.settings = settings;
     this.getOptions = getOptions;
     this.port = port;
     this.allowedPageOrigins = new Set(allowedPageOrigins ?? DEFAULT_PAGE_ORIGINS);
@@ -83,8 +94,10 @@ export class LocalReviewRouter {
   matches(url) {
     return (
       url.pathname === "/v1/local-review/candidates" ||
+      /^\/v1\/local-review\/candidates\/[^/]+\/status$/.test(url.pathname) ||
       url.pathname === "/local-review/review" ||
-      url.pathname === "/local-review/confirm"
+      url.pathname === "/local-review/confirm" ||
+      url.pathname === "/local-review/settings"
     );
   }
 
@@ -114,7 +127,10 @@ export class LocalReviewRouter {
 
     const cors = candidateCors(request);
     try {
-      if (request.method === "OPTIONS" && url.pathname === "/v1/local-review/candidates") {
+      if (
+        request.method === "OPTIONS" &&
+        url.pathname.startsWith("/v1/local-review/candidates")
+      ) {
         response.writeHead(204, cors);
         response.end();
         return true;
@@ -129,7 +145,19 @@ export class LocalReviewRouter {
           );
         }
         const body = await readJson(request, 16 * 1024);
-        const created = this.service.create(body, { pageOrigin });
+        let created = this.service.create(body, { pageOrigin });
+        let autoDispatched = false;
+        const automaticSelection = isUserscriptRequest(request)
+          ? this.settings.autoDispatchSelection()
+          : null;
+        if (automaticSelection) {
+          const dispatched = this.service.dispatchTrusted(
+            created.candidate.id,
+            automaticSelection,
+          );
+          created = { ...created, candidate: dispatched.candidate };
+          autoDispatched = true;
+        }
         const hostHeader = request.headers.host ?? "";
         const host = /^(?:127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(hostHeader)
           ? hostHeader
@@ -140,9 +168,64 @@ export class LocalReviewRouter {
         sendJson(
           response,
           201,
-          { candidate: created.candidate, review_url: reviewUrl.toString() },
+          {
+            candidate: created.candidate,
+            review_url: autoDispatched ? null : reviewUrl.toString(),
+            status_secret: created.statusSecret,
+            auto_dispatched: autoDispatched,
+          },
           cors,
         );
+        return true;
+      }
+
+
+      if (request.method === "GET" && url.pathname === "/local-review/settings") {
+        sendLocalHtml(
+          response,
+          200,
+          settingsPage({
+            settings: this.settings.current(),
+            formSecret: this.settings.issueFormSecret(),
+            options: this.getOptions(),
+          }),
+        );
+        return true;
+      }
+
+      if (request.method === "POST" && url.pathname === "/local-review/settings") {
+        const body = await readForm(request);
+        const saved = this.settings.save(body.form_secret, body);
+        sendLocalHtml(
+          response,
+          200,
+          settingsPage({
+            settings: saved,
+            formSecret: this.settings.issueFormSecret(),
+            options: this.getOptions(),
+            saved: true,
+          }),
+        );
+        return true;
+      }
+
+      const statusMatch = url.pathname.match(
+        /^\/v1\/local-review\/candidates\/([^/]+)\/status$/,
+      );
+      if (request.method === "GET" && statusMatch) {
+        const pageOrigin = request.headers["x-acp-page-origin"];
+        if (!this.allowedPageOrigins.has(pageOrigin)) {
+          throw new ControlPlaneError(
+            "candidate_origin_denied",
+            "The page origin is not allowed to read candidate status",
+          );
+        }
+        const result = this.service.readStatus(
+          decodeURIComponent(statusMatch[1]),
+          request.headers["x-acp-status-secret"],
+          { pageOrigin },
+        );
+        sendJson(response, 200, result, cors);
         return true;
       }
 

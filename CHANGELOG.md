@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- The desktop userscript now uses independent ChatGPT and DeepSeek adapter
+  modules, polls an origin-bound short-lived capability for safe task status,
+  and shows only task state and result counts.
+- A loopback dispatch-settings page stores a locally selected workspace,
+  executor, and profile. Automatic dispatch is explicit, default-off, and
+  limited to manual userscript submissions.
+
+### Security
+
+- Userscript status responses exclude objectives, summaries, paths, logs,
+  credentials, and raw errors. Settings writes require a one-time local form
+  secret, and the automatic-dispatch marker is not permitted by webpage CORS.
+
 ## v0.9.0 — 2026-08-21
 
 ### Added

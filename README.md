@@ -103,6 +103,12 @@ ChatGPT, DeepSeek, Claude, and an optional generic HTTPS chat site. The panel
 keeps the selected workspace on the local machine, pairs once with ACP, and
 dispatches the structured envelope produced by the web conversation.
 
+The lighter [desktop userscript preview](userscript/README.md) supports
+ChatGPT and DeepSeek through independent site adapters. Its visible **Dispatch
+settings** page lets the local owner choose a default workspace, executor, and
+profile, then opt in to automatic dispatch. The default remains local review
+before dispatch. Its webpage status view exposes state and result counts only.
+
 ```text
 ChatGPT / DeepSeek / Claude
               |

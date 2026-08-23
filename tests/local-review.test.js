@@ -81,7 +81,7 @@ async function withReviewServer(callback) {
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const { port } = app.server.address();
   try {
-    await callback({ baseUrl: `http://127.0.0.1:${port}`, orchestrator });
+    await callback({ baseUrl: `http://127.0.0.1:${port}`, orchestrator, store });
   } finally {
     await app.close();
   }
@@ -120,7 +120,109 @@ test("candidate creation cannot dispatch or override local choices", async () =>
     assert.equal(created.headers.get("access-control-allow-origin"), "https://chatgpt.com");
     const body = await created.json();
     assert.match(body.review_url, /^http:\/\/127\.0\.0\.1:\d+\/local-review\/review/);
+    assert.match(body.status_secret, /^[A-Za-z0-9_-]{20,128}$/);
+    assert.equal(body.auto_dispatched, false);
     assert.equal(orchestrator.requests.length, 0);
+  });
+});
+
+test("candidate status needs its capability secret and returns only a safe projection", async () => {
+  await withReviewServer(async ({ baseUrl }) => {
+    const createdResponse = await createCandidate(baseUrl, validCandidate);
+    const created = await createdResponse.json();
+    const statusUrl = `${baseUrl}/v1/local-review/candidates/${created.candidate.id}/status`;
+    const denied = await fetch(statusUrl, {
+      headers: {
+        origin: "https://chatgpt.com",
+        "x-acp-page-origin": "https://chatgpt.com",
+        "x-acp-status-secret": "wrong",
+      },
+    });
+    assert.equal(denied.status, 403);
+
+    const allowed = await fetch(statusUrl, {
+      headers: {
+        origin: "https://chatgpt.com",
+        "x-acp-page-origin": "https://chatgpt.com",
+        "x-acp-status-secret": created.status_secret,
+      },
+    });
+    assert.equal(allowed.status, 200);
+    const body = await allowed.json();
+    assert.equal(body.candidate.status, "pending");
+    assert.equal(body.task, null);
+    assert.equal("objective" in body.candidate, false);
+    assert.equal("constraints" in body.candidate, false);
+    assert.equal("page_origin" in body.candidate, false);
+  });
+});
+
+test("local settings can opt in to userscript-only automatic dispatch", async () => {
+  await withReviewServer(async ({ baseUrl, orchestrator }) => {
+    const settingsResponse = await fetch(`${baseUrl}/local-review/settings`);
+    assert.equal(settingsResponse.status, 200);
+    const settingsHtml = await settingsResponse.text();
+    const formSecret = settingsHtml.match(/name="form_secret" value="([^"]+)"/)?.[1];
+    assert.ok(formSecret);
+
+    const saved = await fetch(`${baseUrl}/local-review/settings`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: baseUrl,
+      },
+      body: new URLSearchParams({
+        form_secret: formSecret,
+        workspace: "C:\\allowed",
+        executor: "opencode",
+        profile: "economy",
+        auto_dispatch: "on",
+      }),
+    });
+    assert.equal(saved.status, 200);
+    assert.match(await saved.text(), /设置已保存/);
+
+    const ordinary = await createCandidate(baseUrl, validCandidate);
+    assert.equal((await ordinary.json()).auto_dispatched, false);
+    assert.equal(orchestrator.requests.length, 0);
+
+    const automatic = await fetch(`${baseUrl}/v1/local-review/candidates`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://chatgpt.com",
+        "x-acp-client": "userscript-v1",
+        "x-acp-page-origin": "https://chatgpt.com",
+      },
+      body: JSON.stringify(validCandidate),
+    });
+    assert.equal(automatic.status, 201);
+    const automaticBody = await automatic.json();
+    assert.equal(automaticBody.auto_dispatched, true);
+    assert.equal(automaticBody.review_url, null);
+    assert.equal(automaticBody.candidate.status, "dispatched");
+    assert.equal(orchestrator.requests.length, 1);
+    assert.deepEqual(orchestrator.requests[0], {
+      objective: validCandidate.objective,
+      constraints: validCandidate.constraints,
+      workspace: "C:\\allowed",
+      executor: "opencode",
+      profile: "economy",
+    });
+
+    const preflight = await fetch(`${baseUrl}/v1/local-review/candidates`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://chatgpt.com",
+        "x-acp-page-origin": "https://chatgpt.com",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,x-acp-client,x-acp-page-origin",
+      },
+    });
+    assert.doesNotMatch(
+      preflight.headers.get("access-control-allow-headers") ?? "",
+      /x-acp-client/i,
+    );
   });
 });
 

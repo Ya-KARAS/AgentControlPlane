@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
+import chatgpt from "../userscript/src/adapters/chatgpt.js";
+import deepseek from "../userscript/src/adapters/deepseek.js";
+import { createAdapterRegistry } from "../userscript/src/adapter-registry.js";
 
 const scriptPath = path.resolve(
   "userscript",
@@ -34,7 +37,11 @@ test("userscript submits only a manual candidate to local review", () => {
   assert.match(script, /document\.body\.append\(root\)/);
   assert.match(script, /GM_xmlhttpRequest\(/);
   assert.match(script, /\/v1\/local-review\/candidates/);
-  assert.match(script, /GM_openInTab\(body\.review_url/);
+  assert.match(script, /validatedReviewUrl\(body\.review_url/);
+  assert.match(script, /GM_openInTab\(reviewUrl/);
+  assert.match(script, /x-acp-client/);
+  assert.match(script, /x-acp-status-secret/);
+  assert.match(script, /\/status/);
   assert.doesNotMatch(script, /\/v1\/(?:companion\/)?tasks/);
   assert.doesNotMatch(script, /dispatch_project|ACP_TASK|api[_-]?key|authorization/i);
   assert.doesNotMatch(
@@ -42,6 +49,24 @@ test("userscript submits only a manual candidate to local review", () => {
     /document\.(?:documentElement|body)\.(?:innerText|textContent)|querySelectorAll\(/,
   );
   assert.doesNotMatch(script, /\.innerHTML\s*=/);
+  assert.doesNotMatch(script, /localStorage|sessionStorage|indexedDB/);
+});
+
+test("web adapters are independent data modules resolved by a shared registry", () => {
+  const registry = createAdapterRegistry([chatgpt, deepseek]);
+  assert.equal(registry.resolve({ origin: "https://chatgpt.com" })?.id, "chatgpt");
+  assert.equal(registry.resolve({ origin: "https://chat.deepseek.com" })?.id, "deepseek");
+  assert.equal(registry.resolve({ origin: "https://example.com" }), null);
+  for (const fileName of ["chatgpt.js", "deepseek.js"]) {
+    const source = fs.readFileSync(
+      path.resolve("userscript", "src", "adapters", fileName),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      source,
+      /GM_xmlhttpRequest|document|window|local-review|dispatch|querySelector/i,
+    );
+  }
 });
 
 test("userscript documentation states the preview safety boundary", () => {

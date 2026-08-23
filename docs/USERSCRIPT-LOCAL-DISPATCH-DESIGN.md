@@ -1,6 +1,7 @@
 # Userscript local-dispatch design
 
-Status: implemented for the desktop-only local candidate-review slice. Mobile,
+Status: implemented for the desktop-only local candidate-review, optional
+automatic-dispatch, adapter-registry, and safe status-return slices. Mobile,
 relay, remote-access, and webpage-extraction work remains out of scope.
 
 ## Goal
@@ -32,11 +33,13 @@ binding, rate limits, audit records, and executor policy remain in force.
 2. The panel starts empty. It does not read or prefill the web AI conversation.
 3. The person manually enters a compact objective and optional constraints.
 4. The panel labels the submission with a pending candidate status.
-5. A local ACP review surface displays the candidate, selected workspace,
-   selected executor, and execution impact before any dispatch action exists.
-6. Only a fresh local user confirmation may create a task.
-7. Results shown back in the userscript are compact status and evidence, never
-   raw local logs, credentials, or unrestricted workspace data.
+5. ACP either opens its local review surface or uses an automatic-dispatch
+   selection that the owner explicitly enabled and saved on the local machine.
+6. The local owner controls the workspace, executor, and profile. Automatic
+   dispatch is disabled by default and applies only to manual userscript
+   submissions. Ordinary webpage requests always create review candidates.
+7. Results shown back in the userscript contain compact status and counts.
+   The response excludes raw local logs, credentials, and workspace data.
 
 ## Required safety rules
 
@@ -44,13 +47,17 @@ binding, rate limits, audit records, and executor policy remain in force.
   page load, page navigation, DOM mutation, or AI-generated text.
 - No automatic reading, copying, or transmission of chat messages, cookies,
   browser storage, local paths, credentials, API keys, or access tokens.
-- The userscript holds no long-lived ACP credential.
+- The userscript holds no long-lived ACP credential. Its status capability is
+  origin-bound, expires after one hour, and remains in memory only.
 - The local review surface must reject stale, duplicated, or unapproved task
   candidates.
 - The existing ACP origin, authentication, workspace, rate-limit, audit, and
   executor-policy checks cannot be bypassed by the userscript.
 - The initial release remains loopback-only. It does not expose ACP through a
   public address or act as a relay.
+- A browser page cannot request automatic dispatch through CORS. The
+  userscript-only marker is intentionally omitted from allowed CORS headers;
+  local ACP settings remain the final policy gate.
 
 ## Data contract
 
@@ -77,7 +84,12 @@ ACP resolves all local execution choices during the review step.
 - `src/local-review/router.js` owns loopback HTTP, origin handling, bounded body
   parsing, and response status mapping.
 - `src/local-review/page.js` renders the no-script local confirmation surface.
-- `userscript/` is a client adapter. It cannot import server, orchestrator,
+- `src/local-review/settings.js` owns local defaults, explicit automatic-
+  dispatch opt-in, persistence, and one-time settings-form protection.
+- `userscript/src/adapters/` contains independent, data-only site adapters;
+  `adapter-registry.js` validates and resolves them without site branches in
+  the runtime.
+- `userscript/` is a client layer. It cannot import server, orchestrator,
   executor, workspace, or MCP modules.
 
 The core candidate service has no dependency on HTTP, browser APIs, MCP,
@@ -104,6 +116,12 @@ The implementation is accepted only while these gates have tests:
    workspace, audit, and rate-limit invariants still hold.
 5. Security-sensitive expansion beyond this local-review boundary requires a
    separate review before implementation.
+6. Status tests prove that the capability is bound to the candidate origin and
+   that the webpage projection excludes objectives, paths, summaries, logs,
+   and error text.
+7. Automatic-dispatch tests prove default-off behavior, one-time local settings
+   protection, local allowlist validation, and rejection from ordinary webpage
+   CORS requests.
 
 ## Explicit non-goals
 
