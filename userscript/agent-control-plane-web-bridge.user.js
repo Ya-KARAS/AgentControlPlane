@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.5.4
+// @version      0.5.5
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -644,7 +644,8 @@ function observationWaitsBehindBarrier(record, observation) {
   const style = document.createElement("style");
   style.textContent = `
     #${ROOT_ID} { bottom: 20px; font-family: system-ui, sans-serif; position: fixed; right: 20px; z-index: 2147483647; }
-    #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; white-space: nowrap; }
+    #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; transition: background-color .18s ease, box-shadow .18s ease; white-space: nowrap; }
+    #${ROOT_ID} button[data-state="completed"] { background: #16803d; box-shadow: 0 8px 24px rgba(22, 128, 61, .3); }
   `;
   const statusButton = document.createElement("button");
   statusButton.type = "button";
@@ -660,9 +661,10 @@ function observationWaitsBehindBarrier(record, observation) {
   root.append(style, statusButton);
   document.body.append(root);
 
-  const showStatus = (text, detail = text) => {
+  const showStatus = (text, detail = text, state = "default") => {
     statusButton.textContent = `ACP · ${text}`;
     statusButton.title = `AgentControlPlane\n${detail}\n点击打开本机派发设置`;
+    statusButton.dataset.state = state;
   };
 
   const showStagedStatus = (mode = "ready") => {
@@ -843,7 +845,7 @@ function observationWaitsBehindBarrier(record, observation) {
     const labels = {
       queued: "任务排队中",
       running: "任务执行中",
-      completed: "任务已完成",
+      completed: "✓ 完成",
       failed: "任务失败",
       blocked: "任务被阻塞",
       partial: "任务部分完成",
@@ -931,7 +933,8 @@ function observationWaitsBehindBarrier(record, observation) {
       if (response.status !== 200) {
         throw new Error(body.error?.code ?? `http_${response.status}`);
       }
-      showStatus(taskStatusText(body));
+      const statusText = taskStatusText(body);
+      showStatus(statusText, statusText, body.task?.status);
       if (body.task && TERMINAL_TASK_STATUSES.has(body.task.status)) {
         stopTracking();
         if (activeTracking.returnResultToChat) {
