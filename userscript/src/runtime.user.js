@@ -4,6 +4,8 @@
 // @version      0.4.0
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
+// @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
 // @grant        GM_openInTab

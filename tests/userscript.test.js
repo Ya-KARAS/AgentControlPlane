@@ -19,6 +19,8 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
   assert.match(script, /^\/\/ @version\s+0\.4\.0$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
+  assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @grant\s+GM_openInTab$/m);
   assert.match(script, /^\/\/ @grant\s+GM_xmlhttpRequest$/m);
