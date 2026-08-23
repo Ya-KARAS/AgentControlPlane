@@ -254,9 +254,17 @@ export class LocalReviewRouter {
           );
         }
         const body = await readForm(request);
-        this.settings.authorizeFormSecret(body.form_secret);
+        if (body.action !== "set_default") {
+          this.settings.authorizeFormSecret(body.form_secret);
+        }
         let notice;
-        if (body.action === "add_root") {
+        if (body.action === "add_project") {
+          this.projectRegistry.addProject(body.path);
+          notice = "项目已添加。";
+        } else if (body.action === "set_default") {
+          this.settings.setWorkspace(body.form_secret, body.project_id);
+          notice = "默认项目已更新。";
+        } else if (body.action === "add_root") {
           this.projectRegistry.addDiscoveryRoot(body.path);
           notice = "扫描根目录已添加。";
         } else if (body.action === "scan") {
@@ -268,6 +276,12 @@ export class LocalReviewRouter {
         } else if (body.action === "relink") {
           this.projectRegistry.relink(body.project_id, body.path);
           notice = "项目已重新关联，可以在原对话继续。";
+        } else if (body.action === "relink_suggested") {
+          this.projectRegistry.relinkSuggested(body.project_id);
+          notice = "项目位置已更新，可以在原对话继续。";
+        } else if (body.action === "remove") {
+          this.projectRegistry.remove(body.project_id);
+          notice = "失效记录已移除，项目文件未改动。";
         } else {
           throw new ControlPlaneError(
             "invalid_project_action",

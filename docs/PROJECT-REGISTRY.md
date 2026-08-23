@@ -34,6 +34,23 @@ Additional discovery roots can be added from the loopback-only local settings
 page. The registry persists under the ACP state directory, outside every
 workspace.
 
+## Local project library
+
+Open `http://127.0.0.1:4318/local-review/settings` and use the project library:
+
+1. Paste the exact project folder path and select **添加项目**.
+2. Select **设为默认** on the project used for the next web conversation.
+3. Open **需要处理的项目** when ACP reports a moved or missing project.
+4. Select **确认新位置** when ACP finds one matching location, or enter the
+   project folder path under **填写新位置**.
+5. Select **移除记录** to remove a stale registry entry. This action leaves the
+   project files on disk.
+
+The **高级设置** section contains discovery roots, manual rescanning,
+categories, and path revisions. Adding a project enrolls its parent folder as
+a discovery root so later scans can find the project after a folder or drive
+move.
+
 ## Moving a project
 
 When a registered path disappears, ACP marks the project `missing`. Scanning
@@ -41,7 +58,8 @@ trusted discovery roots may produce relocation candidates, but matching Git
 metadata never authorizes an automatic relink because multiple clones and
 worktrees can share the same remote.
 
-The user must confirm the new path on the local settings page. Relinking:
+The user confirms the new path on the local settings page. A unique scanned
+candidate supports one-click confirmation. Relinking:
 
 - preserves the stable project ID and category
 - increments the path revision

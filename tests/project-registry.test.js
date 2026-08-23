@@ -26,6 +26,18 @@ test("project registry discovers projects without authorizing the scan root itse
   assert.equal(registry.resolve(root), null);
 });
 
+test("project registry adds one project from its exact folder path", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-add-"));
+  const stateDir = path.join(temp, "state");
+  const target = project(path.join(temp, "projects"), "calculator");
+  const registry = new ProjectRegistry({ stateDir });
+
+  const added = registry.addProject(target);
+  const id = `project:${added.id}`;
+  assert.equal(registry.resolve(id).workspace, fs.realpathSync.native(target));
+  assert.deepEqual(registry.discoveryRoots(), [fs.realpathSync.native(path.dirname(target))]);
+});
+
 test("project id survives a confirmed cross-root relink", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-move-"));
   const stateDir = path.join(temp, "state");
@@ -49,6 +61,63 @@ test("project id survives a confirmed cross-root relink", () => {
   assert.equal(`project:${relinked.id}`, id);
   assert.equal(relinked.path_revision, 2);
   assert.equal(registry.resolve(id).workspace, fs.realpathSync.native(moved));
+});
+
+test("project registry confirms a single discovered move candidate", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-suggested-"));
+  const stateDir = path.join(temp, "state");
+  const rootC = path.join(temp, "C-drive");
+  const rootD = path.join(temp, "D-drive");
+  const original = project(rootC, "calculator");
+  fs.mkdirSync(rootD, { recursive: true });
+  const registry = new ProjectRegistry({
+    stateDir,
+    discoveryRoots: [rootC, rootD],
+  });
+  const id = registry.publicProjects()[0].id;
+  const moved = path.join(rootD, "calculator");
+  fs.renameSync(original, moved);
+  registry.refresh();
+
+  const relinked = registry.relinkSuggested(id);
+  assert.equal(`project:${relinked.id}`, id);
+  assert.equal(relinked.path_revision, 2);
+  assert.equal(registry.resolve(id).workspace, fs.realpathSync.native(moved));
+});
+
+test("project registry removes an unavailable record without deleting files", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-remove-"));
+  const stateDir = path.join(temp, "state");
+  const root = path.join(temp, "projects");
+  const original = project(root, "calculator");
+  const registry = new ProjectRegistry({ stateDir, discoveryRoots: [root] });
+  const id = registry.publicProjects()[0].id;
+  const movedOutsideRoot = path.join(temp, "saved-calculator");
+  fs.renameSync(original, movedOutsideRoot);
+  registry.refresh();
+
+  assert.deepEqual(registry.remove(id), { id, removed: true });
+  assert.equal(registry.publicProjects().length, 0);
+  assert.equal(fs.existsSync(movedOutsideRoot), true);
+});
+
+test("project registry keeps records used by active tasks", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-project-active-"));
+  const stateDir = path.join(temp, "state");
+  const root = path.join(temp, "projects");
+  const original = project(root, "calculator");
+  let activeId = null;
+  const registry = new ProjectRegistry({
+    stateDir,
+    discoveryRoots: [root],
+    hasActiveTasks: (projectId) => projectId === activeId,
+  });
+  const id = registry.publicProjects()[0].id;
+  activeId = id;
+  fs.renameSync(original, path.join(temp, "saved-calculator"));
+  registry.refresh();
+
+  assert.throws(() => registry.remove(id), { code: "project_remove_conflict" });
 });
 
 test("relink refuses paths outside trusted discovery roots", () => {

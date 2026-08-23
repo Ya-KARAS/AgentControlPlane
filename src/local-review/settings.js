@@ -110,9 +110,7 @@ export class LocalReviewSettings {
       returnResultToChat: input.return_result_to_chat === "on",
       ...selection,
     };
-    const temporary = `${this.path}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(this.stored, null, 2), "utf8");
-    fs.renameSync(temporary, this.path);
+    this.#persist();
     this.audit("local_review.settings_updated", {
       autoDispatch: this.stored.autoDispatch,
       returnResultToChat: this.stored.returnResultToChat,
@@ -121,6 +119,31 @@ export class LocalReviewSettings {
       profile: selection.profile,
     });
     return this.current();
+  }
+
+  setWorkspace(formSecret, workspace) {
+    this.authorizeFormSecret(formSecret);
+    const current = this.current();
+    const selection = this.validateSelection({
+      workspace: String(workspace ?? ""),
+      executor: current.executor,
+      profile: current.profile,
+    });
+    this.stored = {
+      ...this.stored,
+      ...selection,
+    };
+    this.#persist();
+    this.audit("local_review.default_project_updated", {
+      workspace: selection.workspace,
+    });
+    return this.current();
+  }
+
+  #persist() {
+    const temporary = `${this.path}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify(this.stored, null, 2), "utf8");
+    fs.renameSync(temporary, this.path);
   }
 
   authorizeFormSecret(formSecret) {

@@ -205,6 +205,36 @@ export class ProjectRegistry {
     return root;
   }
 
+  addProject(inputPath) {
+    const actual = canonicalDirectory(inputPath);
+    if (projectMarkerNames(actual).length === 0) {
+      throw new ControlPlaneError(
+        "project_add_denied",
+        "The selected folder does not look like a supported software project",
+      );
+    }
+    const parent = path.dirname(actual);
+    this.#addDiscoveryRoot(parent, false);
+    const existing = this.#registeredByPath(actual);
+    if (existing) {
+      this.refresh();
+      const refreshed = this.#entry(existing.id);
+      if (refreshed?.status !== "available") {
+        throw new ControlPlaneError(
+          "project_add_conflict",
+          "The selected path belongs to a project record that requires local relinking",
+        );
+      }
+      return structuredClone(refreshed);
+    }
+    const entry = this.#register(actual, { source: "manual-project" });
+    this.audit("project.added", {
+      projectId: entry.id,
+      displayName: entry.display_name,
+    });
+    return structuredClone(entry);
+  }
+
   discoveryRoots() {
     return [...this.state.discovery_roots];
   }
@@ -530,5 +560,44 @@ export class ProjectRegistry {
       pathRevision: entry.path_revision,
     });
     return structuredClone(entry);
+  }
+
+  relinkSuggested(reference) {
+    const entry = this.#entry(reference);
+    if (!entry) throw new ControlPlaneError("project_not_found", "Project not found");
+    const candidates = [...new Set(entry.relink_candidates ?? [])];
+    if (candidates.length !== 1) {
+      throw new ControlPlaneError(
+        "project_relink_candidate_conflict",
+        "Exactly one discovered project location is required for one-click relinking",
+      );
+    }
+    return this.relink(reference, candidates[0]);
+  }
+
+  remove(reference) {
+    const entry = this.#entry(reference);
+    if (!entry) throw new ControlPlaneError("project_not_found", "Project not found");
+    const projectId = `project:${entry.id}`;
+    if (this.hasActiveTasks(projectId)) {
+      throw new ControlPlaneError(
+        "project_remove_conflict",
+        "A queued or running task still uses this project",
+      );
+    }
+    if (entry.status === "available") {
+      throw new ControlPlaneError(
+        "project_remove_denied",
+        "Available projects remain registered until their discovery root is changed",
+      );
+    }
+    delete this.state.projects[entry.id];
+    this.#persist();
+    this.audit("project.removed", {
+      projectId: entry.id,
+      displayName: entry.display_name,
+      status: entry.status,
+    });
+    return { id: projectId, removed: true };
   }
 }
