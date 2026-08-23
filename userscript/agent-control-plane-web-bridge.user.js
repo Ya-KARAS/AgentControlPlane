@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgentControlPlane Web Bridge Preview
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.5.0
+// @version      0.5.1
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @author       Ya-KARAS
 // @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/main/userscript/agent-control-plane-web-bridge.user.js
@@ -10,6 +10,9 @@
 // @match        https://chat.deepseek.com/*
 // @connect      127.0.0.1
 // @grant        GM_openInTab
+// @grant        GM_deleteValue
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @run-at       document-idle
 // ==/UserScript==
@@ -31,6 +34,13 @@ const CONFIRM_WORDS = new Set([
   "confirm",
   "dispatch",
   "run",
+]);
+
+const CHANGE_CONFIRM_WORDS = new Set([
+  "确认变更",
+  "接受变更",
+  "confirm changes",
+  "accept changes",
 ]);
 
 function boundedText(value, limit) {
@@ -77,8 +87,11 @@ function controllerPrompt(request = "", capabilities = {}) {
     safeCapabilities,
     "The user may choose workspace, executor, profile, model, and reasoning effort in natural language.",
     "Use only listed workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
+    "Do not select a model or provider whose status is cooldown. Explain the safe failure category and ask the user to choose an available route or wait until retry_after.",
     "Omit an execution field when the user did not choose it; local saved defaults then apply. Credentials always remain local and must never appear in ACP_TASK.",
     "Before staging, state the execution choices that will override defaults and identify every omitted field as using the local default.",
+    "After an ACP_RESULT failure, preserve the objective, workspace, and execution route unless the user explicitly requests a change. Never replace the requested engineering task with a smoke test or change its workspace as an automatic troubleshooting step.",
+    "When the user explicitly changes the objective, workspace, executor, profile, model, or reasoning effort, state exactly which fields changed before emitting the replacement ACP_TASK.",
     "The task is staged after you output ACP_TASK. Tell the user to reply with 执行 or another clear confirmation word.",
     "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
     userRequest
@@ -175,6 +188,36 @@ function isConfirmation(value) {
   return CONFIRM_WORDS.has(normalized);
 }
 
+function isChangeConfirmation(value) {
+  return CHANGE_CONFIRM_WORDS.has(
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[!！。.\s]+$/u, "")
+      .trim(),
+  );
+}
+
+function taskEnvelopeChanges(previous, next) {
+  if (!previous || !next) return [];
+  const fields = [];
+  if (boundedText(previous.objective, 4000) !== boundedText(next.objective, 4000)) {
+    fields.push("objective");
+  }
+  for (const field of [
+    "workspace",
+    "executor",
+    "profile",
+    "model",
+    "reasoning_effort",
+  ]) {
+    const before = boundedText(previous.execution?.[field], field === "workspace" ? 1000 : 200);
+    const after = boundedText(next.execution?.[field], field === "workspace" ? 1000 : 200);
+    if (before !== after) fields.push(field);
+  }
+  return fields;
+}
+
 function envelopeId(envelope) {
   const source = JSON.stringify(envelope);
   let value = 2166136261;
@@ -195,7 +238,20 @@ function safeResultBlock(task) {
       passed: Number(task?.tests?.passed ?? 0),
       failed: Number(task?.tests?.failed ?? 0),
     },
+    test_commands: {
+      total: Number(task?.test_commands?.total ?? task?.tests?.total ?? 0),
+      passed: Number(task?.test_commands?.passed ?? task?.tests?.passed ?? 0),
+      failed: Number(task?.test_commands?.failed ?? task?.tests?.failed ?? 0),
+    },
+    test_cases: task?.test_cases && typeof task.test_cases === "object"
+      ? {
+          total: Number(task.test_cases.total ?? 0),
+          passed: Number(task.test_cases.passed ?? 0),
+          failed: Number(task.test_cases.failed ?? 0),
+        }
+      : null,
     blocker_count: Number(task?.blocker_count ?? 0),
+    failure_category: boundedText(task?.failure_category, 64) || null,
     execution: {
       executor: boundedText(task?.execution?.executor, 64) || null,
       profile: boundedText(task?.execution?.profile, 64) || null,
@@ -211,6 +267,8 @@ function safeResultBlock(task) {
   const CANDIDATE_URL = `${LOCAL_BASE_URL}/v1/local-review/candidates`;
   const CAPABILITIES_URL = `${LOCAL_BASE_URL}/v1/local-review/capabilities`;
   const ADAPTERS = Object.freeze([{"id":"chatgpt","displayName":"ChatGPT","origins":["https://chatgpt.com"],"composer":["#prompt-textarea","textarea"],"send":["button[data-testid=\"send-button\"]","button[aria-label*=\"Send\"]"],"assistant":["[data-message-author-role=\"assistant\"]"],"user":["[data-message-author-role=\"user\"]"]},{"id":"deepseek","displayName":"DeepSeek","origins":["https://chat.deepseek.com"],"composer":["textarea","[contenteditable=\"true\"]"],"send":["button[aria-label*=\"Send\"]","button[aria-label*=\"发送\"]"],"assistant":[".ds-markdown","[data-role=\"assistant\"]",".markdown-body"],"user":["[data-message-author-role=\"user\"]","[data-role=\"user\"]",".ds-chat [class*=\"user\"]","main [class*=\"user\"]"]}]);
+  const STAGE_TTL_MS = 10 * 60 * 1000;
+  const STAGE_STORAGE_KEY = `acp-stage-v1:${window.location.origin}:${window.location.pathname}`;
   const TERMINAL_TASK_STATUSES = new Set([
     "completed",
     "failed",
@@ -232,6 +290,59 @@ function safeResultBlock(task) {
   let suppressCapture = false;
   let inspectTimer = null;
   let launchPending = false;
+
+  const saveStage = async () => {
+    if (!staged) {
+      await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
+      return;
+    }
+    await Promise.resolve(GM_setValue(STAGE_STORAGE_KEY, {
+      version: 1,
+      id: staged.id,
+      envelope: staged.envelope,
+      changes: staged.changes ?? [],
+      changeConfirmed: staged.changeConfirmed === true,
+      expiresAt: Date.now() + STAGE_TTL_MS,
+    }));
+  };
+
+  const restoreStage = async () => {
+    const saved = await Promise.resolve(GM_getValue(STAGE_STORAGE_KEY, null));
+    if (
+      !saved ||
+      saved.version !== 1 ||
+      Date.now() >= Number(saved.expiresAt ?? 0) ||
+      envelopeId(saved.envelope) !== saved.id
+    ) {
+      await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
+      return;
+    }
+    try {
+      candidateFromEnvelope(saved.envelope);
+      staged = {
+        id: saved.id,
+        envelope: saved.envelope,
+        changes: Array.isArray(saved.changes) ? saved.changes.slice(0, 6) : [],
+        changeConfirmed: saved.changeConfirmed === true,
+      };
+      showStagedStatus("已恢复");
+    } catch {
+      await Promise.resolve(GM_deleteValue(STAGE_STORAGE_KEY));
+    }
+  };
+
+  const stableIdempotencyKey = async (activeEnvelope) => {
+    const payload = new TextEncoder().encode(JSON.stringify({
+      origin: window.location.origin,
+      path: window.location.pathname,
+      envelope: activeEnvelope.envelope,
+    }));
+    const digest = await crypto.subtle.digest("SHA-256", payload);
+    const hex = [...new Uint8Array(digest)]
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+    return `userscript:${hex}`;
+  };
 
   const request = (options) => new Promise((resolve, reject) => {
     GM_xmlhttpRequest({
@@ -334,6 +445,16 @@ function safeResultBlock(task) {
 
   const showStatus = (text) => {
     statusButton.textContent = `ACP · ${text}`;
+    statusButton.title = `AgentControlPlane · ${text}\n点击打开本机派发设置`;
+  };
+
+  const showStagedStatus = (prefix = "") => {
+    if (!staged) return;
+    if (staged.changes?.length && !staged.changeConfirmed) {
+      showStatus(`${prefix ? `${prefix} · ` : ""}配置变化：${staged.changes.join(", ")} · 回复“确认变更”`);
+      return;
+    }
+    showStatus(`${prefix ? `${prefix} · ` : ""}${executionSummary(staged.envelope)} · 回复“执行”`);
   };
 
   const validatedReviewUrl = (value, candidateId) => {
@@ -362,7 +483,25 @@ function safeResultBlock(task) {
       partial: "任务部分完成",
       cancelled: "任务已取消",
     };
-    return labels[body.task.status] ?? "状态已更新";
+    const taskId = String(body.task.id ?? "").slice(0, 8);
+    const elapsed = tracking?.startedAt
+      ? `${Math.max(0, Math.floor((Date.now() - tracking.startedAt) / 1000))}s`
+      : null;
+    const failureLabels = {
+      insufficient_balance: "余额不足",
+      usage_limit: "额度已用尽",
+      rate_limited: "请求限流",
+      authentication_failed: "认证失败",
+      executor_unavailable: "执行器不可用",
+      provider_unavailable: "模型服务不可用",
+      task_failed: "工程任务失败",
+    };
+    const detail = body.task.status === "failed"
+      ? failureLabels[body.task.failure_category] ?? "原因未知"
+      : elapsed;
+    return [labels[body.task.status] ?? "状态已更新", taskId, detail]
+      .filter(Boolean)
+      .join(" · ");
   };
 
   const readCapabilities = async () => {
@@ -452,15 +591,21 @@ function safeResultBlock(task) {
 
   const dispatchEnvelope = async (activeEnvelope) => {
     if (!activeEnvelope || dispatchingEnvelopeId === activeEnvelope.id) return;
+    if (activeEnvelope.changes?.length && !activeEnvelope.changeConfirmed) {
+      showStagedStatus();
+      return;
+    }
     dispatchingEnvelopeId = activeEnvelope.id;
     showStatus("正在派发");
     try {
+      const idempotencyKey = await stableIdempotencyKey(activeEnvelope);
       const response = await request({
         method: "POST",
         url: CANDIDATE_URL,
         headers: {
           "content-type": "application/json",
           "x-acp-client": "userscript-v1",
+          "x-acp-idempotency-key": idempotencyKey,
           "x-acp-page-origin": window.location.origin,
         },
         data: JSON.stringify(candidateFromEnvelope(activeEnvelope.envelope)),
@@ -474,18 +619,20 @@ function safeResultBlock(task) {
         typeof body.status_secret !== "string" ||
         !/^[A-Za-z0-9_-]{20,128}$/.test(body.status_secret)
       ) {
-        throw new Error(body.error?.message ?? `ACP returned ${response.status}`);
+        throw new Error(body.error?.code ?? `http_${response.status}`);
       }
       const expiresAt = Date.parse(body.candidate.status_expires_at);
       if (!Number.isFinite(expiresAt)) {
         throw new Error("ACP returned an invalid status expiry");
       }
       staged = null;
+      await saveStage();
       stopTracking();
       tracking = {
         id: candidateId,
         secret: body.status_secret,
         expiresAt,
+        startedAt: Date.now(),
         returnResultToChat: body.return_result_to_chat === true,
       };
       showStatus(body.auto_dispatched ? "任务已派发" : "等待本机确认");
@@ -501,8 +648,11 @@ function safeResultBlock(task) {
           ? "连接本机超时"
           : error.message === "network_error"
             ? "本机 ACP 未连接"
-            : "派发失败",
+            : error.message === "candidate_route_cooldown"
+              ? "所选模型暂时冷却"
+              : "派发失败",
       );
+      await saveStage();
     }
   };
 
@@ -515,8 +665,15 @@ function safeResultBlock(task) {
       candidateFromEnvelope(envelope);
       const id = envelopeId(envelope);
       if (id === dispatchingEnvelopeId || id === staged?.id) return;
-      staged = { id, envelope };
-      showStatus(`${executionSummary(envelope)} · 回复“执行”`);
+      const changes = staged ? taskEnvelopeChanges(staged.envelope, envelope) : [];
+      staged = {
+        id,
+        envelope,
+        changes,
+        changeConfirmed: changes.length === 0,
+      };
+      saveStage();
+      showStagedStatus();
     } catch {
       showStatus("任务格式无效");
     }
@@ -577,6 +734,17 @@ function safeResultBlock(task) {
       return;
     }
 
+    if (staged?.changes?.length && !staged.changeConfirmed) {
+      if (isChangeConfirmation(text)) {
+        staged.changeConfirmed = true;
+        saveStage();
+        showStagedStatus("变更已确认");
+      } else if (isConfirmation(text)) {
+        showStagedStatus();
+      }
+      return;
+    }
+
     if (staged && isConfirmation(text)) {
       const activeEnvelope = staged;
       setTimeout(() => dispatchEnvelope(activeEnvelope), 0);
@@ -590,5 +758,5 @@ function safeResultBlock(task) {
     subtree: true,
     characterData: true,
   });
-  scheduleInspection();
+  restoreStage().finally(scheduleInspection);
 })();

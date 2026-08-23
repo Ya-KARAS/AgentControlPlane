@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  localRouteHealth,
   publicTaskStatus,
   validateLocalSelection,
 } from "../src/local-review/service.js";
@@ -38,6 +39,8 @@ test("public task status excludes raw task content, paths, logs, and errors", ()
     result_status: "completed",
     changed_files_count: 2,
     tests: { total: 2, passed: 1, failed: 1 },
+    test_commands: { total: 2, passed: 1, failed: 1 },
+    test_cases: null,
     blocker_count: 0,
     execution: {
       executor: "opencode",
@@ -46,10 +49,79 @@ test("public task status excludes raw task content, paths, logs, and errors", ()
       reasoning_effort: "high",
     },
     has_error: true,
+    failure_category: "task_failed",
     updated_at: "2026-08-23T12:00:00.000Z",
     completed_at: "2026-08-23T12:01:00.000Z",
   });
   assert.doesNotMatch(JSON.stringify(projected), /secret|workspace|objective|summary|log/);
+});
+
+test("public status separates test commands from parsed test cases and classifies safe failures", () => {
+  const completed = publicTaskStatus({
+    id: "task-tests",
+    status: "completed",
+    executor: "opencode",
+    policy: { name: "economy", model: "deepseek/deepseek-v4-flash", effort: "low" },
+    result: {
+      status: "completed",
+      changed_files: [],
+      tests: [{
+        command: "python -m unittest -v test_calculator",
+        status: "passed",
+        detail: "Ran 8 tests in 0.001s\n\nOK",
+      }],
+      blockers: [],
+    },
+  });
+  assert.deepEqual(completed.test_commands, { total: 1, passed: 1, failed: 0 });
+  assert.deepEqual(completed.test_cases, { total: 8, passed: 8, failed: 0 });
+  assert.equal(completed.failure_category, null);
+
+  const failed = publicTaskStatus({
+    id: "task-failed",
+    status: "failed",
+    executor: "opencode",
+    policy: { name: "economy", model: "opencode-go/ox-alpha-free", effort: "low" },
+    updatedAt: "2026-08-23T12:00:00.000Z",
+    error: { message: "AI_APICallError: Insufficient balance" },
+    result: null,
+  });
+  assert.equal(failed.failure_category, "insufficient_balance");
+  assert.doesNotMatch(JSON.stringify(failed), /AI_APICallError|private error/i);
+});
+
+test("recent provider failures produce bounded provider cooldowns", () => {
+  const health = localRouteHealth({
+    listTasks: () => [{
+      status: "failed",
+      updatedAt: "2026-08-23T12:00:00.000Z",
+      policy: { model: "opencode-go/ox-alpha-free" },
+      error: { message: "Insufficient balance" },
+    }],
+  }, Date.parse("2026-08-23T12:01:00.000Z"));
+  assert.equal(health.providers["opencode-go"].status, "cooldown");
+  assert.equal(
+    health.providers["opencode-go"].failure_category,
+    "insufficient_balance",
+  );
+
+  const recovered = localRouteHealth({
+    listTasks: () => [
+      {
+        status: "completed",
+        updatedAt: "2026-08-23T12:02:00.000Z",
+        policy: { model: "opencode-go/ox-alpha-free" },
+        result: { status: "completed" },
+      },
+      {
+        status: "failed",
+        updatedAt: "2026-08-23T12:00:00.000Z",
+        policy: { model: "opencode-go/ox-alpha-free" },
+        error: { message: "Insufficient balance" },
+      },
+    ],
+  }, Date.parse("2026-08-23T12:03:00.000Z"));
+  assert.deepEqual(recovered.providers, {});
 });
 
 test("natural-language workspace paths and route choices stay inside local capabilities", (t) => {

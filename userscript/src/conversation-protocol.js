@@ -14,6 +14,13 @@ const CONFIRM_WORDS = new Set([
   "run",
 ]);
 
+const CHANGE_CONFIRM_WORDS = new Set([
+  "确认变更",
+  "接受变更",
+  "confirm changes",
+  "accept changes",
+]);
+
 function boundedText(value, limit) {
   return String(value ?? "").trim().slice(0, limit);
 }
@@ -58,8 +65,11 @@ export function controllerPrompt(request = "", capabilities = {}) {
     safeCapabilities,
     "The user may choose workspace, executor, profile, model, and reasoning effort in natural language.",
     "Use only listed workspace aliases, executor ids, profile ids, model ids, and reasoning efforts. An absolute workspace path is allowed only when the user explicitly supplied it; never invent a local path.",
+    "Do not select a model or provider whose status is cooldown. Explain the safe failure category and ask the user to choose an available route or wait until retry_after.",
     "Omit an execution field when the user did not choose it; local saved defaults then apply. Credentials always remain local and must never appear in ACP_TASK.",
     "Before staging, state the execution choices that will override defaults and identify every omitted field as using the local default.",
+    "After an ACP_RESULT failure, preserve the objective, workspace, and execution route unless the user explicitly requests a change. Never replace the requested engineering task with a smoke test or change its workspace as an automatic troubleshooting step.",
+    "When the user explicitly changes the objective, workspace, executor, profile, model, or reasoning effort, state exactly which fields changed before emitting the replacement ACP_TASK.",
     "The task is staged after you output ACP_TASK. Tell the user to reply with 执行 or another clear confirmation word.",
     "Execution begins only after the browser bridge observes that confirmation. Report execution only after this conversation receives an ACP_RESULT block.",
     userRequest
@@ -156,6 +166,36 @@ export function isConfirmation(value) {
   return CONFIRM_WORDS.has(normalized);
 }
 
+export function isChangeConfirmation(value) {
+  return CHANGE_CONFIRM_WORDS.has(
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[!！。.\s]+$/u, "")
+      .trim(),
+  );
+}
+
+export function taskEnvelopeChanges(previous, next) {
+  if (!previous || !next) return [];
+  const fields = [];
+  if (boundedText(previous.objective, 4000) !== boundedText(next.objective, 4000)) {
+    fields.push("objective");
+  }
+  for (const field of [
+    "workspace",
+    "executor",
+    "profile",
+    "model",
+    "reasoning_effort",
+  ]) {
+    const before = boundedText(previous.execution?.[field], field === "workspace" ? 1000 : 200);
+    const after = boundedText(next.execution?.[field], field === "workspace" ? 1000 : 200);
+    if (before !== after) fields.push(field);
+  }
+  return fields;
+}
+
 export function envelopeId(envelope) {
   const source = JSON.stringify(envelope);
   let value = 2166136261;
@@ -176,7 +216,20 @@ export function safeResultBlock(task) {
       passed: Number(task?.tests?.passed ?? 0),
       failed: Number(task?.tests?.failed ?? 0),
     },
+    test_commands: {
+      total: Number(task?.test_commands?.total ?? task?.tests?.total ?? 0),
+      passed: Number(task?.test_commands?.passed ?? task?.tests?.passed ?? 0),
+      failed: Number(task?.test_commands?.failed ?? task?.tests?.failed ?? 0),
+    },
+    test_cases: task?.test_cases && typeof task.test_cases === "object"
+      ? {
+          total: Number(task.test_cases.total ?? 0),
+          passed: Number(task.test_cases.passed ?? 0),
+          failed: Number(task.test_cases.failed ?? 0),
+        }
+      : null,
     blocker_count: Number(task?.blocker_count ?? 0),
+    failure_category: boundedText(task?.failure_category, 64) || null,
     execution: {
       executor: boundedText(task?.execution?.executor, 64) || null,
       profile: boundedText(task?.execution?.profile, 64) || null,

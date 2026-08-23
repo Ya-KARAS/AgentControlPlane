@@ -21,6 +21,12 @@
 - A loopback capability endpoint gives supported web pages a bounded list of
   workspace aliases, ready executors, profiles, models, and reasoning efforts
   for natural-language planning.
+- Web Bridge 0.5.1 restores an unexpired staged task after a refresh, adds a
+  stable dispatch idempotency key, and requires a separate confirmation when a
+  replacement task changes the objective or execution route.
+- Safe task status now separates test commands from parsed test cases and
+  includes a bounded failure category. Recent provider failures add a temporary
+  cooldown marker to the capability summary.
 
 ### Security
 
@@ -31,6 +37,10 @@
   Requested execution choices remain untrusted until ACP validates them against
   local workspace roots and live executor capabilities. Credential fields and
   unsupported execution fields are discarded or rejected.
+- Refresh recovery uses extension-isolated userscript storage with a ten-minute
+  expiry. It stores only the bounded task envelope and change-confirmation
+  state; credentials, local paths discovered by ACP, status secrets, and task
+  output are excluded.
 
 ## v0.9.0 — 2026-08-21
 

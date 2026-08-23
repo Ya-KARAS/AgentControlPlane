@@ -1,6 +1,7 @@
 import path from "node:path";
 import { CandidateReviewService } from "../core/candidate-review.js";
 import { ControlPlaneError } from "../core/errors.js";
+import { classifyExecutorFailure } from "../core/reroute.js";
 import { resolveWorkspace } from "../core/workspace.js";
 
 const PUBLIC_TASK_STATUSES = new Set([
@@ -31,18 +32,120 @@ function testCounts(tests) {
   return { total: entries.length, passed, failed };
 }
 
+function publicFailureCategory(task) {
+  if (!task?.error && task?.status !== "failed") return null;
+  const signal = JSON.stringify(task?.error ?? "").toLowerCase();
+  if (/insufficient[_ -]?(balance|credits?)|credit balance/.test(signal)) {
+    return "insufficient_balance";
+  }
+  if (/usage limit|usage_limit|quota[_ -]?exhausted/.test(signal)) {
+    return "usage_limit";
+  }
+  return {
+    rate_limited: "rate_limited",
+    authentication_unavailable: "authentication_failed",
+    executor_unavailable: "executor_unavailable",
+    provider_unavailable: "provider_unavailable",
+    task_failure: "task_failed",
+    quota_exhausted: "usage_limit",
+  }[classifyExecutorFailure(task?.error, { result: task?.result })] ?? "unknown";
+}
+
+function parseTestCases(tests) {
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let found = false;
+  for (const entry of Array.isArray(tests) ? tests.slice(0, 1000) : []) {
+    const detail = typeof entry === "object" && entry
+      ? String(entry.detail ?? "")
+      : String(entry ?? "");
+    const unittest = detail.match(/\bRan\s+(\d+)\s+tests?\b/i);
+    if (unittest) {
+      const count = Number(unittest[1]);
+      const failures = Number(detail.match(/failures?=(\d+)/i)?.[1] ?? 0);
+      const errors = Number(detail.match(/errors?=(\d+)/i)?.[1] ?? 0);
+      total += count;
+      failed += Math.min(count, failures + errors);
+      passed += Math.max(0, count - failures - errors);
+      found = true;
+      continue;
+    }
+    const pytestPassed = Number(detail.match(/\b(\d+)\s+passed\b/i)?.[1] ?? 0);
+    const pytestFailed = Number(detail.match(/\b(\d+)\s+failed\b/i)?.[1] ?? 0);
+    const pytestErrors = Number(detail.match(/\b(\d+)\s+errors?\b/i)?.[1] ?? 0);
+    if (pytestPassed + pytestFailed + pytestErrors > 0) {
+      total += pytestPassed + pytestFailed + pytestErrors;
+      passed += pytestPassed;
+      failed += pytestFailed + pytestErrors;
+      found = true;
+      continue;
+    }
+    const tapTotal = Number(detail.match(/^#\s*tests\s+(\d+)\s*$/im)?.[1] ?? 0);
+    const tapPassed = Number(detail.match(/^#\s*pass\s+(\d+)\s*$/im)?.[1] ?? 0);
+    const tapFailed = Number(detail.match(/^#\s*fail\s+(\d+)\s*$/im)?.[1] ?? 0);
+    if (tapTotal > 0) {
+      total += tapTotal;
+      passed += tapPassed;
+      failed += tapFailed;
+      found = true;
+    }
+  }
+  return found ? { total, passed, failed } : null;
+}
+
+function modelProvider(model) {
+  const value = String(model ?? "").trim();
+  return value.includes("/") ? value.split("/", 1)[0] : null;
+}
+
+export function localRouteHealth(store, now = Date.now()) {
+  const providers = {};
+  const seenProviders = new Set();
+  const durations = {
+    insufficient_balance: 15 * 60 * 1000,
+    usage_limit: 15 * 60 * 1000,
+    authentication_failed: 15 * 60 * 1000,
+    rate_limited: 2 * 60 * 1000,
+    provider_unavailable: 5 * 60 * 1000,
+  };
+  for (const task of store?.listTasks?.(100) ?? []) {
+    const provider = modelProvider(task.policy?.model);
+    if (!provider || seenProviders.has(provider)) continue;
+    seenProviders.add(provider);
+    const category = publicFailureCategory(task);
+    const duration = durations[category];
+    const failedAt = Date.parse(task.completedAt ?? task.updatedAt ?? "");
+    if (!duration || !Number.isFinite(failedAt)) continue;
+    const retryAt = failedAt + duration;
+    if (retryAt <= now) continue;
+    const existing = providers[provider];
+    if (!existing || Date.parse(existing.retry_after) < retryAt) {
+      providers[provider] = {
+        status: "cooldown",
+        failure_category: category,
+        retry_after: new Date(retryAt).toISOString(),
+      };
+    }
+  }
+  return { providers };
+}
+
 export function publicTaskStatus(task) {
   if (!task) return null;
   const status = PUBLIC_TASK_STATUSES.has(task.status) ? task.status : "unknown";
   const resultStatus = PUBLIC_TASK_STATUSES.has(task.result?.status)
     ? task.result.status
     : null;
+  const commands = testCounts(task.result?.tests);
   return {
     id: task.id,
     status,
     result_status: resultStatus,
     changed_files_count: boundedCount(task.result?.changed_files),
-    tests: testCounts(task.result?.tests),
+    tests: commands,
+    test_commands: commands,
+    test_cases: parseTestCases(task.result?.tests),
     blocker_count: boundedCount(task.result?.blockers),
     execution: {
       executor: task.executor ?? null,
@@ -51,12 +154,18 @@ export function publicTaskStatus(task) {
       reasoning_effort: task.policy?.effort ?? null,
     },
     has_error: Boolean(task.error),
+    failure_category: publicFailureCategory(task),
     updated_at: task.updatedAt ?? null,
     completed_at: task.completedAt ?? null,
   };
 }
 
-export function validateLocalSelection(config, orchestrator, selection) {
+export function validateLocalSelection(
+  config,
+  orchestrator,
+  selection,
+  { routeHealth = null } = {},
+) {
   const requestedWorkspace = String(selection?.workspace ?? "").trim();
   const executor = String(selection?.executor ?? "");
   const profile = String(selection?.profile ?? "");
@@ -114,6 +223,22 @@ export function validateLocalSelection(config, orchestrator, selection) {
       { available: availableModels },
     );
   }
+  const effectiveModel = model ?? (
+    executor === "codex"
+      ? config.profiles?.[profile]?.model ?? null
+      : configuredExecutorModel(config, executor, catalog)
+  );
+  const providerHealth = routeHealth?.providers?.[modelProvider(effectiveModel)];
+  if (providerHealth?.status === "cooldown") {
+    throw new ControlPlaneError(
+      "candidate_route_cooldown",
+      "The selected model provider is temporarily cooling down after a recent failure",
+      {
+        failure_category: providerHealth.failure_category,
+        retry_after: providerHealth.retry_after,
+      },
+    );
+  }
   const modelEfforts = selectedModel?.supportedReasoningEfforts?.map(
     (entry) => entry.reasoningEffort,
   ) ?? [];
@@ -148,7 +273,9 @@ export function createCandidateReviewService({ config, orchestrator, store }) {
   return new CandidateReviewService({
     dispatch: (request) => orchestrator.dispatch(request),
     validateApproval: (selection) =>
-      validateLocalSelection(config, orchestrator, selection),
+      validateLocalSelection(config, orchestrator, selection, {
+        routeHealth: localRouteHealth(store),
+      }),
     audit: (type, payload) => store.audit(type, payload),
     resolveTaskStatus: (taskId) => publicTaskStatus(store.getTask(taskId)),
   });
@@ -182,7 +309,8 @@ function configuredExecutorModel(config, executor, catalog) {
   );
 }
 
-export function localReviewCapabilities(config, orchestrator, settings) {
+export function localReviewCapabilities(config, orchestrator, settings, store = null) {
+  const routeHealth = localRouteHealth(store);
   const executors = (orchestrator.getExecutors?.() ?? [])
     .filter((entry) => entry.ready !== false)
     .map((entry) => ({
@@ -200,6 +328,9 @@ export function localReviewCapabilities(config, orchestrator, settings) {
           entry.supportedReasoningEfforts?.map(
             (effort) => effort.reasoningEffort,
           ) ?? [],
+        ...(routeHealth.providers[modelProvider(entry.model ?? entry.id)] ?? {
+          status: "available",
+        }),
       }))
       .filter((entry) => entry.id);
   }
@@ -237,5 +368,6 @@ export function localReviewCapabilities(config, orchestrator, settings) {
       ]),
     ),
     models,
+    route_health: routeHealth,
   };
 }

@@ -174,7 +174,10 @@ export class LocalReviewRouter {
           );
         }
         const body = await readJson(request, 16 * 1024);
-        let created = this.service.create(body, { pageOrigin });
+        const idempotencyKey = isUserscriptRequest(request)
+          ? request.headers["x-acp-idempotency-key"]
+          : null;
+        let created = this.service.create(body, { pageOrigin, idempotencyKey });
         let autoDispatched = false;
         const automaticSelection = isUserscriptRequest(request)
           ? this.settings.autoDispatchSelection()

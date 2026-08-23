@@ -18,11 +18,14 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.5\.0$/m);
+  assert.match(script, /^\/\/ @version\s+0\.5\.1$/m);
   assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/main\/userscript\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @grant\s+GM_openInTab$/m);
+  assert.match(script, /^\/\/ @grant\s+GM_deleteValue$/m);
+  assert.match(script, /^\/\/ @grant\s+GM_getValue$/m);
+  assert.match(script, /^\/\/ @grant\s+GM_setValue$/m);
   assert.match(script, /^\/\/ @grant\s+GM_xmlhttpRequest$/m);
   assert.match(script, /^\/\/ @run-at\s+document-idle$/m);
 
@@ -51,6 +54,10 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /\/v1\/local-review\/capabilities/);
   assert.match(script, /x-acp-client/);
   assert.match(script, /x-acp-status-secret/);
+  assert.match(script, /x-acp-idempotency-key/);
+  assert.match(script, /GM_setValue/);
+  assert.match(script, /GM_getValue/);
+  assert.match(script, /确认变更/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);
   assert.doesNotMatch(script, /document\.createElement\(["']textarea["']\)/);
@@ -87,6 +94,6 @@ test("userscript documentation states the conversation and local safety boundary
   assert.match(readme, /native web AI\s+conversation/i);
   assert.match(readme, /@AgentControlPlane/);
   assert.match(readme, /reply with `执行`/i);
-  assert.match(readme, /does not send local paths,\s+raw\s+logs, credentials, or raw errors/i);
+  assert.match(readme, /does not send local\s+paths,\s+raw\s+logs, credentials, or raw errors/i);
   assert.match(readme, /device pairing, mobile relay support/i);
 });

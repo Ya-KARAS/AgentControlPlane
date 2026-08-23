@@ -6,9 +6,11 @@ import {
   envelopeId,
   executionSummary,
   extractTaskEnvelope,
+  isChangeConfirmation,
   isConfirmation,
   parseLaunchCommand,
   safeResultBlock,
+  taskEnvelopeChanges,
 } from "../userscript/src/conversation-protocol.js";
 
 test("launch command requires an exact AgentControlPlane mention boundary", () => {
@@ -48,6 +50,26 @@ test("controller prompt keeps planning in the web conversation", () => {
   assert.match(prompt, /opencode-go\/deepseek-v4-pro/);
   assert.match(prompt, /user may choose workspace, executor, profile, model, and reasoning effort/i);
   assert.match(prompt, /credentials always remain local/i);
+  assert.match(prompt, /Never replace the requested engineering task with a smoke test/i);
+  assert.match(prompt, /status is cooldown/i);
+});
+
+test("task changes require a distinct confirmation from execution", () => {
+  const previous = {
+    objective: "Build calculator",
+    execution: { workspace: "acp-live-test", model: "model-a" },
+  };
+  const next = {
+    objective: "Build smoke test",
+    execution: { workspace: "other", model: "model-b" },
+  };
+  assert.deepEqual(taskEnvelopeChanges(previous, next), [
+    "objective",
+    "workspace",
+    "model",
+  ]);
+  assert.equal(isChangeConfirmation("确认变更"), true);
+  assert.equal(isChangeConfirmation("执行"), false);
 });
 
 test("task envelope extraction accepts one bounded JSON object", () => {
@@ -132,6 +154,9 @@ test("envelope identity is stable and safe result excludes private detail", () =
     status: "completed",
     changed_files_count: 2,
     tests: { total: 3, passed: 3, failed: 0 },
+    test_commands: { total: 1, passed: 1, failed: 0 },
+    test_cases: { total: 8, passed: 8, failed: 0 },
+    failure_category: null,
     blocker_count: 0,
     summary: "private summary",
     workspace: "C:\\private",
@@ -150,5 +175,8 @@ test("envelope identity is stable and safe result excludes private detail", () =
   assert.match(result, /"changed_files_count": 2/);
   assert.match(result, /"executor": "opencode"/);
   assert.match(result, /"reasoning_effort": "high"/);
+  assert.match(result, /"test_cases"/);
+  assert.match(result, /"total": 8/);
+  assert.match(result, /"failure_category": null/);
   assert.doesNotMatch(result, /private|workspace|summary|error|logs/i);
 });

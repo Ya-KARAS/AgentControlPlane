@@ -16,6 +16,11 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
+Version 0.5.1 keeps an unexpired staged task through a page refresh. If a new
+task changes the objective, workspace, executor, profile, model, or reasoning
+effort before dispatch, the pill lists the changed fields and asks for
+`确认变更` before it accepts `执行`.
+
 ## Supported sites
 
 - `https://chatgpt.com/*`
@@ -47,9 +52,10 @@ contain a second task form.
 7. If safe result return is enabled, the bridge sends an `<ACP_RESULT>` block
    to the same conversation after the task reaches a terminal state.
 
-The result block contains task status, file/test/blocker counts, and non-secret
-executor, profile, model, and reasoning ids. It does not send local paths, raw
-logs, credentials, or raw errors to the webpage.
+The result block contains task status, file and blocker counts, test-command
+counts, parsed test-case counts when available, a safe failure category, and
+non-secret executor, profile, model, and reasoning ids. It does not send local
+paths, raw logs, credentials, or raw errors to the webpage.
 
 ## Local safety boundary
 
@@ -63,6 +69,10 @@ logs, credentials, or raw errors to the webpage.
 - Dispatch requires a fresh user Send action containing a recognized short
   confirmation. Reading an AI reply or observing a DOM change is insufficient.
 - The origin-bound status capability expires and stays in userscript memory.
+- Refresh recovery stores only the bounded staged envelope and change state in
+  extension-isolated userscript storage. The entry expires after ten minutes.
+- A stable, non-secret idempotency key prevents a refresh or retry from creating
+  a second engineering task for the same staged envelope.
 - Automatic dispatch and result return are separate, default-off local settings.
 
 ## Add a web AI adapter
@@ -84,8 +94,9 @@ source modules.
 ## Disable or uninstall
 
 Open the userscript manager, find `AgentControlPlane Web Bridge Preview`, then
-disable or remove it. Execution choices remain in ACP's local state directory,
-not in browser storage.
+disable or remove it. Execution choices remain in ACP's local state directory.
+Only an unexpired staged envelope can remain in extension-isolated userscript
+storage for refresh recovery.
 
 ## Current boundary
 

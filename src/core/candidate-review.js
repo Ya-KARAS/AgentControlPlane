@@ -165,7 +165,7 @@ export class CandidateReviewService {
     this.candidates = new Map();
   }
 
-  create(input, { pageOrigin }) {
+  create(input, { pageOrigin, idempotencyKey = null }) {
     const normalized = normalizeCandidate(input);
     this.#expireCandidates();
     const active = [...this.candidates.values()].filter((candidate) =>
@@ -194,6 +194,11 @@ export class CandidateReviewService {
       statusSecretHash: secretHash(statusSecret),
       approvalSecretHash: null,
       taskId: null,
+      idempotencyKey:
+        typeof idempotencyKey === "string" &&
+        /^[A-Za-z0-9._:-]{8,200}$/.test(idempotencyKey)
+          ? idempotencyKey
+          : null,
     };
     this.candidates.set(id, candidate);
     this.audit("candidate.created", {
@@ -317,6 +322,9 @@ export class CandidateReviewService {
         ...(approved.model ? { model: approved.model } : {}),
         ...(approved.reasoning_effort
           ? { reasoning_effort: approved.reasoning_effort }
+          : {}),
+        ...(candidate.idempotencyKey
+          ? { idempotency_key: candidate.idempotencyKey }
           : {}),
       });
       candidate.status = "dispatched";

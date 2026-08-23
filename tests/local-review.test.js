@@ -133,7 +133,9 @@ test("capability summary exposes safe natural-language choices", async () => {
       id: "opencode-go/deepseek-v4-pro",
       display_name: "DeepSeek V4 Pro",
       reasoning_efforts: ["high", "max"],
+      status: "available",
     });
+    assert.deepEqual(body.capabilities.route_health, { providers: {} });
     assert.doesNotMatch(JSON.stringify(body), /C:\\\\allowed/);
 
     const denied = await fetch(`${baseUrl}/v1/local-review/capabilities`, {
@@ -260,6 +262,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
         "content-type": "application/json",
         origin: "https://chatgpt.com",
         "x-acp-client": "userscript-v1",
+        "x-acp-idempotency-key": "userscript:0123456789abcdef",
         "x-acp-page-origin": "https://chatgpt.com",
       },
       body: JSON.stringify({
@@ -283,6 +286,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
       profile: "economy",
       model: "opencode-go/deepseek-v4-pro",
       reasoning_effort: "high",
+      idempotency_key: "userscript:0123456789abcdef",
     });
 
     const preflight = await fetch(`${baseUrl}/v1/local-review/candidates`, {

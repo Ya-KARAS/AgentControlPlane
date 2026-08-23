@@ -44,6 +44,9 @@ are never accepted.
 4. When ready, the web AI emits one JSON object between `<ACP_TASK>` tags.
 5. The bridge validates and stages the envelope, then reports that it is waiting
    for `执行`.
+   A ten-minute extension-isolated record restores this stage after a refresh.
+   If a replacement envelope changes the objective or route, the user must send
+   `确认变更` before dispatch confirmation is accepted.
 6. The person sends a short confirmation from the page composer.
 7. ACP creates a candidate and validates any requested execution choices. A
    local setting either dispatches it with validated choices or opens the
@@ -107,7 +110,10 @@ The optional result projection contains only:
   "status": "completed",
   "changed_files_count": 0,
   "tests": { "total": 0, "passed": 0, "failed": 0 },
+  "test_commands": { "total": 0, "passed": 0, "failed": 0 },
+  "test_cases": null,
   "blocker_count": 0,
+  "failure_category": null,
   "execution": {
     "executor": "opencode",
     "profile": "economy",
@@ -117,9 +123,12 @@ The optional result projection contains only:
 }
 ```
 
-It excludes objectives, summaries, paths, changed-file names, logs, credentials,
-executor output, and raw errors. The bridge waits for an empty composer before
-sending the result and abandons the attempt after a bounded interval.
+`tests` remains the backward-compatible test-command count.
+`test_commands` names that count explicitly. `test_cases` is populated only
+when ACP can parse a supported test-runner summary. `failure_category` is a
+bounded provider-neutral classification derived from executor failure data.
+The projection excludes objectives, summaries, paths, changed-file names, logs,
+credentials, executor output, and raw errors.
 
 ## Module boundaries
 
@@ -144,7 +153,8 @@ modules. The candidate service has no browser or adapter dependency.
    confirmation words, bounded execution choices, stable envelope ids, and
    result redaction.
 2. Static userscript tests require native-conversation markers and reject task
-   forms, browser storage, credentials, raw task APIs, and HTML injection.
+   forms, page storage, credentials, raw task APIs, and HTML injection.
+   Extension-isolated storage is limited to a bounded, expiring staged envelope.
 3. Local integration tests prove automatic dispatch and result return are
    default-off settings protected by a one-time local form secret.
 4. Candidate tests reject unknown fields, origins, choices outside local

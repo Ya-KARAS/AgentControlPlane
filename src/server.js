@@ -245,6 +245,7 @@ export async function createApplication(overrides = {}) {
       config,
       orchestrator,
       localReviewSettings.current(),
+      store,
     );
   const localReview = new LocalReviewRouter({
     service: candidateReview,

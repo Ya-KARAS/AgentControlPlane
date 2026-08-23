@@ -109,6 +109,28 @@ test("fresh approval applies staged execution preferences", () => {
   });
 });
 
+test("trusted userscript idempotency key reaches the orchestrator without becoming public", () => {
+  const { service, dispatched } = serviceHarness();
+  const created = service.create(
+    {
+      objective: "Create a local review test",
+      constraints: [],
+      source: "userscript-preview",
+    },
+    {
+      pageOrigin: "https://chatgpt.com",
+      idempotencyKey: "userscript:0123456789abcdef",
+    },
+  );
+  assert.equal("idempotencyKey" in created.candidate, false);
+  service.dispatchTrusted(created.candidate.id, {
+    workspace: "C:\\allowed",
+    executor: "opencode",
+    profile: "economy",
+  });
+  assert.equal(dispatched[0].idempotency_key, "userscript:0123456789abcdef");
+});
+
 test("a candidate cannot dispatch before local review creates an approval secret", () => {
   const { service, dispatched } = serviceHarness();
   const created = createCandidate(service);
