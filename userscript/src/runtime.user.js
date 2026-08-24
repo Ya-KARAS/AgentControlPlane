@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.8.3
+// @version      0.8.4
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.3/agent-control-plane-web-bridge.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.4/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -71,6 +71,8 @@
   let activeScope = conversationScope(window.location);
   let planningBaseline = null;
   let remoteRelay = null;
+  const mobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  let statusAction = mobileBrowser ? "pair-remote" : "settings";
 
   const nextRevision = () =>
     `${Date.now().toString(36)}:${TAB_ID}:${revisionSequence += 1}`;
@@ -395,8 +397,14 @@
   const statusButton = document.createElement("button");
   statusButton.type = "button";
   statusButton.textContent = `ACP · ${t("ready")}`;
-  statusButton.title = t("openSettings");
+  statusButton.title = statusAction === "pair-remote"
+    ? t("menuConnectRemote")
+    : t("openSettings");
   statusButton.addEventListener("click", () => {
+    if (!remoteRelay && statusAction === "pair-remote") {
+      void pairRemoteRelay();
+      return;
+    }
     GM_openInTab(remoteRelay?.baseUrl ?? `${LOCAL_BASE_URL}/local-review/settings`, {
       active: true,
       insert: true,
@@ -458,13 +466,20 @@
     languageSelect.title = t("languageLabel");
     root.setAttribute("aria-label", t("ariaLabel"));
     statusButton.textContent = `ACP · ${t("ready")}`;
-    statusButton.title = t("openSettings");
+    statusAction = remoteRelay ? "settings" : mobileBrowser ? "pair-remote" : "settings";
+    statusButton.title = statusAction === "pair-remote"
+      ? t("menuConnectRemote")
+      : t("openSettings");
     registerLanguageMenu();
   };
 
-  const showStatus = (text, detail = text, state = "default") => {
+  const showStatus = (text, detail = text, state = "default", action = "settings") => {
+    statusAction = action;
     statusButton.textContent = `ACP · ${text}`;
-    statusButton.title = `AgentControlPlane\n${detail}\n${t("openSettings")}`;
+    const actionHint = statusAction === "pair-remote"
+      ? t("menuConnectRemote")
+      : t("openSettings");
+    statusButton.title = `AgentControlPlane\n${detail}\n${actionHint}`;
     statusButton.dataset.state = state;
   };
 
@@ -919,17 +934,19 @@
       });
     } catch (error) {
       dispatchingEnvelopeId = null;
+      if (error.message === "network_error") {
+        showStatus(t("localDisconnected"), t("localDisconnected"), "default", "pair-remote");
+      } else if (error.message === "timeout") {
+        showStatus(t("connectionTimeout"), t("connectionTimeout"), "default", "pair-remote");
+      } else {
         showStatus(
-          error.message === "timeout"
-            ? t("connectionTimeout")
-            : error.message === "network_error"
-              ? t("localDisconnected")
-              : error.message === "stage_lock_unavailable"
-                ? t("browserDispatchUnsupported")
+          error.message === "stage_lock_unavailable"
+            ? t("browserDispatchUnsupported")
             : error.message === "candidate_route_cooldown"
               ? t("routeCooldown")
               : t("dispatchFailed"),
-      );
+        );
+      }
     }
   };
 
@@ -985,13 +1002,13 @@
         showStatus(t("planning"));
         await submitComposer();
       } catch (error) {
-        showStatus(
-          error.message === "timeout"
-            ? t("connectionTimeout")
-            : error.message === "network_error"
-              ? t("localDisconnected")
-              : t("readConfigFailed"),
-        );
+        if (error.message === "network_error") {
+          showStatus(t("localDisconnected"), t("localDisconnected"), "default", "pair-remote");
+        } else if (error.message === "timeout") {
+          showStatus(t("connectionTimeout"), t("connectionTimeout"), "default", "pair-remote");
+        } else {
+          showStatus(t("readConfigFailed"));
+        }
       } finally {
         launchPending = false;
       }

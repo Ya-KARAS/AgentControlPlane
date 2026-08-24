@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.8.3 provides separate Chinese and English interfaces, local/remote
+Version 0.8.4 provides separate Chinese and English interfaces, local/remote
 transport selection, and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
@@ -31,6 +31,10 @@ Each terminal task result is also inserted into its originating conversation
 at most once. DeepSeek or ChatGPT DOM rerenders and page reloads cannot insert
 the same `<ACP_RESULT>` again, and the bridge never overwrites text already
 typed by the user. A different task id can still return one new result.
+
+On mobile browsers, tapping the ACP status pill before remote pairing opens
+the remote portal pairing flow directly instead of trying to open the phone's
+loopback address. Desktop-local behavior remains unchanged.
 
 ## Supported sites
 

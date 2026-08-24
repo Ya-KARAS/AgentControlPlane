@@ -18,7 +18,7 @@ const metaPath = path.resolve(
 const releasePath = path.resolve(
   "userscript",
   "releases",
-  "0.8.3",
+  "0.8.4",
   "agent-control-plane-web-bridge.user.js",
 );
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
@@ -28,9 +28,9 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.8\.3$/m);
+  assert.match(script, /^\/\/ @version\s+0\.8\.4$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.3\/agent-control-plane-web-bridge\.user\.js$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.4\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @connect\s+acp\.asterroute\.com$/m);
@@ -59,8 +59,8 @@ test("userscript update metadata is small and matches the install header", () =>
 
   assert.equal(meta, expected);
   assert.equal(release, script);
-  assert.match(meta, /^\/\/ @version\s+0\.8\.3$/m);
-  assert.match(meta, /userscript\/releases\/0\.8\.3\/agent-control-plane-web-bridge\.user\.js/);
+  assert.match(meta, /^\/\/ @version\s+0\.8\.4$/m);
+  assert.match(meta, /userscript\/releases\/0\.8\.4\/agent-control-plane-web-bridge\.user\.js/);
   assert.match(meta, /agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);
@@ -115,6 +115,9 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /\/api\/acp\/pairings\/claim/);
   assert.match(script, /\/api\/acp\/tasks/);
   assert.match(script, /\/api\/acp\/capabilities/);
+  assert.match(script, /Android\|iPhone\|iPad\|iPod/);
+  assert.match(script, /statusAction === "pair-remote"/);
+  assert.match(script, /void pairRemoteRelay\(\)/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);
   assert.doesNotMatch(script, /document\.createElement\(["']textarea["']\)/);
