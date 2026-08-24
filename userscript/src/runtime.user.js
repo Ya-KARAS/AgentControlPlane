@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.8.1
+// @version      0.8.2
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.1/agent-control-plane-web-bridge.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.2/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -203,24 +203,56 @@
   const loadRemoteRelay = async () => {
     const saved = await Promise.resolve(GM_getValue(REMOTE_RELAY_KEY, null));
     try {
+      const refreshToken = saved?.refreshToken ?? saved?.token;
       if (
         !saved ||
         typeof saved !== "object" ||
-        typeof saved.token !== "string" ||
-        !/^[A-Za-z0-9_-]{32,256}$/.test(saved.token)
+        typeof refreshToken !== "string" ||
+        !/^(?:acpr_)?[A-Za-z0-9_-]{32,256}$/.test(refreshToken)
       ) return null;
       return {
         baseUrl: normalizeRemoteUrl(saved.baseUrl),
-        token: saved.token,
+        refreshToken,
+        accessToken: typeof saved.accessToken === "string" ? saved.accessToken : null,
+        accessTokenExpiresAt: Number(saved.accessTokenExpiresAt ?? 0),
+        credentialVersion: Number(saved.credentialVersion ?? (saved.refreshToken ? 2 : 1)),
       };
     } catch {
       return null;
     }
   };
 
-  const remoteHeaders = (extra = {}) => ({
+  const ensureRemoteAccessToken = async () => {
+    if (!remoteRelay) throw new Error("remote_not_configured");
+    if (
+      remoteRelay.accessToken &&
+      (remoteRelay.credentialVersion === 1 || remoteRelay.accessTokenExpiresAt - Date.now() > 60000)
+    ) return remoteRelay.accessToken;
+    const response = await request({
+      method: "POST",
+      url: `${remoteRelay.baseUrl}/api/acp/tokens/refresh`,
+      headers: { authorization: `Bearer ${remoteRelay.refreshToken}` },
+    });
+    const body = JSON.parse(response.responseText || "{}");
+    if (
+      response.status === 200 &&
+      /^acpa_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(body.access_token ?? "") &&
+      Number.isFinite(Date.parse(body.access_token_expires_at ?? ""))
+    ) {
+      if (body.refresh_token) remoteRelay.refreshToken = body.refresh_token;
+      remoteRelay.accessToken = body.access_token;
+      remoteRelay.accessTokenExpiresAt = Date.parse(body.access_token_expires_at);
+      remoteRelay.credentialVersion = 2;
+      await Promise.resolve(GM_setValue(REMOTE_RELAY_KEY, remoteRelay));
+      return remoteRelay.accessToken;
+    }
+    if (remoteRelay.credentialVersion === 1) return remoteRelay.refreshToken;
+    throw new Error(body.error?.code ?? `http_${response.status}`);
+  };
+
+  const remoteHeaders = async (extra = {}) => ({
     ...extra,
-    authorization: `Bearer ${remoteRelay.token}`,
+    authorization: `Bearer ${await ensureRemoteAccessToken()}`,
   });
 
   const pairRemoteRelay = async () => {
@@ -237,7 +269,7 @@
       const response = await request({
         method: "POST",
         url: `${normalizedUrl}/api/acp/pairings/claim`,
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-acp-credential-version": "2" },
         data: JSON.stringify({
           code: code.trim().toUpperCase().replaceAll("-", ""),
           kind: "browser",
@@ -245,10 +277,17 @@
         }),
       });
       const body = JSON.parse(response.responseText);
-      if (response.status !== 201 || !/^[A-Za-z0-9_-]{32,256}$/.test(body.token ?? "")) {
+      const refreshToken = body.refresh_token ?? body.token;
+      if (response.status !== 201 || !/^(?:acpr_)?[A-Za-z0-9_-]{32,256}$/.test(refreshToken ?? "")) {
         throw new Error(body.error?.code ?? `http_${response.status}`);
       }
-      remoteRelay = { baseUrl: normalizedUrl, token: body.token };
+      remoteRelay = {
+        baseUrl: normalizedUrl,
+        refreshToken,
+        accessToken: typeof body.access_token === "string" ? body.access_token : refreshToken,
+        accessTokenExpiresAt: Date.parse(body.access_token_expires_at ?? "") || 0,
+        credentialVersion: typeof body.access_token === "string" ? 2 : 1,
+      };
       await Promise.resolve(GM_setValue(REMOTE_RELAY_KEY, remoteRelay));
       showStatus(t("remoteConnected"));
     } catch {
@@ -653,7 +692,7 @@
       response = await request({
         method: "GET",
         url: `${remoteRelay.baseUrl}/api/acp/capabilities`,
-        headers: remoteHeaders(),
+        headers: await remoteHeaders(),
       });
     }
     const body = JSON.parse(response.responseText);
@@ -732,7 +771,7 @@
         ? await request({
             method: "GET",
             url: `${activeTracking.baseUrl}/api/acp/tasks/${encodeURIComponent(activeTracking.id)}`,
-            headers: { authorization: `Bearer ${activeTracking.token}` },
+            headers: await remoteHeaders(),
           })
         : await request({
             method: "GET",
@@ -825,7 +864,7 @@
           response = await request({
             method: "POST",
             url: `${remoteRelay.baseUrl}/api/acp/tasks`,
-            headers: remoteHeaders({
+            headers: await remoteHeaders({
               "content-type": "application/json",
               "x-acp-idempotency-key": idempotencyKey,
             }),
@@ -870,7 +909,6 @@
           returnResultToChat: usedRemote || body.return_result_to_chat === true,
           remote: usedRemote,
           baseUrl: usedRemote ? remoteRelay.baseUrl : null,
-          token: usedRemote ? remoteRelay.token : null,
         };
         showStatus(usedRemote || body.auto_dispatched ? t("dispatched") : t("waitingLocalReview"));
         pollStatus(tracking);

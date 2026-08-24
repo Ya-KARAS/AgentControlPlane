@@ -11,6 +11,7 @@ its original path so release notes and development handoffs keep stable links.
 - [ChatGPT connection](CHATGPT-CONNECTION.md) · [中文](CHATGPT-CONNECTION.zh-CN.md)
 - [Web Bridge userscript](../userscript/README.md)
 - [Project registry](PROJECT-REGISTRY.md)
+- [Remote device relay](REMOTE-DEVICE-RELAY.md)
 
 ## Architecture and contracts
 

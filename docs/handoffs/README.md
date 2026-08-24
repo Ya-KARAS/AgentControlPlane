@@ -10,3 +10,5 @@ the current contract lives in [`docs/DEVELOPMENT.md`](../DEVELOPMENT.md).
 | 2026-08-21 | P1 continuation | [Handoff](2026-08-21-codex-p1-continuation.md) |
 | 2026-08-21 | P1 stability | [Handoff](2026-08-21-codex-p1-1-stability.md) |
 | 2026-08-21 | Public launch readiness | [Handoff](2026-08-21-codex-public-launch-readiness.md) |
+| 2026-08-23 | Remote device relay | [Handoff](2026-08-23-remote-device-relay.md) |
+| 2026-08-24 | Rotating device pairing | [Handoff](2026-08-24-rotating-device-pairing.md) |

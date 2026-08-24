@@ -95,7 +95,7 @@ export class RemoteRelayWorker {
     if (this.inFlight) return;
     this.inFlight = true;
     try {
-      const auth = this.credentials.authorization();
+      const auth = await this.credentials.authorization();
       const current = this.credentials.current();
       const selection = this.settings.autoDispatchSelection();
       if (!auth || !current.base_url || !selection) return;

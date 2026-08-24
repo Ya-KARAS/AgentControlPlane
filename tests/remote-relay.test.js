@@ -37,8 +37,42 @@ test("pairing stores the bearer credential locally but never exposes it", async 
     label: "Desk",
   });
   assert.doesNotMatch(JSON.stringify(current), /a{20}/);
-  assert.match(credentials.authorization(), /^Bearer a{48}$/);
+  assert.match(await credentials.authorization(), /^Bearer a{48}$/);
   assert.equal(JSON.parse(calls[0].options.body).kind, "executor");
+});
+
+test("paired devices refresh short-lived access tokens without exposing the refresh credential", async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-remote-rolling-"));
+  const refreshToken = `acpr_${"r".repeat(48)}`;
+  const firstAccess = `acpa_${"a".repeat(40)}.${"s".repeat(40)}`;
+  const secondAccess = `acpa_${"b".repeat(40)}.${"t".repeat(40)}`;
+  const calls = [];
+  const credentials = new RemoteRelayCredentials({
+    stateDir,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith("/pairings/claim")) {
+        return new Response(JSON.stringify({
+          client_id: "client-rolling",
+          token: refreshToken,
+          refresh_token: refreshToken,
+          access_token: firstAccess,
+          access_token_expires_at: "2020-01-01T00:00:00.000Z",
+        }), { status: 201, headers: { "content-type": "application/json" } });
+      }
+      if (url.endsWith("/tokens/refresh")) {
+        return new Response(JSON.stringify({
+          access_token: secondAccess,
+          access_token_expires_at: "2999-01-01T00:00:00.000Z",
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+  });
+  await credentials.pair({ baseUrl: "https://acp.example.com", code: "ABCD-1234", label: "Desk" });
+  assert.equal(await credentials.authorization(), `Bearer ${secondAccess}`);
+  assert.equal(calls[1].options.headers.authorization, `Bearer ${refreshToken}`);
+  assert.doesNotMatch(JSON.stringify(credentials.current()), /acpr_|acpa_/);
 });
 
 test("worker claims, dispatches, and uploads only the safe projection", async () => {
