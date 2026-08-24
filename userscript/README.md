@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.8.1 provides separate Chinese and English interfaces, local/remote
+Version 0.8.3 provides separate Chinese and English interfaces, local/remote
 transport selection, and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
@@ -43,8 +43,9 @@ typed by the user. A different task id can still return one new result.
 2. Open `agent-control-plane-web-bridge.user.js` from this directory.
 3. Use the userscript manager's install or update action.
 4. For desktop-local use, start AgentControlPlane on `127.0.0.1:4318`. For
-   phone or remote use, create a browser pairing code in the HTTPS ACP portal,
-   then choose **ACP: Connect phone/remote portal** from the userscript menu.
+   phone or remote use, enter the registered AsterRoute email in the HTTPS ACP
+   portal. Enter the same six-digit email matching code in the phone userscript
+   and the computer ACP Remote pairing setting.
 5. Use the visible language selector beside the floating ACP status button to
    choose **Auto**, **中文**, or **English**. The Tampermonkey script menu keeps
    the same choices as a fallback. The script stores this choice in
