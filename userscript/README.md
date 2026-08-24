@@ -16,7 +16,7 @@ omitted choice comes from the local settings page.
 The floating ACP pill reports local state and opens settings. It does not
 contain a second task form.
 
-Version 0.8.4 provides separate Chinese and English interfaces, local/remote
+Version 0.8.5 provides separate Chinese and English interfaces, local/remote
 transport selection, and keeps an
 unexpired staged task through a page refresh. If a new
 task changes the objective, workspace, executor, profile, model, or reasoning
@@ -65,11 +65,11 @@ loopback address. Desktop-local behavior remains unchanged.
 ## Updates
 
 Tampermonkey checks the small
-`agent-control-plane-web-bridge.meta.js` file and downloads the complete
-`.user.js` only after it detects a newer version. Both URLs use the explicit
-GitHub `refs/heads/main` path. Every full release has its own versioned path
-under `userscript/releases/`, so a newly detected release cannot reuse an older
-cached script body.
+`agent-control-plane-web-bridge.meta.js` file hosted by `acp.asterroute.com`
+and downloads the complete `.user.js` only after it detects a newer version.
+Every full release has its own versioned portal path, so a newly detected
+release cannot reuse an older cached script body or depend on GitHub Raw being
+reachable from the device.
 
 If an older installation still uses the legacy `/main/` update URL, install
 0.7.4 once from the current `.user.js`; later releases use the new update
