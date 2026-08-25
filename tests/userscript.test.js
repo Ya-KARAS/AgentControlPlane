@@ -6,6 +6,7 @@ import vm from "node:vm";
 import chatgpt from "../userscript/src/adapters/chatgpt.js";
 import deepseek from "../userscript/src/adapters/deepseek.js";
 import { createAdapterRegistry } from "../userscript/src/adapter-registry.js";
+import { readCapabilitiesWithFallback } from "../userscript/src/capabilities.js";
 
 const scriptPath = path.resolve(
   "userscript",
@@ -18,7 +19,7 @@ const metaPath = path.resolve(
 const releasePath = path.resolve(
   "userscript",
   "releases",
-  "0.8.6",
+  "0.8.7",
   "agent-control-plane-web-bridge.user.js",
 );
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
@@ -28,9 +29,9 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.8\.6$/m);
+  assert.match(script, /^\/\/ @version\s+0\.8\.7$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.6\/agent-control-plane-web-bridge\.user\.js$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.7\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @connect\s+acp\.asterroute\.com$/m);
@@ -59,12 +60,29 @@ test("userscript update metadata is small and matches the install header", () =>
 
   assert.equal(meta, expected);
   assert.equal(release, script);
-  assert.match(meta, /^\/\/ @version\s+0\.8\.6$/m);
-  assert.match(meta, /userscript\/releases\/0\.8\.6\/agent-control-plane-web-bridge\.user\.js/);
+  assert.match(meta, /^\/\/ @version\s+0\.8\.7$/m);
+  assert.match(meta, /userscript\/releases\/0\.8\.7\/agent-control-plane-web-bridge\.user\.js/);
   assert.match(meta, /userscript\/agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /acp\.asterroute\.com\/downloads/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);
+});
+
+test("userscript falls back to the paired portal when localhost returns an invalid response", async () => {
+  let remoteReads = 0;
+  const capabilities = await readCapabilitiesWithFallback({
+    readLocal: async () => ({ status: 0, responseText: "" }),
+    readRemote: async () => {
+      remoteReads += 1;
+      return {
+        status: 200,
+        responseText: JSON.stringify({ capabilities: { executors: [{ id: "opencode" }] } }),
+      };
+    },
+  });
+
+  assert.equal(remoteReads, 1);
+  assert.equal(capabilities.executors[0].id, "opencode");
 });
 
 test("userscript keeps routine operation inside the native web AI conversation", () => {

@@ -97,11 +97,20 @@ export class RemoteRelayWorker {
     try {
       const auth = await this.credentials.authorization();
       const current = this.credentials.current();
-      const selection = this.settings.autoDispatchSelection();
-      if (!auth || !current.base_url || !selection) return;
+      if (!auth || !current.base_url) return;
+      let contacted = false;
       if (this.getCapabilities && this.now() - this.lastCapabilitiesAt >= 30_000) {
         await this.#uploadCapabilities(current.base_url, auth);
         this.lastCapabilitiesAt = this.now();
+        contacted = true;
+      }
+      const selection = this.settings.autoDispatchSelection();
+      if (!selection) {
+        if (contacted) {
+          this.lastContactAt = new Date(this.now()).toISOString();
+          this.lastError = null;
+        }
+        return;
       }
       if (this.active) {
         await this.#syncActive(current.base_url, auth);

@@ -71,9 +71,10 @@ a convenient manual installer, but automatic updates intentionally avoid the
 portal's login and bot-protection layers so background extension requests are
 not rejected.
 
-Release 0.8.6 migrates installations back to the public GitHub Raw update
-channel. If an installation on 0.8.5 cannot reach its former portal update URL,
-install 0.8.6 once from the portal; later releases update automatically. If
+Release 0.8.7 keeps the public GitHub Raw update channel and fixes mobile
+capability discovery. When phone localhost is unavailable or returns an invalid
+response, the bridge falls back to the explicitly paired ACP portal. Install
+0.8.7 once from the portal; later releases update automatically. If
 update checks still fail, open the browser extension details for Tampermonkey
 and confirm that Site access is set to **On all sites**. Tampermonkey documents
 that restricted runtime host permissions can break script updates and

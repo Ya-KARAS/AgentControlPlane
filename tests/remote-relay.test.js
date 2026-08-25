@@ -137,3 +137,34 @@ test("worker claims, dispatches, and uploads only the safe projection", async ()
   assert.equal(body.result.test_cases.total, 8);
   assert.doesNotMatch(completion.options.body, /calculator\.js/);
 });
+
+test("worker publishes capabilities while automatic dispatch is paused", async () => {
+  const requests = [];
+  const worker = new RemoteRelayWorker({
+    credentials: {
+      current: () => ({ configured: true, base_url: "https://acp.example.com" }),
+      authorization: () => "Bearer token",
+    },
+    candidateReview: {},
+    settings: { autoDispatchSelection: () => null },
+    store: {},
+    getCapabilities: () => ({ executors: [{ id: "opencode", available: true }] }),
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return new Response("{}", { status: 200 });
+    },
+    now: () => Date.parse("2026-08-25T10:00:00.000Z"),
+  });
+
+  await worker.tick();
+
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /\/api\/acp\/capabilities$/);
+  assert.equal(requests[0].options.method, "PUT");
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    capabilities: { executors: [{ id: "opencode", available: true }] },
+  });
+  assert.equal(worker.status().state, "paused");
+  assert.equal(worker.status().last_contact_at, "2026-08-25T10:00:00.000Z");
+  assert.equal(worker.status().last_error, null);
+});

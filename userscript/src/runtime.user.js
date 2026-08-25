@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.8.6
+// @version      0.8.7
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.6/agent-control-plane-web-bridge.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.7/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -24,6 +24,7 @@
   "use strict";
 
   // @acp-i18n
+  // @acp-capabilities
   // @acp-conversation-protocol
   // @acp-stage-state
   // @acp-result-delivery-state
@@ -694,33 +695,18 @@
       .join(" · ");
   };
 
-  const readCapabilities = async () => {
-    let response;
-    try {
-      response = await request({
+  const readCapabilities = async () => readCapabilitiesWithFallback({
+      readLocal: () => request({
         method: "GET",
         url: CAPABILITIES_URL,
         headers: { "x-acp-page-origin": window.location.origin },
-      });
-    } catch (localError) {
-      if (!remoteRelay) throw localError;
-      response = await request({
+      }),
+      readRemote: remoteRelay ? async () => request({
         method: "GET",
         url: `${remoteRelay.baseUrl}/api/acp/capabilities`,
         headers: await remoteHeaders(),
-      });
-    }
-    const body = JSON.parse(response.responseText);
-    if (
-      response.status !== 200 ||
-      !body.capabilities ||
-      typeof body.capabilities !== "object" ||
-      Array.isArray(body.capabilities)
-    ) {
-      throw new Error(body.error?.code ?? `http_${response.status}`);
-    }
-    return body.capabilities;
-  };
+      }) : null,
+    });
 
   const stopTracking = () => {
     tracking = null;

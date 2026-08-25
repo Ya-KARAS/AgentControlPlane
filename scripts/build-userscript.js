@@ -8,6 +8,7 @@ const adaptersDir = path.join(root, "src", "adapters");
 const runtimePath = path.join(root, "src", "runtime.user.js");
 const protocolPath = path.join(root, "src", "conversation-protocol.js");
 const i18nPath = path.join(root, "src", "i18n.js");
+const capabilitiesPath = path.join(root, "src", "capabilities.js");
 const stageStatePath = path.join(root, "src", "stage-state.js");
 const resultDeliveryStatePath = path.join(root, "src", "result-delivery-state.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
@@ -54,6 +55,10 @@ const i18nModule = fs
   .readFileSync(i18nPath, "utf8")
   .replace(/^export\s+/gm, "")
   .trim();
+const capabilitiesModule = fs
+  .readFileSync(capabilitiesPath, "utf8")
+  .replace(/^export\s+/gm, "")
+  .trim();
 const stageStateModule = fs
   .readFileSync(stageStatePath, "utf8")
   .replace(/^export\s+/gm, "")
@@ -69,6 +74,7 @@ const built = runtime
     `const ADAPTERS = Object.freeze(${JSON.stringify(publicAdapters)});`,
   )
   .replace("// @acp-i18n", i18nModule)
+  .replace("// @acp-capabilities", capabilitiesModule)
   .replace("// @acp-conversation-protocol", protocolModule)
   .replace("// @acp-stage-state", stageStateModule)
   .replace("// @acp-result-delivery-state", resultDeliveryStateModule);
