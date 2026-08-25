@@ -127,6 +127,25 @@ export function controllerPrompt(request = "", capabilities = {}, language = "en
   ].join("\n");
 }
 
+export function taskPlanningRepairPrompt(language = "en") {
+  const chinese = String(language).toLowerCase().startsWith("zh");
+  return chinese
+    ? [
+        "上一条回复没有包含有效的 <ACP_TASK> 任务块，因此本机桥接尚未派发任何任务。",
+        "用户已经明确回复“执行”，不要再次要求确认，也不要声称任务已经提交。",
+        "请根据本对话中的真实工程需求和先前提供的本机能力摘要，立即输出完整任务。",
+        "只输出一个 <ACP_TASK> 与 </ACP_TASK> 包围的 JSON 对象；不要输出示例、解释、代码或 ACP_RESULT。",
+        "JSON 必须包含 objective、context、constraints、acceptance_criteria 和 execution，并填写真实任务值。",
+      ].join("\n")
+    : [
+        "Your previous response did not contain a valid <ACP_TASK> block, so the local bridge has not dispatched anything.",
+        "The user already explicitly confirmed Run. Do not request confirmation again and do not claim the task was submitted.",
+        "Using the real engineering request in this conversation and the capability summary supplied earlier, emit the complete task now.",
+        "Output only one JSON object between <ACP_TASK> and </ACP_TASK>; do not output examples, explanations, code, or ACP_RESULT.",
+        "The JSON must contain objective, context, constraints, acceptance_criteria, and execution with real task values.",
+      ].join("\n");
+}
+
 export function extractTaskEnvelope(value) {
   const source = String(value ?? "");
   const start = source.lastIndexOf(TASK_OPEN);

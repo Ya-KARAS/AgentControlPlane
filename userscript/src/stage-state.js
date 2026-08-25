@@ -41,6 +41,7 @@ export function createPlanningRecord({
   ownerId,
   assistantOrdinal,
   baselineEnvelope,
+  dispatchWhenReady = false,
   expiresAt,
 }) {
   return {
@@ -51,6 +52,7 @@ export function createPlanningRecord({
     ownerId,
     assistantOrdinal: boundedInteger(assistantOrdinal),
     baselineEnvelope: baselineEnvelope ?? null,
+    dispatchWhenReady: dispatchWhenReady === true,
     expiresAt,
   };
 }

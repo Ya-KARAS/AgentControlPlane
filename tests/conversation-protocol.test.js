@@ -10,6 +10,7 @@ import {
   isConfirmation,
   parseLaunchCommand,
   safeResultBlock,
+  taskPlanningRepairPrompt,
   taskEnvelopeChanges,
 } from "../userscript/src/conversation-protocol.js";
 
@@ -75,6 +76,19 @@ test("controller prompt uses the selected Chinese conversation language", () => 
   assert.match(prompt, /请用户回复“执行”/);
   assert.match(prompt, /<ACP_TASK>/);
   assert.match(prompt, /"executor": "已列出的执行器 ID"/);
+});
+
+test("planning repair prompt forbids false dispatch claims and emits one real task", () => {
+  const chinese = taskPlanningRepairPrompt("zh-CN");
+  assert.match(chinese, /尚未派发任何任务/);
+  assert.match(chinese, /用户已经明确回复“执行”/);
+  assert.match(chinese, /只输出一个 <ACP_TASK>/);
+  assert.match(chinese, /不要输出示例/);
+
+  const english = taskPlanningRepairPrompt("en");
+  assert.match(english, /has not dispatched anything/);
+  assert.match(english, /already explicitly confirmed Run/);
+  assert.match(english, /Output only one JSON object between <ACP_TASK>/);
 });
 
 test("task changes require a distinct confirmation from execution", () => {

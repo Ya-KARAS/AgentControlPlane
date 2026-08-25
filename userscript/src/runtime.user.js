@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.9.1
+// @version      0.9.2
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://acp.asterroute.com/downloads/agent-control-plane-web-bridge-0.9.1.user.js
+// @downloadURL  https://acp.asterroute.com/downloads/agent-control-plane-web-bridge-0.9.2.user.js
 // @updateURL    https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -68,6 +68,7 @@
   let suppressCapture = false;
   let inspectTimer = null;
   let launchPending = false;
+  let planningActive = false;
   const TAB_ID = typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -122,17 +123,20 @@
   const restoreStage = async () => {
     const saved = await readStoredStage();
     if (!saved) {
+      planningActive = false;
       await Promise.resolve(GM_deleteValue(currentStorageKey()));
       return;
     }
     if (saved.state === "planning") {
       staged = null;
+      planningActive = true;
       planningBaseline = saved.baselineEnvelope ?? null;
       showStatus(t("planning"));
       return;
     }
     if (saved.state === "dispatched") {
       staged = null;
+      planningActive = false;
       planningBaseline = null;
       dispatchingEnvelopeId = saved.id;
       showStatus(
@@ -153,8 +157,10 @@
         changeConfirmed: saved.changeConfirmed === true,
         assistantOrdinal: Number(saved.assistantOrdinal ?? 0),
       };
+      planningActive = false;
       showStagedStatus("restored");
     } catch {
+      planningActive = false;
       await Promise.resolve(GM_deleteValue(currentStorageKey()));
     }
   };
@@ -164,6 +170,7 @@
     if (scope === activeScope) return;
     activeScope = scope;
     staged = null;
+    planningActive = false;
     planningBaseline = null;
     dispatchingEnvelopeId = null;
     await restoreStage();
@@ -659,7 +666,7 @@
 
   const refreshStageFromConversation = async () => {
     await ensureConversationScope();
-    return withStageLock(async () => {
+    const refreshed = await withStageLock(async () => {
       const observation = latestTaskObservation();
       const stored = await readStoredStage();
       if (!observation) return { observation: null, stored, conflict: false };
@@ -667,12 +674,14 @@
 
       if (observationWaitsBehindBarrier(stored, observation)) {
         staged = null;
+        planningActive = true;
         planningBaseline = stored.baselineEnvelope ?? null;
         return { observation, stored, conflict: false };
       }
 
       if (observationWasDispatched(stored, observation)) {
         staged = null;
+        planningActive = false;
         planningBaseline = null;
         dispatchingEnvelopeId = stored.id;
         return { observation, stored, conflict: false };
@@ -680,6 +689,7 @@
 
       if (stored?.state === "staged" && stored.id === observation.id) {
         staged = stageFromRecord(stored);
+        planningActive = false;
         planningBaseline = null;
         return { observation, stored, conflict: false };
       }
@@ -690,6 +700,7 @@
       ) {
         if (stored?.state === "staged") staged = stageFromRecord(stored);
         else staged = null;
+        planningActive = stored?.state === "planning";
         showStageConflict();
         return { observation, stored, conflict: true };
       }
@@ -698,6 +709,9 @@
         ? stored.baselineEnvelope
         : stored?.envelope ?? staged?.envelope ?? planningBaseline;
       const changes = baseline ? taskEnvelopeChanges(baseline, observation.envelope) : [];
+      const autoDispatch = stored?.state === "planning" &&
+        stored.dispatchWhenReady === true &&
+        changes.length === 0;
       staged = {
         id: observation.id,
         revision: nextRevision(),
@@ -707,11 +721,16 @@
         changeConfirmed: changes.length === 0,
         assistantOrdinal: observation.assistantOrdinal,
       };
+      planningActive = false;
       planningBaseline = null;
       await saveStage();
       showStagedStatus();
-      return { observation, stored, conflict: false };
+      return { observation, stored, conflict: false, autoDispatch };
     });
+    if (refreshed.autoDispatch) {
+      setTimeout(() => void dispatchEnvelope(), 0);
+    }
+    return refreshed;
   };
 
   const beginPlanning = async () => {
@@ -728,13 +747,33 @@
         ownerId: TAB_ID,
         assistantOrdinal,
         baselineEnvelope,
+        dispatchWhenReady: false,
         expiresAt: Date.now() + STAGE_TTL_MS,
       });
       await Promise.resolve(GM_setValue(currentStorageKey(), record));
       staged = null;
+      planningActive = true;
       planningBaseline = baselineEnvelope;
     });
   };
+
+  const markPlanningDispatchRequested = async () => withStageLock(async () => {
+    const stored = await readStoredStage();
+    if (stored?.state !== "planning") return false;
+    const record = createPlanningRecord({
+      scope: activeScope,
+      revision: nextRevision(),
+      ownerId: TAB_ID,
+      assistantOrdinal: stored.assistantOrdinal,
+      baselineEnvelope: stored.baselineEnvelope,
+      dispatchWhenReady: true,
+      expiresAt: Date.now() + STAGE_TTL_MS,
+    });
+    await Promise.resolve(GM_setValue(currentStorageKey(), record));
+    planningActive = true;
+    planningBaseline = stored.baselineEnvelope ?? null;
+    return true;
+  });
 
   const confirmStageChanges = async () => {
     const refreshed = await refreshStageFromConversation();
@@ -1140,6 +1179,35 @@
         } else {
           showStatus(t("readConfigFailed"));
         }
+      } finally {
+        launchPending = false;
+      }
+      return;
+    }
+
+    if (planningActive && isConfirmation(text)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (launchPending) return;
+      launchPending = true;
+      try {
+        await refreshStageFromConversation();
+        if (staged) {
+          setTimeout(() => void dispatchEnvelope(), 0);
+          return;
+        }
+        if (!(await markPlanningDispatchRequested())) {
+          showStatus(t("taskStatusUnverified"));
+          return;
+        }
+        if (!writeComposer(taskPlanningRepairPrompt(uiLanguage), composer)) {
+          showStatus(t("taskInvalid"));
+          return;
+        }
+        showStatus(t("planningRepair"));
+        await submitComposer();
+      } catch {
+        showStatus(t("taskStatusUnverified"));
       } finally {
         launchPending = false;
       }

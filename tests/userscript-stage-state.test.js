@@ -54,9 +54,11 @@ test("planning barriers and newer assistant ordinals reject stale tab tasks", ()
     ownerId: "tab-new",
     assistantOrdinal: 5,
     baselineEnvelope: envelope,
+    dispatchWhenReady: true,
     expiresAt: 2_000,
   });
   assert.equal(readStageRecord(planning, { scope, now: 1_000 }), planning);
+  assert.equal(planning.dispatchWhenReady, true);
   assert.equal(
     observationCanReplace(planning, { id: "old", assistantOrdinal: 5 }),
     false,
