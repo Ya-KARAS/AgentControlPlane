@@ -65,18 +65,19 @@ loopback address. Desktop-local behavior remains unchanged.
 ## Updates
 
 Tampermonkey checks the small
-`agent-control-plane-web-bridge.meta.js` file hosted by `acp.asterroute.com`
-and downloads the complete `.user.js` only after it detects a newer version.
-Every full release has its own versioned portal path, so a newly detected
-release cannot reuse an older cached script body or depend on GitHub Raw being
-reachable from the device.
+`agent-control-plane-web-bridge.meta.js` file on GitHub Raw and downloads the
+versioned `.user.js` only after it detects a newer version. The ACP portal keeps
+a convenient manual installer, but automatic updates intentionally avoid the
+portal's login and bot-protection layers so background extension requests are
+not rejected.
 
-If an older installation still uses the legacy `/main/` update URL, install
-0.7.4 once from the current `.user.js`; later releases use the new update
-channel automatically. If update checks still fail, open the browser extension
-details for Tampermonkey and confirm that Site access is set to **On all sites**.
-Tampermonkey documents that restricted runtime host permissions can break
-script updates and `GM_xmlhttpRequest`.
+Release 0.8.6 migrates installations back to the public GitHub Raw update
+channel. If an installation on 0.8.5 cannot reach its former portal update URL,
+install 0.8.6 once from the portal; later releases update automatically. If
+update checks still fail, open the browser extension details for Tampermonkey
+and confirm that Site access is set to **On all sites**. Tampermonkey documents
+that restricted runtime host permissions can break script updates and
+`GM_xmlhttpRequest`.
 
 ## Interface language
 
