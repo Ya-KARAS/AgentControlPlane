@@ -62,6 +62,10 @@
 
 ### Changed
 
+- Web Bridge 0.9.0 moves its update metadata and immutable versioned download
+  from GitHub Raw to the public ACP portal, avoiding mobile-network and
+  userscript-host-permission failures. Existing installations need one portal
+  reinstall to migrate; later updates use the ACP domain automatically.
 - The local project library no longer renders the optional project-maintenance
   section for scan roots, rescans, categories, or internal revisions. Routine
   project selection, adding, and moved-project recovery remain available.

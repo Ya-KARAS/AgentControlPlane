@@ -25,7 +25,7 @@ const metaPath = path.resolve(
 const releasePath = path.resolve(
   "userscript",
   "releases",
-  "0.8.9",
+  "0.9.0",
   "agent-control-plane-web-bridge.user.js",
 );
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
@@ -35,10 +35,10 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.8\.9$/m);
+  assert.match(script, /^\/\/ @version\s+0\.9\.0$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.9\/agent-control-plane-web-bridge\.user\.js$/m);
-  assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.meta\.js$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge-0\.9\.0\.user\.js$/m);
+  assert.match(script, /^\/\/ @updateURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @connect\s+acp\.asterroute\.com$/m);
   assert.match(script, /^\/\/ @grant\s+GM_openInTab$/m);
@@ -66,10 +66,9 @@ test("userscript update metadata is small and matches the install header", () =>
 
   assert.equal(meta, expected);
   assert.equal(release, script);
-  assert.match(meta, /^\/\/ @version\s+0\.8\.9$/m);
-  assert.match(meta, /userscript\/releases\/0\.8\.9\/agent-control-plane-web-bridge\.user\.js/);
-  assert.match(meta, /userscript\/agent-control-plane-web-bridge\.meta\.js/);
-  assert.doesNotMatch(meta, /acp\.asterroute\.com\/downloads/);
+  assert.match(meta, /^\/\/ @version\s+0\.9\.0$/m);
+  assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge-0\.9\.0\.user\.js/);
+  assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);
 });
