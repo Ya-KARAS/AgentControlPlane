@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.9.2
+// @version      0.9.3
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://acp.asterroute.com/downloads/agent-control-plane-web-bridge-0.9.2.user.js
+// @downloadURL  https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js
 // @updateURL    https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js
 // @match        https://chatgpt.com/*
 // @match        https://chat.deepseek.com/*

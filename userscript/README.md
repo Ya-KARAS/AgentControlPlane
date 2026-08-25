@@ -68,12 +68,16 @@ loopback address. Desktop-local behavior remains unchanged.
 
 Tampermonkey checks the small public
 `https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js`
-file and downloads the versioned `.user.js` only after it detects a newer
-version. These download endpoints do not require portal login and return
-revalidation-friendly cache headers. Using the ACP domain avoids GitHub Raw
-availability and host-permission failures on mobile networks.
+file and downloads the latest script from the stable
+`https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js`
+URL only after it detects a newer version. The stable download URL must not be
+version-pinned: an installed release keeps its own `@downloadURL`, so pinning
+that field would make later update checks download the old release again.
+These endpoints do not require portal login and return revalidation-friendly
+cache headers. Using the ACP domain avoids GitHub Raw availability and
+host-permission failures on mobile networks.
 
-Release 0.9.0 moves both automatic-update metadata and versioned downloads to
+Release 0.9.0 moves both automatic-update metadata and downloads to
 the ACP portal. It sends paired mobile
 capability and task requests to the HTTPS portal first, and accepts both direct
 and wrapped task response shapes from compatible portals. It also distinguishes
