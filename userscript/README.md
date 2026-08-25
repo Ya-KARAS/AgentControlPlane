@@ -73,9 +73,11 @@ a convenient manual installer, but automatic updates intentionally avoid the
 portal's login and bot-protection layers so background extension requests are
 not rejected.
 
-Release 0.8.8 keeps the public GitHub Raw update channel, sends paired mobile
+Release 0.8.9 keeps the public GitHub Raw update channel, sends paired mobile
 capability and task requests to the HTTPS portal first, and accepts both direct
-and wrapped task response shapes from compatible portals. Install 0.8.8 once
+and wrapped task response shapes from compatible portals. It also distinguishes
+remote status, expired pairing, and missing-task failures so mobile browsers do
+not misreport portal errors as a localhost failure. Install 0.8.9 once
 from the portal; later releases update automatically. If
 update checks still fail, open the browser extension details for Tampermonkey
 and confirm that Site access is set to **On all sites**. Tampermonkey documents
