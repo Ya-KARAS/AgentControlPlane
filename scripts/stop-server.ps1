@@ -3,9 +3,12 @@
 # Usage:
 #   pwsh -File scripts/stop-server.ps1
 $ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $PSScriptRoot
+$pidFile = Join-Path $root ".runtime\server.pid"
 
 $conns = Get-NetTCPConnection -LocalPort 4318 -State Listen -ErrorAction SilentlyContinue
 if (-not $conns) {
+    Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
     "no listener on 127.0.0.1:4318"
     exit 0
 }
@@ -20,3 +23,4 @@ foreach ($procId in $procIds) {
         "skip pid=$procId name=$($proc.Name)"
     }
 }
+Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue

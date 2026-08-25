@@ -1,8 +1,9 @@
 # Starts the AgentControlPlane server on the configured loopback address.
 #
-# Relay credentials: this script reads ASTERROUTE_API_KEY from the Windows
-# User environment (registry). The key goes into the child process
-# environment only; it is never written to the console, logs, or files.
+# Provider credentials are optional. When ASTERROUTE_API_KEY exists in the
+# current process or the Windows User environment, it is forwarded to the
+# child process. Remote device relay pairing uses its own stored credential
+# and must remain usable without a provider API key.
 #
 # Usage:
 #   pwsh -File scripts/start-server.ps1            # detached, prints pid + health
@@ -14,14 +15,25 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
-$key = [Environment]::GetEnvironmentVariable("ASTERROUTE_API_KEY", "User")
+$key = $env:ASTERROUTE_API_KEY
 if ([string]::IsNullOrWhiteSpace($key)) {
-    Write-Error "ASTERROUTE_API_KEY is not set in the User environment (registry). Set it there first; this script never prints key material."
-    exit 2
+    $key = [Environment]::GetEnvironmentVariable("ASTERROUTE_API_KEY", "User")
 }
-$env:ASTERROUTE_API_KEY = $key
+if (-not [string]::IsNullOrWhiteSpace($key)) {
+    $env:ASTERROUTE_API_KEY = $key
+}
 
 $healthUrl = "http://127.0.0.1:4318/health"
+
+try {
+    $existing = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
+    if ($existing.StatusCode -eq 200) {
+        "already-running health=$($existing.StatusCode) body=$($existing.Content)"
+        exit 0
+    }
+} catch {
+    # No healthy listener exists yet; continue with startup.
+}
 
 if ($Foreground) {
     Set-Location $root
@@ -29,7 +41,13 @@ if ($Foreground) {
     exit $LASTEXITCODE
 }
 
-$proc = Start-Process -FilePath "node" -ArgumentList "src/server.js" -WorkingDirectory $root -WindowStyle Hidden -PassThru
+$runtime = Join-Path $root ".runtime"
+New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+$stdoutLog = Join-Path $runtime "server.out.log"
+$stderrLog = Join-Path $runtime "server.err.log"
+$pidFile = Join-Path $runtime "server.pid"
+$proc = Start-Process -FilePath "node" -ArgumentList "src/server.js" -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
+$proc.Id | Set-Content -LiteralPath $pidFile -Encoding Ascii
 "started pid=$($proc.Id)"
 
 $deadline = (Get-Date).AddSeconds(15)
@@ -48,6 +66,11 @@ while ((Get-Date) -lt $deadline) {
     }
 }
 if (-not $healthy) {
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
     "HEALTH_TIMEOUT pid=$($proc.Id)"
+    if (Test-Path -LiteralPath $stderrLog) {
+        Get-Content -LiteralPath $stderrLog -Tail 20
+    }
     exit 1
 }

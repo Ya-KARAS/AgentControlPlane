@@ -38,7 +38,7 @@ in its integration guide at
    npm install
    ```
 
-2. Keep the relay key out of files:
+2. If you use an AsterRoute model route, keep its key out of files:
 
    - Set the `ASTERROUTE_API_KEY` environment variable. On Windows, the
      persistent location is the User environment (registry); the start
@@ -57,11 +57,11 @@ in its integration guide at
 
 3. Start the service: `npm start`. The service binds to
    `127.0.0.1:4318` only; it is not a public endpoint. On Windows,
-   `pwsh -File scripts/start-server.ps1` starts the service detached,
-   waits for `/health`, and prints the pid and the health body. The
-   script reads the key from the User environment (registry) and puts it
-   into the server process environment; it writes no key material to the
-   console, logs, or files.
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-server.ps1`
+   starts the service detached, waits for `/health`, and prints the pid
+   and health body. The AsterRoute model key is optional; paired phone and
+   web relay devices use their stored device credential. To start ACP at
+   sign-in, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-autostart.ps1`.
 4. The first dispatch runs `protocol:auto` detection and stores the
    selected protocol; recommendation lists are advisory and never switch
    the model you picked.
@@ -84,8 +84,9 @@ Ask the operator to issue a new key when needed. Update the
 `ASTERROUTE_API_KEY` environment variable, restart ACP, and ask the
 operator to revoke the old key. On Windows, update the value in the User
 environment (registry), stop the running server with
-`pwsh -File scripts/stop-server.ps1`, and start it again with
-`pwsh -File scripts/start-server.ps1`.
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-server.ps1`,
+and start it again with
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-server.ps1`.
 
 ## Support
 

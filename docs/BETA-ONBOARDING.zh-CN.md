@@ -33,7 +33,7 @@ Beta 面向 3–5 名受邀用户，不提供企业 SLA，不支持自助注册�
    npm install
    ```
 
-2. Key 不进文件：
+2. 如果使用 AsterRoute 模型线路，Key 不进文件：
 
    - 设置环境变量 `ASTERROUTE_API_KEY`。在 Windows 上，持久位置是用户环境
      （注册表）；启动脚本从那里读取。
@@ -50,9 +50,12 @@ Beta 面向 3–5 名受邀用户，不提供企业 SLA，不支持自助注册�
      ```
 
 3. 启动服务：`npm start`。服务只绑定 `127.0.0.1:4318`，不是公网端点。
-   在 Windows 上，`pwsh -File scripts/start-server.ps1` 以分离方式启动服务，
-   等待 `/health`，并打印 pid 与健康响应体。脚本从用户环境（注册表）读取
-   Key，并将其放入服务进程环境；控制台、日志与文件中不含任何 Key 材料。
+   在 Windows 自带 PowerShell 中运行
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-server.ps1`，
+   脚本会在后台启动、等待 `/health`，并打印 pid 与健康响应体。AsterRoute
+   模型 Key 是可选项；手机/网页设备中继使用配对后保存的设备凭据，不要求
+   配置模型 Key。若需开机自动启动，运行
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-autostart.ps1`。
 4. 首次派发会执行 `protocol:auto` 探测并保存所选协议；推荐列表只作参考，
    绝不替换你选定的模型。
 
@@ -69,8 +72,8 @@ Beta 面向 3–5 名受邀用户，不提供企业 SLA，不支持自助注册�
 
 需要时向运营方申请新 Key。更新 `ASTERROUTE_API_KEY` 环境变量，重启 ACP，
 并请运营方撤销旧 Key。在 Windows 上，更新用户环境（注册表）中的值，
-先停止服务（`pwsh -File scripts/stop-server.ps1`），再用
-`pwsh -File scripts/start-server.ps1` 启动。
+先停止服务（`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-server.ps1`），再用
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-server.ps1` 启动。
 
 ## 支持
 
