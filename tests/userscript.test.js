@@ -7,6 +7,12 @@ import chatgpt from "../userscript/src/adapters/chatgpt.js";
 import deepseek from "../userscript/src/adapters/deepseek.js";
 import { createAdapterRegistry } from "../userscript/src/adapter-registry.js";
 import { readCapabilitiesWithFallback } from "../userscript/src/capabilities.js";
+import { parseRemoteTaskResponse } from "../userscript/src/remote-task-response.js";
+import {
+  clampFloatingPosition,
+  pointerMoved,
+  readFloatingPosition,
+} from "../userscript/src/floating-position.js";
 
 const scriptPath = path.resolve(
   "userscript",
@@ -19,7 +25,7 @@ const metaPath = path.resolve(
 const releasePath = path.resolve(
   "userscript",
   "releases",
-  "0.8.7",
+  "0.8.8",
   "agent-control-plane-web-bridge.user.js",
 );
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
@@ -29,9 +35,9 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.8\.7$/m);
+  assert.match(script, /^\/\/ @version\s+0\.8\.8$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.7\/agent-control-plane-web-bridge\.user\.js$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/releases\/0\.8\.8\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/raw\.githubusercontent\.com\/Ya-KARAS\/AgentControlPlane\/refs\/heads\/main\/userscript\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @connect\s+acp\.asterroute\.com$/m);
@@ -60,8 +66,8 @@ test("userscript update metadata is small and matches the install header", () =>
 
   assert.equal(meta, expected);
   assert.equal(release, script);
-  assert.match(meta, /^\/\/ @version\s+0\.8\.7$/m);
-  assert.match(meta, /userscript\/releases\/0\.8\.7\/agent-control-plane-web-bridge\.user\.js/);
+  assert.match(meta, /^\/\/ @version\s+0\.8\.8$/m);
+  assert.match(meta, /userscript\/releases\/0\.8\.8\/agent-control-plane-web-bridge\.user\.js/);
   assert.match(meta, /userscript\/agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /acp\.asterroute\.com\/downloads/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
@@ -83,6 +89,57 @@ test("userscript falls back to the paired portal when localhost returns an inval
 
   assert.equal(remoteReads, 1);
   assert.equal(capabilities.executors[0].id, "opencode");
+});
+
+test("paired mobile capability discovery reads the remote portal first", async () => {
+  const reads = [];
+  const capabilities = await readCapabilitiesWithFallback({
+    preferRemote: true,
+    readLocal: async () => {
+      reads.push("local");
+      throw new Error("localhost_unreachable");
+    },
+    readRemote: async () => {
+      reads.push("remote");
+      return {
+        status: 200,
+        responseText: JSON.stringify({ capabilities: { current: { workspace: "mobile" } } }),
+      };
+    },
+  });
+  assert.deepEqual(reads, ["remote"]);
+  assert.equal(capabilities.current.workspace, "mobile");
+});
+
+test("remote task responses accept both direct and wrapped portal shapes", () => {
+  const task = { id: "d20d1432-a515-4948-85f2-dc271c91e501", status: "queued" };
+  assert.deepEqual(parseRemoteTaskResponse({
+    status: 201,
+    responseText: JSON.stringify(task),
+  }, 201), { task });
+  assert.deepEqual(parseRemoteTaskResponse({
+    status: 200,
+    responseText: JSON.stringify({ task }),
+  }), { task });
+  assert.throws(
+    () => parseRemoteTaskResponse({ status: 401, responseText: '{"error":{"code":"unauthorized"}}' }),
+    /unauthorized/,
+  );
+});
+
+test("floating ACP control position stays on screen and detects intentional drags", () => {
+  assert.equal(readFloatingPosition({ x: 30, y: 40 }).x, 30);
+  assert.equal(readFloatingPosition({ x: "30", y: 40 }), null);
+  assert.deepEqual(clampFloatingPosition({
+    x: 999,
+    y: -50,
+    width: 120,
+    height: 40,
+    viewportWidth: 360,
+    viewportHeight: 640,
+  }), { x: 232, y: 8 });
+  assert.equal(pointerMoved(0, 0, 3, 4), false);
+  assert.equal(pointerMoved(0, 0, 6, 1), true);
 });
 
 test("userscript keeps routine operation inside the native web AI conversation", () => {
@@ -137,6 +194,9 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /Android\|iPhone\|iPad\|iPod/);
   assert.match(script, /statusAction === "pair-remote"/);
   assert.match(script, /void pairRemoteRelay\(\)/);
+  assert.match(script, /acp-floating-position-v1/);
+  assert.match(script, /pointerdown/);
+  assert.match(script, /parseRemoteTaskResponse/);
   assert.doesNotMatch(script, /ACP 本机任务候选/);
   assert.doesNotMatch(script, /创建本机审核候选/);
   assert.doesNotMatch(script, /document\.createElement\(["']textarea["']\)/);

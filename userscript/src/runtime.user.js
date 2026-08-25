@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.8.7
+// @version      0.8.8
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.7/agent-control-plane-web-bridge.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/releases/0.8.8/agent-control-plane-web-bridge.user.js
 // @updateURL    https://raw.githubusercontent.com/Ya-KARAS/AgentControlPlane/refs/heads/main/userscript/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -25,6 +25,8 @@
 
   // @acp-i18n
   // @acp-capabilities
+  // @acp-remote-task-response
+  // @acp-floating-position
   // @acp-conversation-protocol
   // @acp-stage-state
   // @acp-result-delivery-state
@@ -34,6 +36,7 @@
   const CANDIDATE_URL = `${LOCAL_BASE_URL}/v1/local-review/candidates`;
   const CAPABILITIES_URL = `${LOCAL_BASE_URL}/v1/local-review/capabilities`;
   const REMOTE_RELAY_KEY = "acp-remote-relay-v1";
+  const FLOATING_POSITION_KEY = "acp-floating-position-v1";
   const DEFAULT_REMOTE_RELAY_URL = "https://acp.asterroute.com";
   const ADAPTERS = /* @acp-adapters */ [];
   const STAGE_TTL_MS = 10 * 60 * 1000;
@@ -391,7 +394,8 @@
   const style = document.createElement("style");
   style.textContent = `
     #${ROOT_ID} { align-items: center; bottom: 20px; display: flex; font-family: system-ui, sans-serif; gap: 7px; position: fixed; right: 20px; z-index: 2147483647; }
-    #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; transition: background-color .18s ease, box-shadow .18s ease; white-space: nowrap; }
+    #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; cursor: grab; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; touch-action: none; transition: background-color .18s ease, box-shadow .18s ease; user-select: none; white-space: nowrap; }
+    #${ROOT_ID} button[data-dragging="true"] { cursor: grabbing; }
     #${ROOT_ID} button[data-state="completed"] { background: #16803d; box-shadow: 0 8px 24px rgba(22, 128, 61, .3); }
     #${ROOT_ID} select { appearance: auto; background: #161b22; border: 1px solid #536af5; border-radius: 999px; color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; padding: 8px 9px; }
   `;
@@ -401,7 +405,72 @@
   statusButton.title = statusAction === "pair-remote"
     ? t("menuConnectRemote")
     : t("openSettings");
+  let suppressStatusClick = false;
+  let dragState = null;
+  let floatingPosition = null;
+  const applyFloatingPosition = (position) => {
+    const rect = root.getBoundingClientRect();
+    floatingPosition = clampFloatingPosition({
+      ...position,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    root.style.left = `${floatingPosition.x}px`;
+    root.style.top = `${floatingPosition.y}px`;
+    root.style.right = "auto";
+    root.style.bottom = "auto";
+  };
+  const restoreFloatingPosition = async () => {
+    const saved = readFloatingPosition(
+      await Promise.resolve(GM_getValue(FLOATING_POSITION_KEY, null)),
+    );
+    if (saved) applyFloatingPosition(saved);
+  };
+  statusButton.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const rect = root.getBoundingClientRect();
+    dragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      rootX: rect.left,
+      rootY: rect.top,
+      moved: false,
+    };
+    statusButton.setPointerCapture?.(event.pointerId);
+  });
+  statusButton.addEventListener("pointermove", (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    dragState.moved ||= pointerMoved(
+      dragState.startX,
+      dragState.startY,
+      event.clientX,
+      event.clientY,
+    );
+    if (!dragState.moved) return;
+    event.preventDefault();
+    statusButton.dataset.dragging = "true";
+    applyFloatingPosition({
+      x: dragState.rootX + event.clientX - dragState.startX,
+      y: dragState.rootY + event.clientY - dragState.startY,
+    });
+  });
+  const finishStatusDrag = async (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const moved = dragState.moved;
+    dragState = null;
+    delete statusButton.dataset.dragging;
+    if (!moved || !floatingPosition) return;
+    suppressStatusClick = true;
+    setTimeout(() => { suppressStatusClick = false; }, 0);
+    await Promise.resolve(GM_setValue(FLOATING_POSITION_KEY, floatingPosition));
+  };
+  statusButton.addEventListener("pointerup", (event) => void finishStatusDrag(event));
+  statusButton.addEventListener("pointercancel", (event) => void finishStatusDrag(event));
   statusButton.addEventListener("click", () => {
+    if (suppressStatusClick) return;
     if (!remoteRelay && statusAction === "pair-remote") {
       void pairRemoteRelay();
       return;
@@ -431,6 +500,9 @@
   });
   root.append(style, languageSelect, statusButton);
   document.body.append(root);
+  window.addEventListener("resize", () => {
+    if (floatingPosition) applyFloatingPosition(floatingPosition);
+  });
 
   const registerLanguageMenu = () => {
     if (typeof GM_registerMenuCommand !== "function") return;
@@ -482,6 +554,7 @@
       : t("openSettings");
     statusButton.title = `AgentControlPlane\n${detail}\n${actionHint}`;
     statusButton.dataset.state = state;
+    if (floatingPosition) requestAnimationFrame(() => applyFloatingPosition(floatingPosition));
   };
 
   const showStagedStatus = (mode = "ready") => {
@@ -706,6 +779,7 @@
         url: `${remoteRelay.baseUrl}/api/acp/capabilities`,
         headers: await remoteHeaders(),
       }) : null,
+      preferRemote: mobileBrowser && Boolean(remoteRelay),
     });
 
   const stopTracking = () => {
@@ -782,7 +856,9 @@
               "x-acp-status-secret": activeTracking.secret,
             },
           });
-      const body = JSON.parse(response.responseText);
+      const body = activeTracking.remote
+        ? parseRemoteTaskResponse(response, 200)
+        : JSON.parse(response.responseText);
       if (response.status !== 200) {
         throw new Error(body.error?.code ?? `http_${response.status}`);
       }
@@ -846,8 +922,19 @@
         showStatus(t("dispatching"));
         const idempotencyKey = await stableIdempotencyKey(activeEnvelope);
         let response;
-        let usedRemote = false;
-        try {
+        let usedRemote = mobileBrowser && Boolean(remoteRelay);
+        const requestRemoteDispatch = async () => request({
+          method: "POST",
+          url: `${remoteRelay.baseUrl}/api/acp/tasks`,
+          headers: await remoteHeaders({
+            "content-type": "application/json",
+            "x-acp-idempotency-key": idempotencyKey,
+          }),
+          data: JSON.stringify({ candidate: candidateFromEnvelope(activeEnvelope.envelope) }),
+        });
+        if (usedRemote) {
+          response = await requestRemoteDispatch();
+        } else try {
           response = await request({
             method: "POST",
             url: CANDIDATE_URL,
@@ -859,20 +946,15 @@
             },
             data: JSON.stringify(candidateFromEnvelope(activeEnvelope.envelope)),
           });
+          if (response.status === 0) throw new Error("network_error");
         } catch (localError) {
           if (!remoteRelay) throw localError;
           usedRemote = true;
-          response = await request({
-            method: "POST",
-            url: `${remoteRelay.baseUrl}/api/acp/tasks`,
-            headers: await remoteHeaders({
-              "content-type": "application/json",
-              "x-acp-idempotency-key": idempotencyKey,
-            }),
-            data: JSON.stringify({ candidate: candidateFromEnvelope(activeEnvelope.envelope) }),
-          });
+          response = await requestRemoteDispatch();
         }
-        const body = JSON.parse(response.responseText);
+        const body = usedRemote
+          ? parseRemoteTaskResponse(response, 201)
+          : JSON.parse(response.responseText);
         const candidateId = usedRemote ? body.task?.id : body.candidate?.id;
         if (
           response.status !== 201 ||
@@ -1038,5 +1120,6 @@
     if (document.visibilityState === "visible") void refreshStageFromConversation();
   });
   initializeLanguage()
+    .then(restoreFloatingPosition)
     .finally(() => restoreStage().finally(scheduleInspection));
 })();

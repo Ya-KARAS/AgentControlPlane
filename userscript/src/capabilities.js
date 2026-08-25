@@ -16,11 +16,21 @@ export function parseCapabilitiesResponse(response) {
   return body.capabilities;
 }
 
-export async function readCapabilitiesWithFallback({ readLocal, readRemote = null }) {
-  try {
-    return parseCapabilitiesResponse(await readLocal());
-  } catch (localError) {
-    if (!readRemote) throw localError;
-    return parseCapabilitiesResponse(await readRemote());
+export async function readCapabilitiesWithFallback({
+  readLocal,
+  readRemote = null,
+  preferRemote = false,
+}) {
+  const readers = preferRemote && readRemote
+    ? [readRemote, readLocal]
+    : [readLocal, readRemote].filter(Boolean);
+  let firstError = null;
+  for (const reader of readers) {
+    try {
+      return parseCapabilitiesResponse(await reader());
+    } catch (error) {
+      firstError ??= error;
+    }
   }
+  throw firstError ?? new Error("capabilities_unavailable");
 }

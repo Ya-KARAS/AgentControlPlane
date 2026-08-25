@@ -9,6 +9,8 @@ const runtimePath = path.join(root, "src", "runtime.user.js");
 const protocolPath = path.join(root, "src", "conversation-protocol.js");
 const i18nPath = path.join(root, "src", "i18n.js");
 const capabilitiesPath = path.join(root, "src", "capabilities.js");
+const remoteTaskResponsePath = path.join(root, "src", "remote-task-response.js");
+const floatingPositionPath = path.join(root, "src", "floating-position.js");
 const stageStatePath = path.join(root, "src", "stage-state.js");
 const resultDeliveryStatePath = path.join(root, "src", "result-delivery-state.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
@@ -59,6 +61,14 @@ const capabilitiesModule = fs
   .readFileSync(capabilitiesPath, "utf8")
   .replace(/^export\s+/gm, "")
   .trim();
+const remoteTaskResponseModule = fs
+  .readFileSync(remoteTaskResponsePath, "utf8")
+  .replace(/^export\s+/gm, "")
+  .trim();
+const floatingPositionModule = fs
+  .readFileSync(floatingPositionPath, "utf8")
+  .replace(/^export\s+/gm, "")
+  .trim();
 const stageStateModule = fs
   .readFileSync(stageStatePath, "utf8")
   .replace(/^export\s+/gm, "")
@@ -75,6 +85,8 @@ const built = runtime
   )
   .replace("// @acp-i18n", i18nModule)
   .replace("// @acp-capabilities", capabilitiesModule)
+  .replace("// @acp-remote-task-response", remoteTaskResponseModule)
+  .replace("// @acp-floating-position", floatingPositionModule)
   .replace("// @acp-conversation-protocol", protocolModule)
   .replace("// @acp-stage-state", stageStateModule)
   .replace("// @acp-result-delivery-state", resultDeliveryStateModule);

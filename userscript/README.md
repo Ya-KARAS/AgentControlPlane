@@ -14,7 +14,9 @@ explicit path, executor, profile, advertised model, and reasoning effort. Any
 omitted choice comes from the local settings page.
 
 The floating ACP pill reports local state and opens settings. It does not
-contain a second task form.
+contain a second task form. Drag the pill with a mouse or finger to move it;
+the position is saved in userscript storage and clamped inside the visible
+screen after a resize or orientation change.
 
 Version 0.8.5 provides separate Chinese and English interfaces, local/remote
 transport selection, and keeps an
@@ -71,10 +73,10 @@ a convenient manual installer, but automatic updates intentionally avoid the
 portal's login and bot-protection layers so background extension requests are
 not rejected.
 
-Release 0.8.7 keeps the public GitHub Raw update channel and fixes mobile
-capability discovery. When phone localhost is unavailable or returns an invalid
-response, the bridge falls back to the explicitly paired ACP portal. Install
-0.8.7 once from the portal; later releases update automatically. If
+Release 0.8.8 keeps the public GitHub Raw update channel, sends paired mobile
+capability and task requests to the HTTPS portal first, and accepts both direct
+and wrapped task response shapes from compatible portals. Install 0.8.8 once
+from the portal; later releases update automatically. If
 update checks still fail, open the browser extension details for Tampermonkey
 and confirm that Site access is set to **On all sites**. Tampermonkey documents
 that restricted runtime host permissions can break script updates and
