@@ -46,8 +46,38 @@ New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 $stdoutLog = Join-Path $runtime "server.out.log"
 $stderrLog = Join-Path $runtime "server.err.log"
 $pidFile = Join-Path $runtime "server.pid"
-$proc = Start-Process -FilePath "node" -ArgumentList "src/server.js" -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
+$startupLog = Join-Path $runtime "startup.log"
+
+function Write-StartupLog {
+    param([string]$Message)
+    $timestamp = (Get-Date).ToString("o")
+    Add-Content -LiteralPath $startupLog -Value "$timestamp $Message" -Encoding UTF8
+}
+
+$nodeCommand = Get-Command "node.exe" -ErrorAction SilentlyContinue
+if ($null -eq $nodeCommand) {
+    $programFilesNode = Join-Path $env:ProgramFiles "nodejs\node.exe"
+    if (Test-Path -LiteralPath $programFilesNode) {
+        $nodePath = $programFilesNode
+    } else {
+        Write-StartupLog "startup-failed reason=node-not-found identity=$([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+        throw "node.exe was not found in PATH or Program Files."
+    }
+} else {
+    $nodePath = $nodeCommand.Source
+}
+
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+Write-StartupLog "startup-begin identity=$identity node=$nodePath root=$root"
+
+try {
+    $proc = Start-Process -FilePath $nodePath -ArgumentList "src/server.js" -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
+} catch {
+    Write-StartupLog "startup-failed reason=start-process error=$($_.Exception.Message)"
+    throw
+}
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding Ascii
+Write-StartupLog "process-started pid=$($proc.Id)"
 "started pid=$($proc.Id)"
 
 $deadline = (Get-Date).AddSeconds(15)
@@ -58,6 +88,7 @@ while ((Get-Date) -lt $deadline) {
         $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
         if ($r.StatusCode -eq 200) {
             "health=$($r.StatusCode) body=$($r.Content)"
+            Write-StartupLog "health-ready pid=$($proc.Id) status=$($r.StatusCode)"
             $healthy = $true
             break
         }
@@ -68,6 +99,7 @@ while ((Get-Date) -lt $deadline) {
 if (-not $healthy) {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
+    Write-StartupLog "startup-failed reason=health-timeout pid=$($proc.Id)"
     "HEALTH_TIMEOUT pid=$($proc.Id)"
     if (Test-Path -LiteralPath $stderrLog) {
         Get-Content -LiteralPath $stderrLog -Tail 20

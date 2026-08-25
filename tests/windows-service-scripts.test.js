@@ -13,6 +13,11 @@ test("Windows server startup keeps provider credentials optional and avoids dupl
   assert.match(source, /already-running health=/);
   assert.match(source, /RedirectStandardOutput/);
   assert.match(source, /server\.pid/);
+  assert.match(source, /startup\.log/);
+  assert.match(source, /WindowsIdentity/);
+  assert.match(source, /Get-Command "node\.exe"/);
+  assert.match(source, /health-ready/);
+  assert.match(source, /health-timeout/);
 });
 
 test("Windows autostart shortcut launches the same guarded startup script hidden", () => {
@@ -29,4 +34,8 @@ test("Windows stop script clears stale and completed pid records", () => {
 
   assert.match(source, /server\.pid/);
   assert.match(source, /Remove-Item -LiteralPath \$pidFile/);
+  assert.match(source, /netstat\.exe -ano -p tcp/);
+  assert.match(source, /LISTENING/);
+  assert.match(source, /Get-Process -Id \$procId/);
+  assert.doesNotMatch(source, /Get-CimInstance/);
 });
