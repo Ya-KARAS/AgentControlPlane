@@ -2,11 +2,11 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.9.0
+// @version      0.9.1
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
-// @downloadURL  https://acp.asterroute.com/downloads/agent-control-plane-web-bridge-0.9.0.user.js
+// @downloadURL  https://acp.asterroute.com/downloads/agent-control-plane-web-bridge-0.9.1.user.js
 // @updateURL    https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js
 // @acp-adapter-matches
 // @connect      127.0.0.1
@@ -325,7 +325,50 @@
   };
 
   const findComposer = () => visibleElements(adapter.composer).at(-1) ?? null;
-  const findSendButton = () => visibleElements(adapter.send).at(-1) ?? null;
+  const enabledControl = (node) =>
+    node instanceof HTMLElement &&
+    node.isConnected &&
+    node.getClientRects().length > 0 &&
+    !node.matches(":disabled") &&
+    node.getAttribute("aria-disabled") !== "true";
+  const composerActionSurface = (composer) => {
+    if (!composer) return null;
+    const form = composer.closest("form");
+    if (form) return form;
+    let surface = composer.parentElement;
+    for (let depth = 0; surface && depth < 6; depth += 1) {
+      if (surface.querySelector('button, [role="button"]')) return surface;
+      surface = surface.parentElement;
+    }
+    return null;
+  };
+  const findSendButton = (composer = findComposer()) => {
+    const explicit = visibleElements(adapter.send).filter(enabledControl).at(-1);
+    if (explicit) return explicit;
+    const surface = composerActionSurface(composer);
+    if (!surface) return null;
+    const controls = [...surface.querySelectorAll('button, [role="button"]')]
+      .filter(enabledControl);
+    if (!controls.length) return null;
+    return controls.sort((left, right) => {
+      const leftRect = left.getBoundingClientRect();
+      const rightRect = right.getBoundingClientRect();
+      return leftRect.right - rightRect.right || leftRect.bottom - rightRect.bottom;
+    }).at(-1) ?? null;
+  };
+  const isComposerSubmission = (event, composer) => {
+    if (event.type === "submit") {
+      return event.target instanceof HTMLFormElement && event.target.contains(composer);
+    }
+    if (event.type !== "click" || !(event.target instanceof Element)) return false;
+    const clickedControl = event.target.closest('button, [role="button"]');
+    const sendButton = findSendButton(composer);
+    return Boolean(
+      clickedControl &&
+      sendButton &&
+      (clickedControl === sendButton || sendButton.contains(clickedControl)),
+    );
+  };
   const latestText = (selectors) =>
     visibleElements(selectors).at(-1)?.textContent?.trim() ?? "";
   const latestTaskObservation = () => {
@@ -376,9 +419,15 @@
     suppressCapture = true;
     try {
       await new Promise((resolve) => setTimeout(resolve, 80));
-      const button = findSendButton();
-      if (!button || button.disabled) return false;
-      button.click();
+      const composer = findComposer();
+      const button = findSendButton(composer);
+      if (button) {
+        button.click();
+        return true;
+      }
+      const form = composer?.closest("form");
+      if (!form) return false;
+      form.requestSubmit();
       return true;
     } finally {
       setTimeout(() => {
@@ -1061,9 +1110,8 @@
         event.metaKey ||
         !composer.contains(event.target)
       ) return;
-    } else {
-      const button = findSendButton();
-      if (!button || !(event.target instanceof Node) || !button.contains(event.target)) return;
+    } else if (!isComposerSubmission(event, composer)) {
+      return;
     }
 
     const text = readComposer(composer);
@@ -1125,6 +1173,7 @@
 
   window.addEventListener("keydown", captureOrExpandComposer, true);
   window.addEventListener("click", captureOrExpandComposer, true);
+  window.addEventListener("submit", captureOrExpandComposer, true);
   new MutationObserver(scheduleInspection).observe(document.body, {
     childList: true,
     subtree: true,

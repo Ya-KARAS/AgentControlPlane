@@ -25,7 +25,7 @@ const metaPath = path.resolve(
 const releasePath = path.resolve(
   "userscript",
   "releases",
-  "0.9.0",
+  "0.9.1",
   "agent-control-plane-web-bridge.user.js",
 );
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
@@ -35,9 +35,9 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.9\.0$/m);
+  assert.match(script, /^\/\/ @version\s+0\.9\.1$/m);
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
-  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge-0\.9\.0\.user\.js$/m);
+  assert.match(script, /^\/\/ @downloadURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge-0\.9\.1\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.meta\.js$/m);
   assert.match(script, /^\/\/ @connect\s+127\.0\.0\.1$/m);
   assert.match(script, /^\/\/ @connect\s+acp\.asterroute\.com$/m);
@@ -66,8 +66,8 @@ test("userscript update metadata is small and matches the install header", () =>
 
   assert.equal(meta, expected);
   assert.equal(release, script);
-  assert.match(meta, /^\/\/ @version\s+0\.9\.0$/m);
-  assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge-0\.9\.0\.user\.js/);
+  assert.match(meta, /^\/\/ @version\s+0\.9\.1$/m);
+  assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge-0\.9\.1\.user\.js/);
   assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);
@@ -148,6 +148,9 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /<ACP_TASK>/);
   assert.match(script, /<ACP_RESULT>/);
   assert.match(script, /MutationObserver/);
+  assert.match(script, /window\.addEventListener\("submit", captureOrExpandComposer, true\)/);
+  assert.match(script, /composerActionSurface/);
+  assert.match(script, /form\.requestSubmit\(\)/);
   assert.match(script, /candidateFromEnvelope/);
   assert.match(script, /returnResultToConversation/);
   assert.match(script, /executionSummary/);
@@ -212,6 +215,8 @@ test("web adapters are independent data modules resolved by a shared registry", 
   assert.equal(registry.resolve({ origin: "https://chatgpt.com" })?.id, "chatgpt");
   assert.equal(registry.resolve({ origin: "https://chat.deepseek.com" })?.id, "deepseek");
   assert.equal(registry.resolve({ origin: "https://example.com" }), null);
+  assert.ok(deepseek.send.includes('button[type="submit"]'));
+  assert.ok(deepseek.send.includes('form button:not([type])'));
   for (const adapter of registry.adapters) {
     for (const field of ["composer", "send", "assistant", "user"]) {
       assert.ok(adapter[field].length > 0);
