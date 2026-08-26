@@ -60,13 +60,35 @@ function reasoningOptions(efforts, selected, t) {
   ].join("");
 }
 
-function page(title, body, language = "zh-CN") {
+export const LOCAL_REVIEW_SETTINGS_SCRIPT_PATH = "/local-review/settings.js";
+
+export function localReviewSettingsScript() {
+  return `"use strict";
+(() => {
+  const languageSelect = document.querySelector('select[name="language"]');
+  if (!languageSelect) return;
+  languageSelect.addEventListener("change", () => {
+    const form = languageSelect.form;
+    if (!form) return;
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return;
+    }
+    form.submit();
+  });
+})();`;
+}
+
+function page(title, body, language = "zh-CN", { scriptSrc = null } = {}) {
   const lang = normalizeLocalReviewLanguage(language);
+  const script = scriptSrc
+    ? `<script src="${escapeHtml(scriptSrc)}" defer></script>`
+    : "";
   return `<!doctype html>
 <html lang="${escapeHtml(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>body{font:16px system-ui;margin:0;background:#0d1117;color:#e6edf3;display:grid;min-height:100vh;place-items:center}.card{width:min(900px,calc(100% - 40px));padding:28px;border:1px solid #30363d;border-radius:14px;background:#161b22}.muted{color:#8b949e;overflow-wrap:anywhere}.objective{white-space:pre-wrap;padding:14px;border-radius:8px;background:#0d1117}label{display:grid;gap:6px;margin:16px 0}select,input{font:inherit;padding:9px;border:1px solid #484f58;border-radius:7px;background:#0d1117;color:#e6edf3}button{font:600 16px system-ui;padding:11px 18px;border:0;border-radius:8px;background:#238636;color:white;cursor:pointer}button:disabled{background:#484f58;cursor:not-allowed}button.secondary{background:#30363d}button.danger{background:#b62324}.ok{color:#3fb950}.warn{color:#d29922}.error{color:#f85149}.project{border:1px solid #30363d;border-radius:10px;padding:16px;margin-top:12px}.project-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.actions form{margin:0}.actions button{padding:8px 12px}.inline{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.inline label{flex:1;min-width:220px;margin:8px 0}.inline button{margin:8px 0}.roots{font-family:ui-monospace,monospace;font-size:13px}.advanced{margin-top:18px;border-top:1px solid #30363d;padding-top:16px}.advanced>summary{cursor:pointer;font-weight:650}.advanced-body{padding:8px 0 0}.count{display:inline-block;min-width:1.5em;text-align:center;border-radius:999px;background:#30363d;padding:2px 7px}.language{display:flex;justify-content:flex-end;align-items:center;gap:9px;margin:0 0 18px}.language label{display:flex;align-items:center;gap:9px;margin:0}.language select{min-width:140px}</style></head>
-<body><main class="card">${body}</main></body></html>`;
+<body><main class="card">${body}</main>${script}</body></html>`;
 }
 
 export function reviewPage({ candidate, approvalSecret, options, settings = {} }) {
@@ -140,7 +162,7 @@ export function settingsPage({
   const form = canSave
     ? `<form method="post" action="/local-review/settings" autocomplete="off">
 <input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}">
-<div class="language"><label>${escapeHtml(t("language"))}<select name="language" onchange="this.form.requestSubmit()">${option("zh-CN", t("chinese"), language === "zh-CN")}${option("en", t("english"), language === "en")}</select></label></div>
+<div class="language"><label>${escapeHtml(t("language"))}<select name="language">${option("zh-CN", t("chinese"), language === "zh-CN")}${option("en", t("english"), language === "en")}</select></label></div>
 <label>${escapeHtml(t("defaultWorkspace"))}<select name="workspace" required>${workspaceEntries.map((entry) => option(entry.value, entry.label, entry.value === settings.workspace)).join("")}</select></label>
 <label>${escapeHtml(t("defaultExecutor"))}<select name="executor" required>${executorOptions(executors, settings.executor, t)}</select></label>
 <label>${escapeHtml(t("defaultProfile"))}<select name="profile" required>${profileOptions(profiles, settings.profile, t)}</select></label>
@@ -210,6 +232,7 @@ ${remoteRelay?.configured
 <p>${escapeHtml(t("settingsIntro"))}</p>
 <p class="muted">${escapeHtml(t("safeResultHint"))}</p>${form}${remoteSection}${projectLibrary}`,
     language,
+    { scriptSrc: LOCAL_REVIEW_SETTINGS_SCRIPT_PATH },
   );
 }
 

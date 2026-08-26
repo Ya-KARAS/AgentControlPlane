@@ -2,6 +2,8 @@ import { asErrorPayload, ControlPlaneError } from "../core/errors.js";
 import { readJson, sendJson } from "../core/http.js";
 import {
   dispatchedPage,
+  LOCAL_REVIEW_SETTINGS_SCRIPT_PATH,
+  localReviewSettingsScript,
   reviewErrorPage,
   reviewPage,
   settingsPage,
@@ -51,10 +53,20 @@ function sendLocalHtml(response, statusCode, body) {
     "content-length": Buffer.byteLength(body),
     "cache-control": "no-store",
     "content-security-policy":
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     "x-frame-options": "DENY",
+  });
+  response.end(body);
+}
+
+function sendLocalJavascript(response, body) {
+  response.writeHead(200, {
+    "content-type": "text/javascript; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
   });
   response.end(body);
 }
@@ -111,7 +123,8 @@ export class LocalReviewRouter {
       url.pathname === "/v1/local-review/capabilities" ||
       url.pathname === "/local-review/review" ||
       url.pathname === "/local-review/confirm" ||
-      url.pathname === "/local-review/settings"
+      url.pathname === "/local-review/settings" ||
+      url.pathname === LOCAL_REVIEW_SETTINGS_SCRIPT_PATH
       || url.pathname === "/local-review/remote-relay"
       || url.pathname === "/local-review/projects"
     );
@@ -220,6 +233,11 @@ export class LocalReviewRouter {
         return true;
       }
 
+
+      if (request.method === "GET" && url.pathname === LOCAL_REVIEW_SETTINGS_SCRIPT_PATH) {
+        sendLocalJavascript(response, localReviewSettingsScript());
+        return true;
+      }
 
       if (request.method === "GET" && url.pathname === "/local-review/settings") {
         sendLocalHtml(

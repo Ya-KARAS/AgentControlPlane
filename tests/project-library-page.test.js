@@ -80,7 +80,8 @@ test("project library keeps routine actions visible without project maintenance 
   assert.match(html, /资料目录和空文件夹都可以加入项目库/);
   assert.match(html, /界面语言/);
   assert.match(html, /name="language"/);
-  assert.match(html, /name="language" onchange="this\.form\.requestSubmit\(\)"/);
+  assert.doesNotMatch(html, /onchange=/);
+  assert.match(html, /<script src="\/local-review\/settings\.js" defer><\/script>/);
   assert.match(html, /默认执行器/);
   assert.match(html, /默认任务档位/);
   assert.match(html, /默认模型/);

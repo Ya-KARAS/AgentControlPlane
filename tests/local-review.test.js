@@ -311,6 +311,42 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
   });
 });
 
+test("local settings language control uses a CSP-compatible external script", async () => {
+  await withReviewServer(async ({ baseUrl }) => {
+    const settingsResponse = await fetch(`${baseUrl}/local-review/settings`);
+    assert.equal(settingsResponse.status, 200);
+    assert.match(
+      settingsResponse.headers.get("content-security-policy") ?? "",
+      /script-src 'self'/,
+    );
+    const settingsHtml = await settingsResponse.text();
+    assert.match(settingsHtml, /<script src="\/local-review\/settings\.js" defer><\/script>/);
+    assert.doesNotMatch(settingsHtml, /onchange=/);
+
+    const scriptResponse = await fetch(`${baseUrl}/local-review/settings.js`);
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get("content-type") ?? "", /^text\/javascript/);
+    const script = await scriptResponse.text();
+
+    let changeHandler = null;
+    let submissions = 0;
+    const languageSelect = {
+      form: { requestSubmit: () => { submissions += 1; } },
+      addEventListener(event, handler) {
+        if (event === "change") changeHandler = handler;
+      },
+    };
+    Function("document", script)({
+      querySelector: (selector) => selector === 'select[name="language"]'
+        ? languageSelect
+        : null,
+    });
+    assert.equal(typeof changeHandler, "function");
+    changeHandler();
+    assert.equal(submissions, 1);
+  });
+});
+
 test("unapproved page origins cannot create candidates", async () => {
   await withReviewServer(async ({ baseUrl, orchestrator }) => {
     const response = await createCandidate(
