@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { createAdapterRegistry } from "../userscript/src/adapter-registry.js";
 
@@ -15,6 +16,11 @@ const stageStatePath = path.join(root, "src", "stage-state.js");
 const resultDeliveryStatePath = path.join(root, "src", "result-delivery-state.js");
 const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
 const metaOutputPath = path.join(root, "agent-control-plane-web-bridge.meta.js");
+const releaseManifestPath = path.join(root, "release-manifest.json");
+const stableDownloadUrl =
+  "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js";
+const stableUpdateUrl =
+  "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js";
 
 const adapterFiles = fs.readdirSync(adaptersDir)
   .filter((name) => name.endsWith(".js"))
@@ -103,6 +109,27 @@ const releaseOutputPath = path.join(
   versionMatch[1],
   "agent-control-plane-web-bridge.user.js",
 );
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const releaseManifest = `${JSON.stringify({
+  schema_version: 1,
+  version: versionMatch[1],
+  download_url: stableDownloadUrl,
+  update_url: stableUpdateUrl,
+  artifacts: {
+    script: {
+      path: path.relative(root, outputPath).replaceAll("\\", "/"),
+      sha256: sha256(built),
+    },
+    metadata: {
+      path: path.relative(root, metaOutputPath).replaceAll("\\", "/"),
+      sha256: sha256(meta),
+    },
+    release: {
+      path: path.relative(root, releaseOutputPath).replaceAll("\\", "/"),
+      sha256: sha256(built),
+    },
+  },
+}, null, 2)}\n`;
 
 if (process.argv.includes("--check")) {
   const current = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
@@ -112,7 +139,15 @@ if (process.argv.includes("--check")) {
   const currentRelease = fs.existsSync(releaseOutputPath)
     ? fs.readFileSync(releaseOutputPath, "utf8")
     : "";
-  if (current !== built || currentMeta !== meta || currentRelease !== built) {
+  const currentManifest = fs.existsSync(releaseManifestPath)
+    ? fs.readFileSync(releaseManifestPath, "utf8")
+    : "";
+  if (
+    current !== built
+    || currentMeta !== meta
+    || currentRelease !== built
+    || currentManifest !== releaseManifest
+  ) {
     console.error("Generated userscript is stale. Run npm run userscript:build.");
     process.exitCode = 1;
   }
@@ -121,7 +156,8 @@ if (process.argv.includes("--check")) {
   fs.writeFileSync(metaOutputPath, meta, "utf8");
   fs.mkdirSync(path.dirname(releaseOutputPath), { recursive: true });
   fs.writeFileSync(releaseOutputPath, built, "utf8");
+  fs.writeFileSync(releaseManifestPath, releaseManifest, "utf8");
   console.log(
-    `Built ${path.relative(process.cwd(), outputPath)}, ${path.relative(process.cwd(), metaOutputPath)}, and ${path.relative(process.cwd(), releaseOutputPath)} with ${registry.adapters.length} adapters.`,
+    `Built ${path.relative(process.cwd(), outputPath)}, ${path.relative(process.cwd(), metaOutputPath)}, ${path.relative(process.cwd(), releaseOutputPath)}, and ${path.relative(process.cwd(), releaseManifestPath)} with ${registry.adapters.length} adapters.`,
   );
 }

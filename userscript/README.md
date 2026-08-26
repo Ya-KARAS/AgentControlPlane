@@ -77,6 +77,17 @@ These endpoints do not require portal login and return revalidation-friendly
 cache headers. Using the ACP domain avoids GitHub Raw availability and
 host-permission failures on mobile networks.
 
+Prepare a release by setting the version once:
+
+```powershell
+npm.cmd run userscript:release -- --version 0.9.4
+```
+
+This updates the source metadata, rebuilds the stable script and metadata,
+creates the versioned release file, and writes `release-manifest.json` with the
+stable URLs and SHA-256 hashes. The portal release tooling consumes that
+manifest instead of duplicating release metadata by hand.
+
 Release 0.9.0 moves both automatic-update metadata and downloads to
 the ACP portal. It sends paired mobile
 capability and task requests to the HTTPS portal first, and accepts both direct

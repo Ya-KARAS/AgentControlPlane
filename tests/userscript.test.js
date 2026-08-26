@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -22,10 +23,17 @@ const metaPath = path.resolve(
   "userscript",
   "agent-control-plane-web-bridge.meta.js",
 );
+const manifestPath = path.resolve("userscript", "release-manifest.json");
+const runtime = fs.readFileSync(
+  path.resolve("userscript", "src", "runtime.user.js"),
+  "utf8",
+);
+const currentVersion = runtime.match(/^\/\/ @version\s+(\S+)$/m)?.[1];
+assert.ok(currentVersion, "userscript runtime version metadata is required");
 const releasePath = path.resolve(
   "userscript",
   "releases",
-  "0.9.3",
+  currentVersion,
   "agent-control-plane-web-bridge.user.js",
 );
 const readScript = () => fs.readFileSync(scriptPath, "utf8");
@@ -35,7 +43,10 @@ test("userscript declares the natural-language bridge metadata and supported sit
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /^\/\/ ==UserScript==$/m);
   assert.match(script, /^\/\/ @name\s+AgentControlPlane Web Bridge Preview$/m);
-  assert.match(script, /^\/\/ @version\s+0\.9\.3$/m);
+  assert.match(
+    script,
+    new RegExp(`^// @version\\s+${currentVersion.replaceAll(".", "\\.")}$`, "m"),
+  );
   assert.match(script, /^\/\/ @name:zh-CN\s+AgentControlPlane 网页桥接预览$/m);
   assert.match(script, /^\/\/ @downloadURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.user\.js$/m);
   assert.match(script, /^\/\/ @updateURL\s+https:\/\/acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.meta\.js$/m);
@@ -66,11 +77,39 @@ test("userscript update metadata is small and matches the install header", () =>
 
   assert.equal(meta, expected);
   assert.equal(release, script);
-  assert.match(meta, /^\/\/ @version\s+0\.9\.3$/m);
+  assert.match(
+    meta,
+    new RegExp(`^// @version\\s+${currentVersion.replaceAll(".", "\\.")}$`, "m"),
+  );
   assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.user\.js/);
   assert.match(meta, /acp\.asterroute\.com\/downloads\/agent-control-plane-web-bridge\.meta\.js/);
   assert.doesNotMatch(meta, /MutationObserver|GM_xmlhttpRequest\(/);
   assert.ok(Buffer.byteLength(meta) < 2048);
+});
+
+test("userscript release manifest pins hashes while keeping stable update URLs", () => {
+  const script = fs.readFileSync(scriptPath, "utf8");
+  const meta = fs.readFileSync(metaPath, "utf8");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const digest = (value) => createHash("sha256").update(value).digest("hex");
+
+  assert.equal(manifest.schema_version, 1);
+  assert.equal(manifest.version, currentVersion);
+  assert.equal(
+    manifest.download_url,
+    "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js",
+  );
+  assert.equal(
+    manifest.update_url,
+    "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js",
+  );
+  assert.equal(manifest.artifacts.script.sha256, digest(script));
+  assert.equal(manifest.artifacts.metadata.sha256, digest(meta));
+  assert.equal(manifest.artifacts.release.sha256, digest(script));
+  assert.equal(
+    manifest.artifacts.release.path,
+    `releases/${currentVersion}/agent-control-plane-web-bridge.user.js`,
+  );
 });
 
 test("userscript falls back to the paired portal when localhost returns an invalid response", async () => {
