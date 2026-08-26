@@ -140,7 +140,7 @@ export function settingsPage({
   const form = canSave
     ? `<form method="post" action="/local-review/settings" autocomplete="off">
 <input type="hidden" name="form_secret" value="${escapeHtml(formSecret)}">
-<div class="language"><label>${escapeHtml(t("language"))}<select name="language">${option("zh-CN", t("chinese"), language === "zh-CN")}${option("en", t("english"), language === "en")}</select></label></div>
+<div class="language"><label>${escapeHtml(t("language"))}<select name="language" onchange="this.form.requestSubmit()">${option("zh-CN", t("chinese"), language === "zh-CN")}${option("en", t("english"), language === "en")}</select></label></div>
 <label>${escapeHtml(t("defaultWorkspace"))}<select name="workspace" required>${workspaceEntries.map((entry) => option(entry.value, entry.label, entry.value === settings.workspace)).join("")}</select></label>
 <label>${escapeHtml(t("defaultExecutor"))}<select name="executor" required>${executorOptions(executors, settings.executor, t)}</select></label>
 <label>${escapeHtml(t("defaultProfile"))}<select name="profile" required>${profileOptions(profiles, settings.profile, t)}</select></label>
