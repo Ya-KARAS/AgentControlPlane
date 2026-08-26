@@ -74,6 +74,10 @@ function resolveInsideWorkspace(workspace, inputPath) {
   return target;
 }
 
+function encodeHeaderValue(value) {
+  return encodeURIComponent(String(value));
+}
+
 function runShell(workspace, command, timeoutMs = 30000) {
   return new Promise((resolve) => {
     const child = spawn(command, {
@@ -1122,7 +1126,9 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
         headers["x-acp-task-id"] = String(attribution.taskId);
       }
       if (attribution?.workspace) {
-        headers["x-acp-project"] = path.basename(String(attribution.workspace));
+        headers["x-acp-project"] = encodeHeaderValue(
+          path.basename(String(attribution.workspace)),
+        );
       }
       if (eventMeta?.turnId) headers["x-acp-turn-id"] = String(eventMeta.turnId);
       if (eventMeta?.taskKind) {
