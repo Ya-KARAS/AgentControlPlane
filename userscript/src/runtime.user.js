@@ -2,7 +2,7 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.9.4
+// @version      0.9.5
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
@@ -14,6 +14,7 @@
 // @grant        GM_openInTab
 // @grant        GM_deleteValue
 // @grant        GM_getValue
+// @grant        GM_info
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -38,6 +39,11 @@
   const REMOTE_RELAY_KEY = "acp-remote-relay-v1";
   const FLOATING_POSITION_KEY = "acp-floating-position-v1";
   const DEFAULT_REMOTE_RELAY_URL = "https://acp.asterroute.com";
+  const USERSCRIPT_DOWNLOAD_URL =
+    "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js";
+  const USERSCRIPT_VERSION = typeof GM_info === "object" && GM_info?.script?.version
+    ? String(GM_info.script.version)
+    : "unknown";
   const ADAPTERS = /* @acp-adapters */ [];
   const STAGE_TTL_MS = 10 * 60 * 1000;
   const RESULT_DELIVERY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -450,13 +456,16 @@
   const style = document.createElement("style");
   style.textContent = `
     #${ROOT_ID} { align-items: center; bottom: 20px; display: flex; font-family: system-ui, sans-serif; gap: 7px; position: fixed; right: 20px; z-index: 2147483647; }
-    #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; cursor: grab; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; touch-action: none; transition: background-color .18s ease, box-shadow .18s ease; user-select: none; white-space: nowrap; }
+    #${ROOT_ID} button { background: #536af5; border: 0; border-radius: 999px; box-shadow: 0 8px 24px rgba(28, 39, 102, .28); color: #fff; font: 700 12px system-ui, sans-serif; max-width: min(360px, calc(100vw - 40px)); overflow: hidden; padding: 9px 13px; text-overflow: ellipsis; transition: background-color .18s ease, box-shadow .18s ease; user-select: none; white-space: nowrap; }
+    #${ROOT_ID} button.acp-status { cursor: grab; touch-action: none; }
+    #${ROOT_ID} button.acp-version { background: #161b22; border: 1px solid #536af5; box-shadow: none; cursor: pointer; padding-inline: 10px; touch-action: manipulation; }
     #${ROOT_ID} button[data-dragging="true"] { cursor: grabbing; }
     #${ROOT_ID} button[data-state="completed"] { background: #16803d; box-shadow: 0 8px 24px rgba(22, 128, 61, .3); }
     #${ROOT_ID} select { appearance: auto; background: #161b22; border: 1px solid #536af5; border-radius: 999px; color: #fff; cursor: pointer; font: 700 12px system-ui, sans-serif; padding: 8px 9px; }
   `;
   const statusButton = document.createElement("button");
   statusButton.type = "button";
+  statusButton.className = "acp-status";
   statusButton.textContent = `ACP · ${t("ready")}`;
   statusButton.title = statusAction === "pair-remote"
     ? t("menuConnectRemote")
@@ -549,12 +558,18 @@
     languageOption.textContent = label;
     languageSelect.append(languageOption);
   }
-  languageSelect.addEventListener("change", async () => {
-    const mode = normalizeUserscriptLanguage(languageSelect.value);
-    await Promise.resolve(GM_setValue(USERSCRIPT_LANGUAGE_KEY, mode));
-    window.location.reload();
+  const versionButton = document.createElement("button");
+  versionButton.type = "button";
+  versionButton.className = "acp-version";
+  versionButton.textContent = `v${USERSCRIPT_VERSION}`;
+  versionButton.addEventListener("click", () => {
+    GM_openInTab(USERSCRIPT_DOWNLOAD_URL, {
+      active: true,
+      insert: true,
+      setParent: true,
+    });
   });
-  root.append(style, languageSelect, statusButton);
+  root.append(style, languageSelect, versionButton, statusButton);
   document.body.append(root);
   window.addEventListener("resize", () => {
     if (floatingPosition) applyFloatingPosition(floatingPosition);
@@ -570,16 +585,54 @@
       GM_registerMenuCommand(
         `${languageMode === mode ? "✓ " : ""}${t(labelKey)}`,
         async () => {
-          await Promise.resolve(GM_setValue(USERSCRIPT_LANGUAGE_KEY, mode));
-          window.location.reload();
+          await applyLanguageMode(mode, { announce: true });
         },
       );
     }
+    GM_registerMenuCommand(
+      `${t("checkUpdates")} · v${USERSCRIPT_VERSION}`,
+      () => GM_openInTab(USERSCRIPT_DOWNLOAD_URL, {
+        active: true,
+        insert: true,
+        setParent: true,
+      }),
+    );
     GM_registerMenuCommand(t("menuConnectRemote"), pairRemoteRelay);
     if (remoteRelay) {
       GM_registerMenuCommand(t("menuDisconnectRemote"), disconnectRemoteRelay);
     }
   };
+
+  const refreshLanguageControls = () => {
+    languageSelect.value = languageMode;
+    languageSelect.setAttribute("aria-label", t("languageLabel"));
+    languageSelect.title = t("languageLabel");
+    versionButton.textContent = `v${USERSCRIPT_VERSION}`;
+    versionButton.setAttribute("aria-label", t("versionLabel", {
+      version: USERSCRIPT_VERSION,
+    }));
+    versionButton.title = `${t("versionLabel", {
+      version: USERSCRIPT_VERSION,
+    })} · ${t("checkUpdates")}`;
+    root.setAttribute("aria-label", t("ariaLabel"));
+  };
+
+  const applyLanguageMode = async (mode, { announce = false } = {}) => {
+    languageMode = normalizeUserscriptLanguage(mode);
+    uiLanguage = resolveUserscriptLanguage(
+      languageMode,
+      navigator.languages ?? [navigator.language],
+    );
+    refreshLanguageControls();
+    await Promise.resolve(GM_setValue(USERSCRIPT_LANGUAGE_KEY, languageMode));
+    if (announce) {
+      showStatus(t("languageApplied"), t("languageAppliedDetail"));
+    }
+  };
+
+  languageSelect.addEventListener("change", () => {
+    void applyLanguageMode(languageSelect.value, { announce: true });
+  });
 
   const initializeLanguage = async () => {
     remoteRelay = await loadRemoteRelay();
@@ -590,10 +643,7 @@
       languageMode,
       navigator.languages ?? [navigator.language],
     );
-    languageSelect.value = languageMode;
-    languageSelect.setAttribute("aria-label", t("languageLabel"));
-    languageSelect.title = t("languageLabel");
-    root.setAttribute("aria-label", t("ariaLabel"));
+    refreshLanguageControls();
     statusButton.textContent = `ACP · ${t("ready")}`;
     statusAction = remoteRelay ? "settings" : mobileBrowser ? "pair-remote" : "settings";
     statusButton.title = statusAction === "pair-remote"

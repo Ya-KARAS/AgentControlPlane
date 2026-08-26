@@ -28,6 +28,11 @@ test("Chinese and English UI messages are separate and support interpolation", (
   assert.equal(userscriptText("zh-CN", "languageLabel"), "ACP 界面语言");
   assert.equal(userscriptText("en", "languageLabel"), "ACP interface language");
   assert.equal(
+    userscriptText("zh-CN", "versionLabel", { version: "0.9.5" }),
+    "ACP 当前版本 0.9.5",
+  );
+  assert.equal(userscriptText("en", "checkUpdates"), "Check for updates");
+  assert.equal(
     userscriptText("zh-CN", "executionRoute", { route: "OpenCode · economy" }),
     "执行配置：OpenCode · economy",
   );

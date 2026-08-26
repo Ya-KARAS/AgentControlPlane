@@ -228,6 +228,11 @@ test("userscript keeps routine operation inside the native web AI conversation",
   assert.match(script, /ACP language: English/);
   assert.match(script, /acp-ui-language-v1/);
   assert.match(script, /languageSelect/);
+  assert.match(script, /GM_info/);
+  assert.match(script, /applyLanguageMode/);
+  assert.match(script, /languageApplied/);
+  assert.match(script, /ACP current version/);
+  assert.doesNotMatch(script, /window\.location\.reload\(\)/);
   assert.match(script, /<select|document\.createElement\("select"\)/);
   assert.match(script, /ACP interface language/);
   assert.match(script, /button\[data-state="completed"\]/);
