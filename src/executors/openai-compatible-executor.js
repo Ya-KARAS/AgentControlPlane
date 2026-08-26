@@ -78,6 +78,90 @@ function encodeHeaderValue(value) {
   return encodeURIComponent(String(value));
 }
 
+const REPORT_STATUSES = new Set([
+  "completed",
+  "partial",
+  "blocked",
+  "failed",
+  "success",
+  "error",
+]);
+
+function isStructuredReport(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    REPORT_STATUSES.has(value.status) &&
+    typeof value.summary === "string" &&
+    Array.isArray(value.changed_files) &&
+    Array.isArray(value.tests) &&
+    Array.isArray(value.blockers) &&
+    Object.hasOwn(value, "next_action") &&
+    (value.next_action === null || typeof value.next_action === "string")
+  );
+}
+
+function parseObjectAt(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, index + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function extractReportPayload(text) {
+  const cleaned = String(text).trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Some compatible providers prepend a natural-language verification note.
+  }
+
+  let candidateCount = 0;
+  for (
+    let start = cleaned.lastIndexOf("{");
+    start >= 0 && candidateCount < 256;
+    start = cleaned.lastIndexOf("{", start - 1)
+  ) {
+    candidateCount += 1;
+    const parsed = parseObjectAt(cleaned, start);
+    if (isStructuredReport(parsed)) return parsed;
+  }
+  return null;
+}
+
 function runShell(workspace, command, timeoutMs = 30000) {
   return new Promise((resolve) => {
     const child = spawn(command, {
@@ -846,11 +930,6 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
     return raw?.text ?? "{}";
   }
 
-  #stripFence(text) {
-    const match = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);
-    return match ? match[1] : text;
-  }
-
   #normalizeStatus(status) {
     if (["completed", "partial", "blocked", "failed"].includes(status)) {
       return status;
@@ -861,14 +940,9 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
   }
 
   #normalizeReport(text) {
-    const cleaned = this.#stripFence(text).trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return cleaned || "{}";
-    }
-    if (!parsed || typeof parsed !== "object") return cleaned;
+    const cleaned = String(text).trim();
+    const parsed = extractReportPayload(cleaned);
+    if (!parsed) return cleaned || "{}";
     const tests = Array.isArray(parsed.tests)
       ? parsed.tests.map((entry) => ({
           command: String(entry?.command ?? ""),

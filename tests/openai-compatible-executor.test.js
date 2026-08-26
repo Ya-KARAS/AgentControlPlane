@@ -157,14 +157,23 @@ function createMockChatServer() {
             {
               message: {
                 role: "assistant",
-                content: JSON.stringify({
-                  status: "completed",
-                  summary: "Wrote hello.txt via chat",
-                  changed_files: ["hello.txt"],
-                  tests: [],
-                  blockers: [],
-                  next_action: null,
-                }),
+                content: [
+                  "Verification finished. The earlier sample {\"note\":\"not a report\"} is not the result.",
+                  JSON.stringify({
+                    status: "completed",
+                    summary: "Wrote hello.txt via chat",
+                    changed_files: ["hello.txt"],
+                    tests: [
+                      {
+                        command: "node --test",
+                        status: "passed",
+                        detail: "1 passed",
+                      },
+                    ],
+                    blockers: [],
+                    next_action: null,
+                  }),
+                ].join("\n\n"),
               },
             },
           ],
@@ -324,6 +333,14 @@ test("runs a tool loop against a chat-completions endpoint", async () => {
   assert.equal(completed.params.turn.id, turn.id);
   const report = JSON.parse(completed.params.turn.items[0].text);
   assert.equal(report.status, "completed");
+  assert.deepEqual(report.changed_files, ["hello.txt"]);
+  assert.deepEqual(report.tests, [
+    {
+      command: "node --test",
+      status: "passed",
+      detail: "1 passed",
+    },
+  ]);
 
   const usageEvent = notifications
     .filter((entry) => entry.method === "thread/tokenUsage/updated")
