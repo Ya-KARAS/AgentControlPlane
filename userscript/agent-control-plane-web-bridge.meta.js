@@ -2,7 +2,7 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.9.3
+// @version      0.9.4
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
