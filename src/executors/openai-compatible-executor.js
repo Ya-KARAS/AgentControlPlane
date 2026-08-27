@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ControlPlaneError } from "../core/errors.js";
+import {
+  EXECUTION_REPORT_INSTRUCTION,
+  normalizeExecutionReportText,
+} from "../core/execution-report.js";
 import { normalizeUsage } from "../core/usage-events.js";
 import { ExecutorAdapter } from "./executor.js";
 
@@ -76,90 +80,6 @@ function resolveInsideWorkspace(workspace, inputPath) {
 
 function encodeHeaderValue(value) {
   return encodeURIComponent(String(value));
-}
-
-const REPORT_STATUSES = new Set([
-  "completed",
-  "partial",
-  "blocked",
-  "failed",
-  "success",
-  "error",
-]);
-
-function isStructuredReport(value) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    REPORT_STATUSES.has(value.status) &&
-    typeof value.summary === "string" &&
-    Array.isArray(value.changed_files) &&
-    Array.isArray(value.tests) &&
-    Array.isArray(value.blockers) &&
-    Object.hasOwn(value, "next_action") &&
-    (value.next_action === null || typeof value.next_action === "string")
-  );
-}
-
-function parseObjectAt(text, start) {
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = start; index < text.length; index += 1) {
-    const character = text[index];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (character === '"') {
-      inString = true;
-    } else if (character === "{") {
-      depth += 1;
-    } else if (character === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        try {
-          return JSON.parse(text.slice(start, index + 1));
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function extractReportPayload(text) {
-  const cleaned = String(text).trim();
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed;
-    }
-  } catch {
-    // Some compatible providers prepend a natural-language verification note.
-  }
-
-  let candidateCount = 0;
-  for (
-    let start = cleaned.lastIndexOf("{");
-    start >= 0 && candidateCount < 256;
-    start = cleaned.lastIndexOf("{", start - 1)
-  ) {
-    candidateCount += 1;
-    const parsed = parseObjectAt(cleaned, start);
-    if (isStructuredReport(parsed)) return parsed;
-  }
-  return null;
 }
 
 function runShell(workspace, command, timeoutMs = 30000) {
@@ -825,7 +745,7 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
         (item) => item.type === "function_call" && typeof item.name === "string",
       );
       if (toolCalls.length === 0) {
-        const text = this.#normalizeReport(this.#extractFinalText(output));
+        const text = normalizeExecutionReportText(this.#extractFinalText(output));
         this.emit("notification", {
           method: "turn/completed",
           params: {
@@ -908,7 +828,7 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
       "You are a secure software engineering execution agent.",
       "Work only inside the provided workspace using the read_file, write_file, and shell tools.",
       "Verify your changes and return a compact final report.",
-      "The report must be a JSON object with keys: status, summary, changed_files, tests, blockers, next_action.",
+      EXECUTION_REPORT_INSTRUCTION,
       schemaLine,
     ]
       .filter(Boolean)
@@ -928,45 +848,6 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
     if (typeof message?.text === "string") return message.text;
     const raw = output.findLast((item) => typeof item.text === "string");
     return raw?.text ?? "{}";
-  }
-
-  #normalizeStatus(status) {
-    if (["completed", "partial", "blocked", "failed"].includes(status)) {
-      return status;
-    }
-    if (status === "success") return "completed";
-    if (status === "error") return "failed";
-    return "completed";
-  }
-
-  #normalizeReport(text) {
-    const cleaned = String(text).trim();
-    const parsed = extractReportPayload(cleaned);
-    if (!parsed) return cleaned || "{}";
-    const tests = Array.isArray(parsed.tests)
-      ? parsed.tests.map((entry) => ({
-          command: String(entry?.command ?? ""),
-          status: ["passed", "failed", "not_run"].includes(entry?.status)
-            ? entry.status
-            : "not_run",
-          detail: entry?.detail == null ? null : String(entry.detail),
-        }))
-      : [];
-    const changedFiles = Array.isArray(parsed.changed_files)
-      ? parsed.changed_files.map((item) => String(item))
-      : [];
-    const blockers = Array.isArray(parsed.blockers)
-      ? parsed.blockers.map((item) => String(item))
-      : [];
-    const report = {
-      status: this.#normalizeStatus(parsed.status),
-      summary: String(parsed.summary ?? ""),
-      changed_files: changedFiles,
-      tests,
-      blockers,
-      next_action: parsed.next_action == null ? null : String(parsed.next_action),
-    };
-    return JSON.stringify(report);
   }
 
   async #executeTool(call, cwd) {
@@ -1046,7 +927,7 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
       });
 
       if (response.toolCalls.length === 0) {
-        const text = this.#normalizeReport(response.finalText);
+        const text = normalizeExecutionReportText(response.finalText);
         this.emit("notification", {
           method: "turn/completed",
           params: {

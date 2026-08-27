@@ -5,6 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { ControlPlaneError } from "../core/errors.js";
+import {
+  EXECUTION_REPORT_INSTRUCTION,
+  normalizeExecutionReportText,
+} from "../core/execution-report.js";
 import { ExecutorAdapter, formatCliExitError } from "./executor.js";
 import { probeCommandExecutor, readCommandVersion } from "./discovery.js";
 
@@ -403,7 +407,7 @@ export class KimiCodeExecutor extends ExecutorAdapter {
                   {
                     type: "agentMessage",
                     phase: "final_answer",
-                    text: this.#normalizeReport(finalText),
+                    text: normalizeExecutionReportText(finalText),
                   },
                 ]
               : [],
@@ -434,7 +438,7 @@ export class KimiCodeExecutor extends ExecutorAdapter {
       "You are a secure software engineering execution agent.",
       "Work only inside the provided workspace.",
       "Verify your changes and return a compact final report.",
-      "The report must be a JSON object with keys: status, summary, changed_files, tests, blockers, next_action.",
+      EXECUTION_REPORT_INSTRUCTION,
       schemaLine,
       "",
       "TASK:",
@@ -444,42 +448,4 @@ export class KimiCodeExecutor extends ExecutorAdapter {
       .join("\n");
   }
 
-  #normalizeReport(text) {
-    const match = String(text ?? "").match(/```(?:json)?\s*([\s\S]*?)```/);
-    const cleaned = String(match ? match[1] : text ?? "").trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return cleaned || "{}";
-    }
-    if (!parsed || typeof parsed !== "object") return cleaned;
-    const status = ["completed", "partial", "blocked", "failed"].includes(
-      parsed.status,
-    )
-      ? parsed.status
-      : parsed.status === "success"
-        ? "completed"
-        : "completed";
-    return JSON.stringify({
-      status,
-      summary: String(parsed.summary ?? ""),
-      changed_files: Array.isArray(parsed.changed_files)
-        ? parsed.changed_files.map(String)
-        : [],
-      tests: Array.isArray(parsed.tests)
-        ? parsed.tests.map((entry) => ({
-            command: String(entry?.command ?? ""),
-            status: ["passed", "failed", "not_run"].includes(entry?.status)
-              ? entry.status
-              : "not_run",
-            detail: entry?.detail == null ? null : String(entry.detail),
-          }))
-        : [],
-      blockers: Array.isArray(parsed.blockers)
-        ? parsed.blockers.map(String)
-        : [],
-      next_action: parsed.next_action == null ? null : String(parsed.next_action),
-    });
-  }
 }

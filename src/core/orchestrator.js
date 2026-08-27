@@ -6,6 +6,10 @@ import {
   normalizeBrief,
 } from "./brief.js";
 import { ControlPlaneError, asErrorPayload } from "./errors.js";
+import {
+  extractExecutionReportObject,
+  normalizeExecutionReportObject,
+} from "./execution-report.js";
 import { resolveProfile, resolveEndpointModel, estimateTaskMinutes } from "./profiles.js";
 import { resolveWorkspace } from "./workspace.js";
 import { discoverExecutors } from "../executors/discovery.js";
@@ -182,8 +186,9 @@ function extractReport(turn, cachedFinalMessage = null) {
       next_action: null,
     };
   }
-  try {
-    const parsed = JSON.parse(finalText);
+  const extracted = extractExecutionReportObject(finalText);
+  if (extracted) {
+    const parsed = normalizeExecutionReportObject(extracted);
     const normalizedSummary = String(parsed.summary ?? "").toLowerCase();
     if (
       parsed.status === "completed" &&
@@ -195,26 +200,25 @@ function extractReport(turn, cachedFinalMessage = null) {
       parsed.status = "blocked";
     }
     return parsed;
-  } catch {
-    const normalized = finalText.toLowerCase();
-    const status = normalized.includes("status: blocked")
-      ? "blocked"
-      : normalized.includes("status: failed")
-        ? "failed"
-        : normalized.includes("status: partial")
-          ? "partial"
-          : turn?.status === "completed"
-            ? "completed"
-            : "failed";
-    return {
-      status,
-      summary: finalText,
-      changed_files: [],
-      tests: [],
-      blockers: status === "blocked" ? [finalText] : [],
-      next_action: null,
-    };
   }
+  const normalized = finalText.toLowerCase();
+  const status = normalized.includes("status: blocked")
+    ? "blocked"
+    : normalized.includes("status: failed")
+      ? "failed"
+      : normalized.includes("status: partial")
+        ? "partial"
+        : turn?.status === "completed"
+          ? "completed"
+          : "failed";
+  return {
+    status,
+    summary: finalText,
+    changed_files: [],
+    tests: [],
+    blockers: status === "blocked" ? [finalText] : [],
+    next_action: null,
+  };
 }
 
 export class Orchestrator extends EventEmitter {
