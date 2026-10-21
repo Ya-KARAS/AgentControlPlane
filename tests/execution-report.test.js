@@ -80,6 +80,52 @@ test("normalizes a direct structured report", () => {
   });
 });
 
+test("extracts and normalizes a complete direct JSON report", () => {
+  const directReport = report({ status: "success" });
+  const text = JSON.stringify(directReport);
+
+  assert.deepEqual(extractExecutionReportObject(text), directReport);
+  assert.deepEqual(JSON.parse(normalizeExecutionReportText(text)), {
+    ...directReport,
+    status: "completed",
+  });
+});
+
+test("preserves unrelated direct JSON instead of inventing a completed report", () => {
+  const unrelated = '{"note":"not an execution report"}';
+  assert.equal(extractExecutionReportObject(unrelated), null);
+  assert.equal(normalizeExecutionReportText(unrelated), unrelated);
+});
+
+test("does not interpret incomplete direct report envelopes as reports", () => {
+  const incompleteReports = [
+    { status: "completed" },
+    { status: "completed", summary: "done" },
+    { ...report(), tests: null },
+    { ...report(), next_action: 7 },
+    { ...report(), status: "unknown" },
+  ];
+  for (const value of incompleteReports) {
+    const text = JSON.stringify(value);
+    assert.equal(extractExecutionReportObject(text), null, text);
+    assert.equal(normalizeExecutionReportText(text), text);
+  }
+});
+
+test("preserves JSON arrays and primitives without report objects", () => {
+  for (const text of [
+    '[{"note":"not a report"}]',
+    "[]",
+    "null",
+    "42",
+    '"done"',
+    "true",
+  ]) {
+    assert.equal(extractExecutionReportObject(text), null, text);
+    assert.equal(normalizeExecutionReportText(text), text);
+  }
+});
+
 test("extracts the final structured report from mixed provider output", () => {
   const finalReport = report({
     summary: "Wrote {one} file with an escaped quote: \"ok\"",

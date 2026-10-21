@@ -65,7 +65,7 @@ export function extractExecutionReportObject(text) {
   const cleaned = String(text ?? "").trim();
   try {
     const parsed = JSON.parse(cleaned);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    if (isStructuredReport(parsed)) {
       return parsed;
     }
   } catch {
