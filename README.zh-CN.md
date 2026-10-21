@@ -100,6 +100,22 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 执行 `npm run demo -- --help` 可以查看执行器、模型、超时和无人值守参数。Demo
 工作区会保留在磁盘上，供用户检查。
 
+脚本调用可在阅读上述额度提示后使用
+`npm run --silent demo -- --json --executor opencode --yes`。`--yes` 确认真实
+任务，`--json` 只改变输出格式：清理完成后，stdout 只输出一个 JSON 对象，进度
+和交互确认写入 stderr。`--silent` 用于关闭 npm 自身的启动信息，确保重定向结果
+可以直接解析。例如：
+
+```json
+{"executor":"opencode","model":null,"task_id":"<task-id>","status":"completed","workspace":"<workspace>","file":"<workspace>/hello.txt","verified":true,"usage":null}
+```
+
+未知的 `model`、`usage` 为 `null`，用量仅包含数值 Token 计数。失败结果保留相同
+字段，并包含安全的 `error.code`、`error.message`，退出码为 `1`；无效参数退出
+`2`，JSON 模式下取消也退出 `1`。`--check --json` 输出 `mode: "check"` 的被动
+预检对象，`status` 为 `"ready"` 或 `"blocked"`，附带依赖检查结果；任务字段为空，
+不启动任务。
+
 发布资产包括 Windows 源码包、可直接加载的浏览器 Companion ZIP、90 秒验证
 演示视频和 `SHA256SUMS`。下载地址：[v0.9.0 Release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.0)。
 

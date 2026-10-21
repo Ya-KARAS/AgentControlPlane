@@ -32,6 +32,7 @@ export function parseArgs(argv) {
     model: null,
     yes: false,
     check: false,
+    json: false,
     timeoutSeconds: 600,
     help: false,
   };
@@ -39,13 +40,14 @@ export function parseArgs(argv) {
     const arg = argv[index];
     if (arg === "--yes" || arg === "-y") options.yes = true;
     else if (arg === "--check") options.check = true;
+    else if (arg === "--json") options.json = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
     else if (arg === "--executor") options.executor = requireValue(arg, ++index);
     else if (arg === "--model") options.model = requireValue(arg, ++index);
     else if (arg === "--timeout-seconds") {
       options.timeoutSeconds = Number(requireValue(arg, ++index));
     } else {
-      throw new Error(`Unknown argument: ${arg}`);
+      throw new Error("Unknown argument. Run --help for usage.");
     }
   }
   if (!options.executor) throw new Error("--executor requires a value");
@@ -97,13 +99,14 @@ function usageLine(task) {
   return total > 0 ? `${total.toLocaleString("en-US")} tokens reported` : "usage unavailable";
 }
 
-function printHelp() {
-  console.log(`AgentControlPlane live demo
+function helpText() {
+  return `AgentControlPlane live demo
 
 Usage:
   npm run demo
   npm run demo -- --check
   npm run demo -- --yes
+  npm run --silent demo -- --json --yes
   npm run demo -- --executor opencode --model <model> --yes
 
 The demo sends one small engineering task through MCP to a ready local
@@ -112,6 +115,7 @@ quota. The generated workspace remains on disk for inspection.
 
 Options:
   --check              Check prerequisites without tasks, network, or quota use
+  --json               Write one JSON result to stdout; progress goes to stderr
   --executor <id>       Executor id; default: auto (prefers OpenCode)
   --model <id>          Optional executor model override
   --timeout-seconds <n> Wait from 30 to 3600 seconds; default: 600
@@ -120,7 +124,9 @@ Options:
 
 Preflight exit codes: 0 = passive prerequisites found, 1 = missing prerequisite,
 2 = invalid arguments. Authentication, models, and connectivity are not checked.
-`);
+JSON mode returns non-zero on failure or cancellation. Combine --check --json
+for passive preflight JSON. Use npm run --silent demo to suppress npm's banner.
+`;
 }
 
 function createDemoWorkspace(config) {
@@ -141,13 +147,17 @@ function createDemoWorkspace(config) {
   return workspace;
 }
 
-async function confirmLiveRun(executor, options) {
+export async function confirmLiveRun(executor, options) {
   if (options.yes) return true;
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  const output = options.json ? process.stderr : process.stdout;
+  if (!process.stdin.isTTY || !output.isTTY) {
     console.error("Interactive confirmation is unavailable. Re-run with --yes after reviewing quota use.");
     return false;
   }
-  const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const prompt = readline.createInterface({
+    input: process.stdin,
+    output,
+  });
   try {
     const answer = await prompt.question(
       `Send one small live task to ${executor.display_name ?? executor.id}? This may use configured quota. [y/N] `,
@@ -172,22 +182,79 @@ async function waitForTerminal(baseUrl, taskId, timeoutSeconds) {
   throw new Error(`Task ${taskId} exceeded ${timeoutSeconds} seconds`);
 }
 
-async function run(options) {
+async function loadDemoRuntime() {
   const [{ Client }, { StreamableHTTPClientTransport }, { createApplication }] = await Promise.all([
     import("@modelcontextprotocol/sdk/client/index.js"),
     import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
     import("../src/server.js"),
   ]);
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-demo-state-"));
-  process.env.AGENT_CONTROL_STATE_DIR = stateDir;
+  return { Client, StreamableHTTPClientTransport, createApplication };
+}
+
+function emptyResult(options = {}) {
+  return {
+    executor: options.executor && options.executor !== "auto" ? options.executor : null,
+    model: options.model ?? null,
+    task_id: null,
+    status: "failed",
+    workspace: null,
+    file: null,
+    verified: false,
+    usage: null,
+  };
+}
+
+function publicUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const entries = [
+    "input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens",
+    "cached_input_tokens", "uncached_input_tokens", "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+  ].filter((key) => Number.isFinite(usage[key]) && usage[key] >= 0)
+    .map((key) => [key, usage[key]]);
+  return entries.length ? Object.fromEntries(entries) : null;
+}
+
+const failureMessages = {
+  dependencies: "Could not load demo dependencies. Run npm ci in the project directory.",
+  configuration: "Could not load demo configuration. Check the local configuration and workspace roots.",
+  executor_discovery: "No ready executor could be selected. Install/configure the requested executor, then retry.",
+  confirmation: "Could not confirm quota use. Review the demo help before using --yes.",
+  application: "Could not start the isolated local demo service.",
+  connection: "Could not connect the demo MCP client to the local service.",
+  workspace: "Could not create the demo workspace. Check the allowed workspace roots.",
+  dispatch: "The local service did not accept the demo task.",
+  task: "Could not retrieve a terminal task result before the demo timeout.",
+  verification: "The task did not complete with the expected hello.txt marker. Inspect the demo workspace.",
+  cleanup: "Could not close the local demo resources or remove temporary state. Inspect local processes and temporary files.",
+};
+
+export async function runDemo(options, {
+  loadRuntime = loadDemoRuntime,
+  loadConfiguration = loadConfig,
+  discoverCandidates = discoverDemoCandidates,
+  confirm = confirmLiveRun,
+  createWorkspace = createDemoWorkspace,
+  waitForTask = waitForTerminal,
+  log = options.json ? console.error : console.log,
+} = {}) {
+  const result = emptyResult(options);
+  const previousStateDir = process.env.AGENT_CONTROL_STATE_DIR;
+  let stateDir = null;
+  let stage = "dependencies";
   let app = null;
   let client = null;
   try {
-    const config = loadConfig();
+    const { Client, StreamableHTTPClientTransport, createApplication } = await loadRuntime();
+    stage = "configuration";
+    stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-demo-state-"));
+    process.env.AGENT_CONTROL_STATE_DIR = stateDir;
+    const config = loadConfiguration();
     config.server.authToken = null;
     if (config.limits?.rateLimit) config.limits.rateLimit.enabled = false;
 
-    const { candidates, discovery } = await discoverDemoCandidates(
+    stage = "executor_discovery";
+    const { candidates, discovery } = await discoverCandidates(
       config,
       options.executor,
     );
@@ -204,37 +271,49 @@ async function run(options) {
       config.executor?.provider === "auto" ? null : config.executor?.provider,
     );
     if (!executor) {
-      const ready = publicExecutors
-        .filter((entry) => entry.ready)
-        .map((entry) => entry.id);
-      throw new Error(
-        `No ready executor matches '${options.executor}'. Ready executors: ${ready.join(", ") || "none"}. Run npm run doctor for details.`,
-      );
+      throw new Error("No ready executor");
+    }
+    result.executor = executor.id;
+    result.model = options.model ?? candidates.get(executor.id)?.model ?? null;
+
+    log("AgentControlPlane live demo");
+    log(`executor: ${executor.id}`);
+    if (options.model) log(`model: ${options.model}`);
+    stage = "confirmation";
+    if (!(await confirm(executor, options))) {
+      log("Demo cancelled before dispatch.");
+      result.status = "cancelled";
+      result.error = { code: "demo_cancelled", message: "Demo cancelled before dispatch." };
+      return result;
     }
 
-    console.log("AgentControlPlane live demo");
-    console.log(`executor: ${executor.id}`);
-    if (options.model) console.log(`model: ${options.model}`);
-    if (!(await confirmLiveRun(executor, options))) {
-      console.log("Demo cancelled before dispatch.");
-      return;
-    }
-
+    stage = "application";
     app = await createApplication({
       config,
       executors: new Map([[executor.id, candidates.get(executor.id)]]),
       defaultProvider: executor.id,
     });
-    await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+    await new Promise((resolve, reject) => {
+      const onError = (error) => reject(error);
+      app.server.once?.("error", onError);
+      app.server.listen(0, "127.0.0.1", () => {
+        app.server.off?.("error", onError);
+        resolve();
+      });
+    });
     const baseUrl = `http://127.0.0.1:${app.server.address().port}`;
+    stage = "connection";
     client = new Client({
       name: "agent-control-plane-demo",
       version: config.version,
     });
     const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`));
     await client.connect(transport);
-    const workspace = createDemoWorkspace(config);
-    console.log(`workspace: ${workspace}`);
+    stage = "workspace";
+    const workspace = createWorkspace(config);
+    result.workspace = workspace;
+    result.file = path.join(workspace, "hello.txt");
+    log(`workspace: ${workspace}`);
     const request = {
       workspace,
       executor: executor.id,
@@ -259,58 +338,119 @@ async function run(options) {
     };
     if (options.model) request.model = options.model;
 
+    stage = "dispatch";
     const dispatched = await client.callTool({
       name: "dispatch_project",
       arguments: request,
     });
     if (dispatched.isError || !dispatched.structuredContent?.task?.id) {
-      throw new Error(`Dispatch failed: ${JSON.stringify(dispatched.content)}`);
+      throw new Error("Dispatch failed");
     }
     const taskId = dispatched.structuredContent.task.id;
-    console.log(`task: ${taskId}`);
-    console.log("status: running");
-    const task = await waitForTerminal(baseUrl, taskId, options.timeoutSeconds);
-    const outputPath = path.join(workspace, "hello.txt");
+    result.task_id = taskId;
+    log(`task: ${taskId}`);
+    log("status: running");
+    stage = "task";
+    const task = await waitForTask(baseUrl, taskId, options.timeoutSeconds);
+    result.status = terminalStatuses.has(task.status) ? task.status : "failed";
+    result.model = task.policy?.model ?? result.model;
+    result.usage = publicUsage(task.usage);
+    stage = "verification";
+    const outputPath = result.file;
     const content = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : null;
     const verified = task.status === "completed" && content !== null && verifiesMarker(content);
+    result.verified = verified;
+    if (!verified && result.status === "completed") result.status = "failed";
 
-    console.log(`status: ${task.status}`);
-    console.log(`usage: ${usageLine(task)}`);
-    console.log(`file: ${outputPath}`);
-    console.log(`verified: ${verified}`);
+    log(`status: ${result.status}`);
+    log(`usage: ${usageLine({ usage: result.usage })}`);
+    log(`file: ${outputPath}`);
+    log(`verified: ${verified}`);
     if (!verified) {
-      const detail = task.error?.message ?? task.result?.summary ?? "marker verification failed";
-      throw new Error(`Demo did not pass: ${detail}`);
+      throw new Error("Marker verification failed");
     }
-    console.log("DEMO PASS: MCP dispatch, local execution, file verification, and result persistence completed.");
+  } catch {
+    if (result.status === "completed") result.status = "failed";
+    result.verified = false;
+    result.error = { code: `${stage}_failed`, message: failureMessages[stage] };
   } finally {
-    await client?.close().catch(() => {});
-    await app?.close().catch(() => {});
-    const resolvedState = path.resolve(stateDir);
-    const tempRoot = path.resolve(os.tmpdir());
-    const relative = path.relative(tempRoot, resolvedState);
-    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-      fs.rmSync(resolvedState, { recursive: true, force: true });
+    let cleanupFailed = false;
+    for (const resource of [client, app]) {
+      try { await resource?.close(); } catch { cleanupFailed = true; }
+    }
+    try {
+      if (stateDir) {
+        const resolvedState = path.resolve(stateDir);
+        const tempRoot = path.resolve(os.tmpdir());
+        const relative = path.relative(tempRoot, resolvedState);
+        if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+          fs.rmSync(resolvedState, { recursive: true, force: true });
+        }
+      }
+    } catch {
+      cleanupFailed = true;
+    } finally {
+      if (previousStateDir === undefined) delete process.env.AGENT_CONTROL_STATE_DIR;
+      else process.env.AGENT_CONTROL_STATE_DIR = previousStateDir;
+    }
+    if (cleanupFailed) {
+      result.status = "failed";
+      result.verified = false;
+      result.error = { code: "cleanup_failed", message: failureMessages.cleanup };
     }
   }
+  if (result.verified && !result.error) {
+    log("DEMO PASS: MCP dispatch, local execution, file verification, and result persistence completed.");
+  }
+  return result;
 }
 
-export async function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2), {
+  runLive = runDemo,
+  preflight = checkDemoPreflight,
+} = {}) {
   let options;
   try {
     options = parseArgs(argv);
   } catch (error) {
-    console.error(error.message);
-    console.error("Run `npm run demo -- --help` for usage.");
+    if (argv.includes("--json")) console.log(JSON.stringify({
+      ...emptyResult(), error: { code: "invalid_arguments", message: error.message },
+    }));
+    else {
+      console.error(error.message);
+      console.error("Run `npm run demo -- --help` for usage.");
+    }
     process.exitCode = 2;
     return;
   }
   if (options.help) {
-    printHelp();
+    console.log(options.json ? JSON.stringify({ mode: "help", help: helpText() }) : helpText());
     return;
   }
   if (options.check) {
-    const result = await checkDemoPreflight(options);
+    let result;
+    try {
+      result = await preflight(options);
+    } catch {
+      result = {
+        ok: false, selected: null, executors: [], checks: [{
+          name: "Preflight", ok: false,
+          detail: "Preflight failed. Check the local configuration and dependencies, then retry.",
+        }],
+      };
+    }
+    if (options.json) {
+      console.log(JSON.stringify({
+        ...emptyResult(options),
+        mode: "check",
+        executor: result.selected?.id ?? null,
+        status: result.ok ? "ready" : "blocked",
+        checks: result.checks,
+        executors: result.executors,
+      }));
+      process.exitCode = result.ok ? 0 : 1;
+      return;
+    }
     console.log("AgentControlPlane demo preflight");
     for (const entry of result.checks) {
       (entry.ok ? console.log : console.error)(`[${entry.ok ? "ok" : "fail"}] ${entry.name}: ${entry.detail}`);
@@ -323,12 +463,27 @@ export async function main(argv = process.argv.slice(2)) {
     process.exitCode = result.ok ? 0 : 1;
     return;
   }
-  await run(options);
+  let result;
+  try {
+    result = await runLive(options);
+  } catch {
+    result = { ...emptyResult(options), error: {
+      code: "demo_failed", message: "Demo failed. Check the local configuration and executor, then retry.",
+    } };
+  }
+  if (options.json) console.log(JSON.stringify(result));
+  if (result.error && (options.json || result.status !== "cancelled")) {
+    if (!options.json) console.error(`DEMO FAIL: ${result.error.message}`);
+    process.exitCode = 1;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(`DEMO FAIL: ${error.message}`);
+  main().catch(() => {
+    if (process.argv.includes("--json")) console.log(JSON.stringify({
+      ...emptyResult(), error: { code: "demo_failed", message: "Demo failed before producing a result." },
+    }));
+    else console.error("DEMO FAIL: Demo failed before producing a result.");
     process.exitCode = 1;
   });
 }

@@ -29,6 +29,7 @@ script execution is useful when a command needs additional arguments.
 |---|---|---|
 | `npm run demo -- --check` | `demo.js --check` | Check Node.js 22+, configuration, MCP SDK/Zod dependencies, and passive executor prerequisites without tasks, model quota, network requests, subprocesses, or runtime/state/workspace writes. Reports `installed`/`configured`, not verified authentication, models, or connectivity. Exit codes: 0 pass, 1 missing prerequisite, 2 invalid arguments. `--executor <id>` limits candidates; `--yes` does not start a live run with `--check`. |
 | `npm run demo` | `demo.js` | Run the documented local executor demo. |
+| `npm run --silent demo -- --json --yes` | `demo.js --json --yes` | Run the live demo after reviewing quota use; emit one JSON result to stdout and progress to stderr. Use `--check --json` for passive preflight JSON. |
 | `npm run smoke` | `smoke.js` | Run the control-plane smoke flow. |
 | `npm run smoke:companion` | `smoke-companion.js` | Run the browser companion smoke flow. |
 | `npm run smoke:budget` | `smoke-budget.js` | Check budget accounting behavior. |

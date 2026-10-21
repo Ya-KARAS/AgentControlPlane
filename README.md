@@ -109,6 +109,23 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 Use `npm run demo -- --help` for executor, model, timeout, and unattended-run
 options. The generated workspace remains available for inspection.
 
+For scripts, use `npm run --silent demo -- --json --executor opencode --yes`
+after reviewing the quota notice above. `--yes` confirms the live task; `--json`
+changes output only. The script writes one JSON object to stdout after cleanup,
+with progress and any interactive confirmation on stderr. `--silent` suppresses
+npm's own banner so redirected stdout is valid JSON. For example:
+
+```json
+{"executor":"opencode","model":null,"task_id":"<task-id>","status":"completed","workspace":"<workspace>","file":"<workspace>/hello.txt","verified":true,"usage":null}
+```
+
+`model` and `usage` are `null` when unknown; reported usage contains numeric
+token counters only. Failure results retain the same fields, include a safe
+`error.code` and `error.message`, and exit `1`; invalid arguments exit `2`.
+Cancellation in JSON mode also exits `1`. `--check --json` emits a passive
+preflight object with `mode: "check"`, `status: "ready"` or `"blocked"`, and
+dependency checks; its task fields remain empty and it starts no task.
+
 Release assets include a Windows source archive, a load-unpacked browser
 companion ZIP, a 90-second verified demo video, and `SHA256SUMS`. Download them
 from the [v0.9.0 release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.0).
