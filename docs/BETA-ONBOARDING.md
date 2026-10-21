@@ -30,13 +30,49 @@ in its integration guide at
 
 ## Path B — AsterRoute + ACP assisted setup
 
-1. Install ACP on your own machine (Node.js 22 or newer):
+1. Install Git, Node.js 22 or newer, and a supported executor on your own
+   machine. For this local smoke test, install/configure OpenCode and make
+   `opencode` available on `PATH`; an AsterRoute route is not required.
+   Windows commands use PowerShell:
 
-   ```bash
+   ```powershell
+   node --version
    git clone https://github.com/Ya-KARAS/AgentControlPlane.git
    cd AgentControlPlane
-   npm install
+   npm.cmd ci
+   npm.cmd run verify
+   npm.cmd run demo -- --check --executor opencode
+   npm.cmd run demo -- --executor opencode
    ```
+
+   macOS/Linux terminal commands are below. This development round was
+   verified on Windows only; these commands have not been run on macOS/Linux
+   hardware, and executor support must be checked on the target platform.
+
+   ```sh
+   node --version
+   git clone https://github.com/Ya-KARAS/AgentControlPlane.git
+   cd AgentControlPlane
+   npm ci
+   npm run verify
+   npm run demo -- --check --executor opencode
+   npm run demo -- --executor opencode
+   ```
+
+   `node --version` must report 22 or newer. `verify` runs tests and
+   consistency checks without a live model task. `demo -- --check` only
+   checks passive prerequisites; authentication, models, and connectivity
+   remain unverified. The live demo asks for interactive confirmation and
+   may consume executor quota. For optional detailed executor discovery,
+   run `npm run doctor` (`npm.cmd run doctor` in Windows PowerShell); it may
+   run executor commands and active endpoint probes that use model quota.
+
+   If selecting Codex on Windows, Windows sandbox readiness is also
+   required; run `npm.cmd run sandbox:setup` before dispatch if setup is
+   needed. This Windows sandbox step and the PowerShell service/autostart
+   scripts below do not apply to macOS/Linux. Use `npm start` for a
+   foreground service there. See the [README quickstart](../README.md#run-the-live-demo)
+   for preflight exit codes and demo output.
 
 2. If you use an AsterRoute model route, keep its key out of files:
 

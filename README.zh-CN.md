@@ -37,16 +37,41 @@ ZCode 或 OpenAI-compatible 执行器，再返回状态、变更文件、测试�
 
 ## 运行真实 Demo
 
-前置条件：Node.js 22 或更新版本，以及一个已配置的执行器。OpenCode 就绪时，
-Demo 默认选择 OpenCode。
+前置条件：Git、Node.js 22 或更新版本，以及一个已安装、配置完成的执行器。
+以下命令使用 OpenCode：请先安装其 CLI，确保 `PATH` 中能找到 `opencode`，
+并配置可用模型。使用其他执行器时，将 `opencode` 替换为对应 ID。
+自动选择模式会优先使用已就绪的 OpenCode。
+
+Windows（PowerShell）。本轮开发验证在 Windows 上完成。
 
 ```powershell
+node --version
 git clone https://github.com/Ya-KARAS/AgentControlPlane.git
 cd AgentControlPlane
 npm.cmd ci
-npm.cmd run demo -- --check
-npm.cmd run demo
+npm.cmd run verify
+npm.cmd run demo -- --check --executor opencode
+npm.cmd run demo -- --executor opencode
 ```
+
+macOS / Linux（终端）。本轮尚未在 macOS 或 Linux 实机执行以下命令；
+执行器的安装、认证和模型支持需要在目标平台核查。
+
+```sh
+node --version
+git clone https://github.com/Ya-KARAS/AgentControlPlane.git
+cd AgentControlPlane
+npm ci
+npm run verify
+npm run demo -- --check --executor opencode
+npm run demo -- --executor opencode
+```
+
+第一条命令应显示 Node.js 22 或更新版本。`npm run verify` 运行仓库测试与一致性
+检查，不执行真实模型任务。Demo 在派发任务前会要求交互确认。在 Windows 上，
+Codex 还需要 Windows 沙箱就绪；如需初始化，请在 Codex 派发前运行
+`npm.cmd run sandbox:setup`。该沙箱步骤与 PowerShell 后台服务脚本仅适用于
+Windows；macOS/Linux 可用 `npm start` 在前台启动服务。
 
 `npm run demo -- --check` 检查 Node.js 22+、配置、MCP SDK 和 Zod 依赖，以及
 执行器的被动前提条件。它不派发任务、不发起网络请求、不启动子进程、不消耗模型
@@ -135,7 +160,7 @@ ChatGPT / DeepSeek / Claude
 |---|---|---|
 | OpenCode | CLI | 已安装 CLI，并配置可用模型 |
 | ZCode | 桌面版内置 CLI | 已安装 ZCode 桌面版，并启用 BigModel 或 Z.ai 模型通道 |
-| Codex | App Server | 已安装客户端、账户额度和 Windows 沙箱就绪 |
+| Codex | App Server | 已安装客户端、有账户额度；Windows 上还需 Windows 沙箱就绪 |
 | Claude Code | CLI | Claude Pro/Max 登录或 Anthropic API 密钥 |
 | Kimi Code | CLI | 已安装 CLI，已登录 Kimi，并配置可用模型 |
 | OpenCodex | OpenAI-compatible 端点 | 端点可访问、模型已配置、工具能力已验证 |
@@ -210,7 +235,7 @@ Plan。当前 ZCode 无界面 CLI 不提供可用的推理等级参数，因此�
 
 - 旧式工作区解析到配置的允许列表根目录内；项目库扫描根目录本身不能执行。
 - HTTP 服务只接受回环地址绑定。
-- Codex 使用 workspace-write、关闭网络访问，并在执行前检查 Windows 沙箱。
+- Codex 使用 workspace-write 并关闭网络访问；在 Windows 上，执行前还会检查 Windows 沙箱。
 - 其他 CLI 和模型端点适配器以本地用户权限运行；请使用可信工作区。
 - `AGENT_CONTROL_TOKEN` 可以启用 bearer 鉴权。
 - 状态和只追加审计记录保存在项目工作区之外。

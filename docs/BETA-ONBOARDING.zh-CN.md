@@ -25,13 +25,44 @@ Beta 面向 3–5 名受邀用户，不提供企业 SLA，不支持自助注册�
 
 ## 路径 B —— AsterRoute + ACP 协助安装
 
-1. 在自己的机器上安装 ACP（Node.js 22 及以上）：
+1. 在自己的机器上安装 Git、Node.js 22 或更新版本，以及受支持的执行器。
+   以下本地冒烟测试使用 OpenCode：请先安装并配置它，确保 `PATH` 中能找到
+   `opencode`；不要求配置 AsterRoute 线路。Windows 使用 PowerShell：
 
-   ```bash
+   ```powershell
+   node --version
    git clone https://github.com/Ya-KARAS/AgentControlPlane.git
    cd AgentControlPlane
-   npm install
+   npm.cmd ci
+   npm.cmd run verify
+   npm.cmd run demo -- --check --executor opencode
+   npm.cmd run demo -- --executor opencode
    ```
+
+   macOS/Linux 使用以下终端命令。本轮仅在 Windows 完成验证，尚未在
+   macOS/Linux 实机执行这些命令；执行器支持需要在目标平台核查。
+
+   ```sh
+   node --version
+   git clone https://github.com/Ya-KARAS/AgentControlPlane.git
+   cd AgentControlPlane
+   npm ci
+   npm run verify
+   npm run demo -- --check --executor opencode
+   npm run demo -- --executor opencode
+   ```
+
+   `node --version` 应显示 22 或更新版本。`verify` 运行测试与一致性检查，
+   不执行真实模型任务。`demo -- --check` 只检查被动前提条件，不验证认证、
+   模型或网络连通性。真实 Demo 会要求交互确认，并可能消耗执行器额度。
+   如需进一步发现执行器，可运行 `npm run doctor`（Windows PowerShell 使用
+   `npm.cmd run doctor`）；它可能运行执行器命令和消耗模型额度的主动端点探测。
+
+   在 Windows 上选择 Codex 时，还需要 Windows 沙箱就绪；如需初始化，
+   请在派发前运行 `npm.cmd run sandbox:setup`。该沙箱步骤及下文的 PowerShell
+   服务/自启动脚本仅适用于 Windows，macOS/Linux 可用 `npm start` 在前台
+   启动服务。预检退出码与 Demo 输出见
+   [README 快速开始](../README.zh-CN.md#运行真实-demo)。
 
 2. 如果使用 AsterRoute 模型线路，Key 不进文件：
 

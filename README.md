@@ -39,16 +39,44 @@ contact the maintainer if you need private registration.
 
 ## Run the live demo
 
-Requirements: Node.js 22 or newer and one configured executor. OpenCode is the
-default demo choice when it is ready.
+Requirements: Git, Node.js 22 or newer, and one installed, configured executor.
+The commands below use OpenCode: install its CLI, make `opencode` available on
+`PATH`, and configure a working model first. If you use another executor, replace
+`opencode` with its id. Automatic selection prefers OpenCode when it is ready.
+
+Windows (PowerShell). This development round was verified on Windows.
 
 ```powershell
+node --version
 git clone https://github.com/Ya-KARAS/AgentControlPlane.git
 cd AgentControlPlane
 npm.cmd ci
-npm.cmd run demo -- --check
-npm.cmd run demo
+npm.cmd run verify
+npm.cmd run demo -- --check --executor opencode
+npm.cmd run demo -- --executor opencode
 ```
+
+macOS / Linux (terminal). These commands have not been run on a macOS or Linux
+machine in this development round; executor installation, authentication, and
+model support must be checked on the target platform.
+
+```sh
+node --version
+git clone https://github.com/Ya-KARAS/AgentControlPlane.git
+cd AgentControlPlane
+npm ci
+npm run verify
+npm run demo -- --check --executor opencode
+npm run demo -- --executor opencode
+```
+
+The first command must report Node.js 22 or newer. `npm run verify` runs the
+repository tests and consistency checks; it does not run a live model task.
+The demo asks for interactive confirmation before sending a task. On Windows,
+Codex also requires Windows sandbox readiness; run `npm.cmd run sandbox:setup`
+before a Codex dispatch if setup is needed. That Windows sandbox step and the
+PowerShell background-service scripts do not apply to macOS/Linux; use
+`npm start` for a foreground service there.
 
 `npm run demo -- --check` checks Node.js 22+, configuration, the MCP SDK and
 Zod dependencies, and passive executor prerequisites. It sends no task or
@@ -153,7 +181,7 @@ ChatGPT / DeepSeek / Claude
 | Executor | Interface | Readiness requirement |
 |---|---|---|
 | OpenCode | CLI | installed CLI with a configured model |
-| Codex | App Server | installed client, account quota, and Windows sandbox readiness |
+| Codex | App Server | installed client and account quota; Windows additionally requires Windows sandbox readiness |
 | Claude Code | CLI | Claude Pro/Max login or an Anthropic API key |
 | Kimi Code | CLI | installed CLI with a Kimi login and configured model |
 | ZCode | bundled CLI | installed ZCode desktop with an enabled BigModel or Z.ai model provider |
@@ -240,8 +268,8 @@ are operated separately from this repository.
 - Legacy workspaces resolve inside configured allowlisted roots; project
   discovery roots are never executable workspaces themselves.
 - The HTTP service accepts loopback binding only.
-- Codex uses workspace-write with network access disabled and checks Windows
-  sandbox readiness before execution.
+- Codex uses workspace-write with network access disabled; on Windows, ACP
+  checks Windows sandbox readiness before execution.
 - Other CLI and model-endpoint adapters run with the local user's privileges;
   use trusted workspaces.
 - `AGENT_CONTROL_TOKEN` enables bearer authentication.
