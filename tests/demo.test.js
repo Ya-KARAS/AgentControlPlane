@@ -23,10 +23,28 @@ test("demo parses explicit live-run options", () => {
       executor: "opencode",
       model: "mimo-v2.5-free",
       yes: true,
+      check: false,
       timeoutSeconds: 120,
       help: false,
     },
   );
+});
+
+test("demo parses quota-free preflight even with live confirmation", () => {
+  const options = parseArgs(["--check", "--yes"]);
+  assert.equal(options.check, true);
+  assert.equal(options.yes, true);
+});
+
+test("demo never consumes a preflight flag as a missing option value", () => {
+  for (const args of [
+    ["--model", "--check", "--yes"],
+    ["--executor", "--check", "--yes"],
+    ["--model", "--yes", "--check"],
+    ["--timeout-seconds", "--check"],
+  ]) {
+    assert.throws(() => parseArgs(args), /requires a value/);
+  }
 });
 
 test("demo auto-selection prefers a ready OpenCode executor", () => {

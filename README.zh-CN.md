@@ -44,9 +44,19 @@ Demo 默认选择 OpenCode。
 git clone https://github.com/Ya-KARAS/AgentControlPlane.git
 cd AgentControlPlane
 npm.cmd ci
-npm.cmd run doctor
+npm.cmd run demo -- --check
 npm.cmd run demo
 ```
+
+`npm run demo -- --check` 检查 Node.js 22+、配置、MCP SDK 和 Zod 依赖，以及
+执行器的被动前提条件。它不派发任务、不发起网络请求、不启动子进程、不消耗模型
+额度，也不写入运行时、状态或工作区文件。CLI 候选项显示为 `installed`，端点
+候选项显示为 `configured`；认证、模型可用性和网络连通性不在检查范围内。
+退出码 `0` 表示被动前提条件通过，`1` 表示缺少前提条件，`2` 表示 CLI 参数无效。
+可加 `--executor <id>` 限定候选项；同时使用 `--check` 和 `--yes` 仍只执行预检。
+
+`npm run doctor` 仍可用于详细发现检查。它可能运行执行器命令及主动端点探测，
+后者可能消耗已配置模型的额度。
 
 `npm run demo` 启动隔离的回环服务，询问一次确认，并通过 MCP 发送一个小型
 工程任务。所选执行器可能消耗账户、订阅或 API 额度。成功运行会创建并读回

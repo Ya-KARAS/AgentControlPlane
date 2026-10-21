@@ -39,7 +39,8 @@ Every executor uses the same commands:
 | `npm test` | run the full node:test suite |
 | `npm run check` | syntax check plus browser-companion consistency check |
 | `npm run verify` | `npm test && npm run check` — the single pre-handoff gate |
-| `npm run doctor` | list discovered executors and the automatic default |
+| `npm run demo -- --check` | check Node.js 22+, config, dependencies, and passive executor prerequisites without tasks, quota use, network requests, subprocesses, or runtime/state/workspace writes; authentication, models, and connectivity remain unverified |
+| `npm run doctor` | list discovered executors and the automatic default; may run commands and active probes that use model quota |
 | `npm run check:relay` | run the live relay connectivity check; requires relay keys in the environment |
 | `npm run accept:reroute -- --to opencode --model <model>` | inject an isolated infrastructure failure and verify a real executor continuation |
 | `npm start` | run the local service on 127.0.0.1:4318 |

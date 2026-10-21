@@ -3,15 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { loadConfig } from "../src/core/config.js";
-import {
-  createApplication,
-  buildExecutor,
-  buildExecutors,
-} from "../src/server.js";
 import { discoverExecutors } from "../src/executors/discovery.js";
+import { checkDemoPreflight, selectExecutor } from "./demo-preflight.js";
+
+export { selectExecutor } from "./demo-preflight.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, "..");
@@ -26,21 +22,28 @@ const terminalStatuses = new Set([
 ]);
 
 export function parseArgs(argv) {
+  const requireValue = (flag, index) => {
+    const value = argv[index];
+    if (!value || value.startsWith("-")) throw new Error(`${flag} requires a value`);
+    return value;
+  };
   const options = {
     executor: "auto",
     model: null,
     yes: false,
+    check: false,
     timeoutSeconds: 600,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--yes" || arg === "-y") options.yes = true;
+    else if (arg === "--check") options.check = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
-    else if (arg === "--executor") options.executor = argv[++index];
-    else if (arg === "--model") options.model = argv[++index];
+    else if (arg === "--executor") options.executor = requireValue(arg, ++index);
+    else if (arg === "--model") options.model = requireValue(arg, ++index);
     else if (arg === "--timeout-seconds") {
-      options.timeoutSeconds = Number(argv[++index]);
+      options.timeoutSeconds = Number(requireValue(arg, ++index));
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -57,26 +60,12 @@ export function parseArgs(argv) {
   return options;
 }
 
-export function selectExecutor(executors, requested = "auto", defaultId = null) {
-  const ready = executors.filter(
-    (entry) => entry.ready && entry.discovery?.available !== false,
-  );
-  if (requested !== "auto") {
-    return ready.find((entry) => entry.id === requested) ?? null;
-  }
-  return (
-    ready.find((entry) => entry.id === "opencode") ??
-    ready.find((entry) => entry.id === defaultId) ??
-    ready[0] ??
-    null
-  );
-}
-
 export function verifiesMarker(content) {
   return String(content).replace(/\r\n/g, "\n").trimEnd() === marker;
 }
 
 async function discoverDemoCandidates(config, requested) {
+  const { buildExecutor, buildExecutors } = await import("../src/server.js");
   const builtIns = new Set([
     "codex",
     "openai-compatible",
@@ -113,6 +102,7 @@ function printHelp() {
 
 Usage:
   npm run demo
+  npm run demo -- --check
   npm run demo -- --yes
   npm run demo -- --executor opencode --model <model> --yes
 
@@ -121,11 +111,15 @@ executor. The selected executor may consume account, subscription, or API
 quota. The generated workspace remains on disk for inspection.
 
 Options:
+  --check              Check prerequisites without tasks, network, or quota use
   --executor <id>       Executor id; default: auto (prefers OpenCode)
   --model <id>          Optional executor model override
   --timeout-seconds <n> Wait from 30 to 3600 seconds; default: 600
   --yes, -y             Confirm quota use without an interactive prompt
   --help, -h            Show this help
+
+Preflight exit codes: 0 = passive prerequisites found, 1 = missing prerequisite,
+2 = invalid arguments. Authentication, models, and connectivity are not checked.
 `);
 }
 
@@ -179,6 +173,11 @@ async function waitForTerminal(baseUrl, taskId, timeoutSeconds) {
 }
 
 async function run(options) {
+  const [{ Client }, { StreamableHTTPClientTransport }, { createApplication }] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+    import("../src/server.js"),
+  ]);
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-demo-state-"));
   process.env.AGENT_CONTROL_STATE_DIR = stateDir;
   let app = null;
@@ -308,6 +307,20 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (options.help) {
     printHelp();
+    return;
+  }
+  if (options.check) {
+    const result = await checkDemoPreflight(options);
+    console.log("AgentControlPlane demo preflight");
+    for (const entry of result.checks) {
+      (entry.ok ? console.log : console.error)(`[${entry.ok ? "ok" : "fail"}] ${entry.name}: ${entry.detail}`);
+    }
+    for (const executor of result.executors) {
+      const state = executor.discovery;
+      console.log(`${executor.id}: ${state.status}${state.reason ? ` (${state.reason})` : ""}`);
+    }
+    console.log("Passive checks only: authentication, models, and connectivity are not checked. No task was started.");
+    process.exitCode = result.ok ? 0 : 1;
     return;
   }
   await run(options);

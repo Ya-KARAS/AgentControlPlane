@@ -46,9 +46,22 @@ default demo choice when it is ready.
 git clone https://github.com/Ya-KARAS/AgentControlPlane.git
 cd AgentControlPlane
 npm.cmd ci
-npm.cmd run doctor
+npm.cmd run demo -- --check
 npm.cmd run demo
 ```
+
+`npm run demo -- --check` checks Node.js 22+, configuration, the MCP SDK and
+Zod dependencies, and passive executor prerequisites. It sends no task or
+network request, starts no subprocess, uses no model quota, and writes no
+runtime, state, or workspace files. CLI candidates are reported as `installed`
+and endpoint candidates as `configured`; authentication, model availability,
+and network connectivity are not verified. Exit codes are `0` when the passive
+prerequisites pass, `1` when a prerequisite is missing, and `2` for invalid CLI
+arguments. Add `--executor <id>` to limit the candidates. Combining `--check`
+with `--yes` still performs only the preflight.
+
+`npm run doctor` remains available for detailed discovery. It may run executor
+commands and active endpoint probes, which can use configured model quota.
 
 `npm run demo` starts an isolated loopback service, asks for confirmation, and
 sends one small task through MCP. The selected executor may use account,
