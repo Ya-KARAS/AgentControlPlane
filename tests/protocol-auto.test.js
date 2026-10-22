@@ -589,6 +589,7 @@ test("chat turns send task attribution headers", async () => {
     res.end(JSON.stringify({ error: "not found" }));
   });
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "acp-attr-ws-"));
+  const attributedWorkspace = path.join(workspace, "本地");
   const executor = new OpenAICompatibleExecutor({
     id: "relay-x",
     baseUrl,
@@ -611,7 +612,7 @@ test("chat turns send task attribution headers", async () => {
       model: "m",
       cwd: workspace,
       outputSchema: {},
-      attribution: { taskId: "task-123", workspace },
+      attribution: { taskId: "task-123", workspace: attributedWorkspace },
     });
     const deadline = Date.now() + 2000;
     while (
@@ -622,7 +623,7 @@ test("chat turns send task attribution headers", async () => {
     }
     assert.ok(captured.length > 0, "chat request captured");
     assert.equal(captured[0]["x-acp-task-id"], "task-123");
-    assert.equal(captured[0]["x-acp-project"], path.basename(workspace));
+    assert.equal(captured[0]["x-acp-project"], encodeURIComponent("本地"));
     assert.equal(captured[0]["x-acp-executor"], "relay-x");
   } finally {
     await executor.stop();

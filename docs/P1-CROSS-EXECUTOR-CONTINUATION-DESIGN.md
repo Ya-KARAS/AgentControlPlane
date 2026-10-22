@@ -68,7 +68,7 @@ never the full chat history.
   "completed_steps": [],
   "remaining_steps": [],
   "changed_files": [],
-  "test_evidence": [{ "command": "...", "status": "passed | failed" }],
+  "test_evidence": [{ "command": "...", "status": "passed | failed | not_run" }],
   "decisions": [],
   "constraints": [],
   "known_failures": [],
@@ -84,6 +84,13 @@ completed_steps/decisions/known_failures from structured handoff text;
 test_evidence from result.tests; changed_files from result.changed_files
 plus the working-tree diff at handoff time. Stored on the task record
 field `continuation` and exposed via task_status.
+
+Structured test evidence preserves `passed`, `failed`, and `not_run` from the
+normalized execution report. `not_run` is neither a pass nor an execution
+failure; the public test-case summary ignores counts quoted in its detail.
+These statuses are executor-reported evidence, not independent verification or
+an acceptance decision. Version 1 consumers must tolerate `not_run` in addition
+to the previously documented `passed` and `failed` values.
 
 ## Executor history schema
 

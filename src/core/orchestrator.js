@@ -6,6 +6,11 @@ import {
   normalizeBrief,
 } from "./brief.js";
 import { ControlPlaneError, asErrorPayload } from "./errors.js";
+import {
+  extractExecutionReportObject,
+  isJsonLikeExecutionOutput,
+  normalizeExecutionReportObject,
+} from "./execution-report.js";
 import { resolveProfile, resolveEndpointModel, estimateTaskMinutes } from "./profiles.js";
 import { resolveWorkspace } from "./workspace.js";
 import { discoverExecutors } from "../executors/discovery.js";
@@ -119,7 +124,9 @@ function continuationTestEvidence(tests = []) {
     if (entry && typeof entry === "object") {
       return {
         command: String(entry.command ?? entry.name ?? "unknown"),
-        status: entry.status === "passed" ? "passed" : "failed",
+        status: entry.status === "not_run"
+          ? "not_run"
+          : entry.status === "passed" ? "passed" : "failed",
       };
     }
     const command = String(entry);
@@ -145,7 +152,9 @@ function buildContinuationPackage(task, rerouteReason, error = null) {
       : [],
     remaining_steps: Array.isArray(result.remaining_steps)
       ? structuredClone(result.remaining_steps)
-      : structuredClone(task.brief?.acceptance_criteria ?? []),
+      : structuredClone(
+          task.brief?.acceptanceCriteria ?? task.brief?.acceptance_criteria ?? [],
+        ),
     changed_files: structuredClone(result.changed_files ?? []),
     test_evidence: continuationTestEvidence(result.tests),
     decisions: structuredClone(result.decisions ?? []),
@@ -182,8 +191,9 @@ function extractReport(turn, cachedFinalMessage = null) {
       next_action: null,
     };
   }
-  try {
-    const parsed = JSON.parse(finalText);
+  const extracted = extractExecutionReportObject(finalText);
+  if (extracted) {
+    const parsed = normalizeExecutionReportObject(extracted);
     const normalizedSummary = String(parsed.summary ?? "").toLowerCase();
     if (
       parsed.status === "completed" &&
@@ -195,9 +205,11 @@ function extractReport(turn, cachedFinalMessage = null) {
       parsed.status = "blocked";
     }
     return parsed;
-  } catch {
-    const normalized = finalText.toLowerCase();
-    const status = normalized.includes("status: blocked")
+  }
+  const normalized = finalText.toLowerCase();
+  const status = isJsonLikeExecutionOutput(finalText)
+    ? "failed"
+    : normalized.includes("status: blocked")
       ? "blocked"
       : normalized.includes("status: failed")
         ? "failed"
@@ -206,15 +218,14 @@ function extractReport(turn, cachedFinalMessage = null) {
           : turn?.status === "completed"
             ? "completed"
             : "failed";
-    return {
-      status,
-      summary: finalText,
-      changed_files: [],
-      tests: [],
-      blockers: status === "blocked" ? [finalText] : [],
-      next_action: null,
-    };
-  }
+  return {
+    status,
+    summary: finalText,
+    changed_files: [],
+    tests: [],
+    blockers: status === "blocked" ? [finalText] : [],
+    next_action: null,
+  };
 }
 
 export class Orchestrator extends EventEmitter {

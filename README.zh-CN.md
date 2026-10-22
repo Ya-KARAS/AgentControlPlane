@@ -37,16 +37,51 @@ ZCode 或 OpenAI-compatible 执行器，再返回状态、变更文件、测试�
 
 ## 运行真实 Demo
 
-前置条件：Node.js 22 或更新版本，以及一个已配置的执行器。OpenCode 就绪时，
-Demo 默认选择 OpenCode。
+前置条件：Git、Node.js 22 或更新版本，以及一个已安装、配置完成的执行器。
+以下命令使用 OpenCode：请先安装其 CLI，确保 `PATH` 中能找到 `opencode`，
+并配置可用模型。使用其他执行器时，将 `opencode` 替换为对应 ID。
+自动选择模式会优先使用已就绪的 OpenCode。
+
+Windows（PowerShell）。本轮开发验证在 Windows 上完成。
 
 ```powershell
+node --version
 git clone https://github.com/Ya-KARAS/AgentControlPlane.git
 cd AgentControlPlane
 npm.cmd ci
-npm.cmd run doctor
-npm.cmd run demo
+npm.cmd run verify
+npm.cmd run demo -- --check --executor opencode
+npm.cmd run demo -- --executor opencode
 ```
+
+macOS / Linux（终端）。本轮尚未在 macOS 或 Linux 实机执行以下命令；
+执行器的安装、认证和模型支持需要在目标平台核查。
+
+```sh
+node --version
+git clone https://github.com/Ya-KARAS/AgentControlPlane.git
+cd AgentControlPlane
+npm ci
+npm run verify
+npm run demo -- --check --executor opencode
+npm run demo -- --executor opencode
+```
+
+第一条命令应显示 Node.js 22 或更新版本。`npm run verify` 运行仓库测试与一致性
+检查，不执行真实模型任务。Demo 在派发任务前会要求交互确认。在 Windows 上，
+Codex 还需要 Windows 沙箱就绪；如需初始化，请在 Codex 派发前运行
+`npm.cmd run sandbox:setup`。该沙箱步骤与 PowerShell 后台服务脚本仅适用于
+Windows；macOS/Linux 可用 `npm start` 在前台启动服务。
+
+`npm run demo -- --check` 检查 Node.js 22+、配置、MCP SDK 和 Zod 依赖，以及
+执行器的被动前提条件。它不派发任务、不发起网络请求、不启动子进程、不消耗模型
+额度，也不写入运行时、状态或工作区文件。CLI 候选项显示为 `installed`，端点
+候选项显示为 `configured`；认证、模型可用性和网络连通性不在检查范围内。
+退出码 `0` 表示被动前提条件通过，`1` 表示缺少前提条件，`2` 表示 CLI 参数无效。
+可加 `--executor <id>` 限定候选项；同时使用 `--check` 和 `--yes` 仍只执行预检。
+
+`npm run doctor` 仍可用于详细发现检查。它可能运行执行器命令及主动端点探测，
+后者可能消耗已配置模型的额度。
 
 `npm run demo` 启动隔离的回环服务，询问一次确认，并通过 MCP 发送一个小型
 工程任务。所选执行器可能消耗账户、订阅或 API 额度。成功运行会创建并读回
@@ -65,6 +100,22 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 执行 `npm run demo -- --help` 可以查看执行器、模型、超时和无人值守参数。Demo
 工作区会保留在磁盘上，供用户检查。
 
+脚本调用可在阅读上述额度提示后使用
+`npm run --silent demo -- --json --executor opencode --yes`。`--yes` 确认真实
+任务，`--json` 只改变输出格式：清理完成后，stdout 只输出一个 JSON 对象，进度
+和交互确认写入 stderr。`--silent` 用于关闭 npm 自身的启动信息，确保重定向结果
+可以直接解析。例如：
+
+```json
+{"executor":"opencode","model":null,"task_id":"<task-id>","status":"completed","workspace":"<workspace>","file":"<workspace>/hello.txt","verified":true,"usage":null}
+```
+
+未知的 `model`、`usage` 为 `null`，用量仅包含数值 Token 计数。失败结果保留相同
+字段，并包含安全的 `error.code`、`error.message`，退出码为 `1`；无效参数退出
+`2`，JSON 模式下取消也退出 `1`。`--check --json` 输出 `mode: "check"` 的被动
+预检对象，`status` 为 `"ready"` 或 `"blocked"`，附带依赖检查结果；任务字段为空，
+不启动任务。
+
 发布资产包括 Windows 源码包、可直接加载的浏览器 Companion ZIP、90 秒验证
 演示视频和 `SHA256SUMS`。下载地址：[v0.9.0 Release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.0)。
 
@@ -81,9 +132,17 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 - 持久化结果：任务记录状态、变更文件、测试证据、Token 用量、执行器历史和
   延续包。
 - 跨执行器延续：显式跟进可以选择兼容执行器，并保留逻辑任务链路。基础设施
-  故障的自动改道采用显式启用策略，发行版默认关闭。
+  故障的自动改道仍是实验性显式启用策略，默认关闭；不纳入本候选版本的支持与
+  验收范围。
 - 本地控制：回环绑定、工作区允许列表、速率限制、可选 bearer 鉴权和只追加
   审计记录约束控制平面边界。
+
+当前候选版本限制：自动换路（automatic reroute）的错误分类缺陷尚未修复。
+非空测试证据（即使条目为 `passed` 或 `not_run`）仍可能掩盖基础设施故障，
+阻止换路。随包默认配置关闭该功能；已有配置若显式设置
+`executor.reroute.enabled=true`，不会被修改。
+[显式启用配置](docs/PROTOCOL.zh-CN.md)仍保留供评估使用，不代表受支持的发布功能
+或已通过的验收项目。
 
 ## 连接网页 AI
 
@@ -125,7 +184,7 @@ ChatGPT / DeepSeek / Claude
 |---|---|---|
 | OpenCode | CLI | 已安装 CLI，并配置可用模型 |
 | ZCode | 桌面版内置 CLI | 已安装 ZCode 桌面版，并启用 BigModel 或 Z.ai 模型通道 |
-| Codex | App Server | 已安装客户端、账户额度和 Windows 沙箱就绪 |
+| Codex | App Server | 已安装客户端、有账户额度；Windows 上还需 Windows 沙箱就绪 |
 | Claude Code | CLI | Claude Pro/Max 登录或 Anthropic API 密钥 |
 | Kimi Code | CLI | 已安装 CLI，已登录 Kimi，并配置可用模型 |
 | OpenCodex | OpenAI-compatible 端点 | 端点可访问、模型已配置、工具能力已验证 |
@@ -200,7 +259,7 @@ Plan。当前 ZCode 无界面 CLI 不提供可用的推理等级参数，因此�
 
 - 旧式工作区解析到配置的允许列表根目录内；项目库扫描根目录本身不能执行。
 - HTTP 服务只接受回环地址绑定。
-- Codex 使用 workspace-write、关闭网络访问，并在执行前检查 Windows 沙箱。
+- Codex 使用 workspace-write 并关闭网络访问；在 Windows 上，执行前还会检查 Windows 沙箱。
 - 其他 CLI 和模型端点适配器以本地用户权限运行；请使用可信工作区。
 - `AGENT_CONTROL_TOKEN` 可以启用 bearer 鉴权。
 - 状态和只追加审计记录保存在项目工作区之外。

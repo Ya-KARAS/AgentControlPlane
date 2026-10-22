@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "version": "0.9.6-dev.20261022",
+  "download_url": "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js",
+  "update_url": "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.meta.js",
+  "artifacts": {
+    "script": {
+      "path": "releases/0.9.6-dev.20261022/agent-control-plane-web-bridge.user.js",
+      "sha256": "b1dcb496d5d90d54c2e2ed07dacd3659cc70453e9740dbe7e01af8e9b3c55b6a"
+    },
+    "metadata": {
+      "path": "releases/0.9.6-dev.20261022/agent-control-plane-web-bridge.meta.js",
+      "sha256": "963dbf8ea7076200170959f57b5debfd11e04b7000f7461fbffc33e2541ed337"
+    },
+    "release": {
+      "path": "releases/0.9.6-dev.20261022/agent-control-plane-web-bridge.user.js",
+      "sha256": "b1dcb496d5d90d54c2e2ed07dacd3659cc70453e9740dbe7e01af8e9b3c55b6a"
+    }
+  }
+}

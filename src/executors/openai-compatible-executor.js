@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ControlPlaneError } from "../core/errors.js";
+import {
+  EXECUTION_REPORT_INSTRUCTION,
+  normalizeExecutionReportText,
+} from "../core/execution-report.js";
 import { normalizeUsage } from "../core/usage-events.js";
 import { ExecutorAdapter } from "./executor.js";
 
@@ -72,6 +76,10 @@ function resolveInsideWorkspace(workspace, inputPath) {
     );
   }
   return target;
+}
+
+function encodeHeaderValue(value) {
+  return encodeURIComponent(String(value));
 }
 
 function runShell(workspace, command, timeoutMs = 30000) {
@@ -737,7 +745,7 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
         (item) => item.type === "function_call" && typeof item.name === "string",
       );
       if (toolCalls.length === 0) {
-        const text = this.#normalizeReport(this.#extractFinalText(output));
+        const text = normalizeExecutionReportText(this.#extractFinalText(output));
         this.emit("notification", {
           method: "turn/completed",
           params: {
@@ -820,7 +828,7 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
       "You are a secure software engineering execution agent.",
       "Work only inside the provided workspace using the read_file, write_file, and shell tools.",
       "Verify your changes and return a compact final report.",
-      "The report must be a JSON object with keys: status, summary, changed_files, tests, blockers, next_action.",
+      EXECUTION_REPORT_INSTRUCTION,
       schemaLine,
     ]
       .filter(Boolean)
@@ -840,55 +848,6 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
     if (typeof message?.text === "string") return message.text;
     const raw = output.findLast((item) => typeof item.text === "string");
     return raw?.text ?? "{}";
-  }
-
-  #stripFence(text) {
-    const match = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);
-    return match ? match[1] : text;
-  }
-
-  #normalizeStatus(status) {
-    if (["completed", "partial", "blocked", "failed"].includes(status)) {
-      return status;
-    }
-    if (status === "success") return "completed";
-    if (status === "error") return "failed";
-    return "completed";
-  }
-
-  #normalizeReport(text) {
-    const cleaned = this.#stripFence(text).trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return cleaned || "{}";
-    }
-    if (!parsed || typeof parsed !== "object") return cleaned;
-    const tests = Array.isArray(parsed.tests)
-      ? parsed.tests.map((entry) => ({
-          command: String(entry?.command ?? ""),
-          status: ["passed", "failed", "not_run"].includes(entry?.status)
-            ? entry.status
-            : "not_run",
-          detail: entry?.detail == null ? null : String(entry.detail),
-        }))
-      : [];
-    const changedFiles = Array.isArray(parsed.changed_files)
-      ? parsed.changed_files.map((item) => String(item))
-      : [];
-    const blockers = Array.isArray(parsed.blockers)
-      ? parsed.blockers.map((item) => String(item))
-      : [];
-    const report = {
-      status: this.#normalizeStatus(parsed.status),
-      summary: String(parsed.summary ?? ""),
-      changed_files: changedFiles,
-      tests,
-      blockers,
-      next_action: parsed.next_action == null ? null : String(parsed.next_action),
-    };
-    return JSON.stringify(report);
   }
 
   async #executeTool(call, cwd) {
@@ -968,7 +927,7 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
       });
 
       if (response.toolCalls.length === 0) {
-        const text = this.#normalizeReport(response.finalText);
+        const text = normalizeExecutionReportText(response.finalText);
         this.emit("notification", {
           method: "turn/completed",
           params: {
@@ -1122,7 +1081,9 @@ export class OpenAICompatibleExecutor extends ExecutorAdapter {
         headers["x-acp-task-id"] = String(attribution.taskId);
       }
       if (attribution?.workspace) {
-        headers["x-acp-project"] = path.basename(String(attribution.workspace));
+        headers["x-acp-project"] = encodeHeaderValue(
+          path.basename(String(attribution.workspace)),
+        );
       }
       if (eventMeta?.turnId) headers["x-acp-turn-id"] = String(eventMeta.turnId);
       if (eventMeta?.taskKind) {

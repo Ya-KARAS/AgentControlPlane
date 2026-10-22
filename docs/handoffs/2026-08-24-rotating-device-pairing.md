@@ -16,7 +16,7 @@ Changed files:
 - userscript/releases/0.8.2/agent-control-plane-web-bridge.user.js
 - docs/REMOTE-DEVICE-RELAY.md
 - docs/README.md
-- C:/Users/45928/Documents/Github/AcpDevicePortal app, API, D1 schema, tests and smoke script
+- C:/Users/YOUR_USER/Documents/Github/AcpDevicePortal app, API, D1 schema, tests and smoke script
 
 What was implemented:
 - Added protocol version negotiation. New clients request credential version 2; old clients continue receiving version 1 static credentials.

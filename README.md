@@ -39,16 +39,57 @@ contact the maintainer if you need private registration.
 
 ## Run the live demo
 
-Requirements: Node.js 22 or newer and one configured executor. OpenCode is the
-default demo choice when it is ready.
+Requirements: Git, Node.js 22 or newer, and one installed, configured executor.
+The commands below use OpenCode: install its CLI, make `opencode` available on
+`PATH`, and configure a working model first. If you use another executor, replace
+`opencode` with its id. Automatic selection prefers OpenCode when it is ready.
+
+Windows (PowerShell). This development round was verified on Windows.
 
 ```powershell
+node --version
 git clone https://github.com/Ya-KARAS/AgentControlPlane.git
 cd AgentControlPlane
 npm.cmd ci
-npm.cmd run doctor
-npm.cmd run demo
+npm.cmd run verify
+npm.cmd run demo -- --check --executor opencode
+npm.cmd run demo -- --executor opencode
 ```
+
+macOS / Linux (terminal). These commands have not been run on a macOS or Linux
+machine in this development round; executor installation, authentication, and
+model support must be checked on the target platform.
+
+```sh
+node --version
+git clone https://github.com/Ya-KARAS/AgentControlPlane.git
+cd AgentControlPlane
+npm ci
+npm run verify
+npm run demo -- --check --executor opencode
+npm run demo -- --executor opencode
+```
+
+The first command must report Node.js 22 or newer. `npm run verify` runs the
+repository tests and consistency checks; it does not run a live model task.
+The demo asks for interactive confirmation before sending a task. On Windows,
+Codex also requires Windows sandbox readiness; run `npm.cmd run sandbox:setup`
+before a Codex dispatch if setup is needed. That Windows sandbox step and the
+PowerShell background-service scripts do not apply to macOS/Linux; use
+`npm start` for a foreground service there.
+
+`npm run demo -- --check` checks Node.js 22+, configuration, the MCP SDK and
+Zod dependencies, and passive executor prerequisites. It sends no task or
+network request, starts no subprocess, uses no model quota, and writes no
+runtime, state, or workspace files. CLI candidates are reported as `installed`
+and endpoint candidates as `configured`; authentication, model availability,
+and network connectivity are not verified. Exit codes are `0` when the passive
+prerequisites pass, `1` when a prerequisite is missing, and `2` for invalid CLI
+arguments. Add `--executor <id>` to limit the candidates. Combining `--check`
+with `--yes` still performs only the preflight.
+
+`npm run doctor` remains available for detailed discovery. It may run executor
+commands and active endpoint probes, which can use configured model quota.
 
 `npm run demo` starts an isolated loopback service, asks for confirmation, and
 sends one small task through MCP. The selected executor may use account,
@@ -67,6 +108,23 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 
 Use `npm run demo -- --help` for executor, model, timeout, and unattended-run
 options. The generated workspace remains available for inspection.
+
+For scripts, use `npm run --silent demo -- --json --executor opencode --yes`
+after reviewing the quota notice above. `--yes` confirms the live task; `--json`
+changes output only. The script writes one JSON object to stdout after cleanup,
+with progress and any interactive confirmation on stderr. `--silent` suppresses
+npm's own banner so redirected stdout is valid JSON. For example:
+
+```json
+{"executor":"opencode","model":null,"task_id":"<task-id>","status":"completed","workspace":"<workspace>","file":"<workspace>/hello.txt","verified":true,"usage":null}
+```
+
+`model` and `usage` are `null` when unknown; reported usage contains numeric
+token counters only. Failure results retain the same fields, include a safe
+`error.code` and `error.message`, and exit `1`; invalid arguments exit `2`.
+Cancellation in JSON mode also exits `1`. `--check --json` emits a passive
+preflight object with `mode: "check"`, `status: "ready"` or `"blocked"`, and
+dependency checks; its task fields remain empty and it starts no task.
 
 Release assets include a Windows source archive, a load-unpacked browser
 companion ZIP, a 90-second verified demo video, and `SHA256SUMS`. Download them
@@ -88,10 +146,18 @@ web AI <- result/evidence <- persisted task  <- local executor
   token usage, executor history, and continuation packages.
 - Cross-executor continuation: an explicit follow-up can select a compatible
   executor while preserving the logical task lineage. Automatic infrastructure
-  rerouting is available as an opt-in policy and ships disabled.
+  rerouting remains an experimental opt-in policy and ships disabled; it is
+  outside this candidate's supported and validated feature set.
 - Local controls: loopback binding, workspace allowlists, rate limits,
   optional bearer authentication, and append-only audit records constrain the
   control-plane boundary.
+
+Current candidate limitation: automatic reroute has an unfixed error-classifier
+defect. Nonempty test evidence, including `passed` or `not_run` entries, can
+mask an infrastructure failure and prevent rerouting. The shipped default is
+off; existing configurations that explicitly set `executor.reroute.enabled=true`
+are not changed. The [opt-in configuration](docs/PROTOCOL.md) remains documented
+for evaluation, not as a supported release feature or a completed acceptance gate.
 
 ## Connect a web AI
 
@@ -140,7 +206,7 @@ ChatGPT / DeepSeek / Claude
 | Executor | Interface | Readiness requirement |
 |---|---|---|
 | OpenCode | CLI | installed CLI with a configured model |
-| Codex | App Server | installed client, account quota, and Windows sandbox readiness |
+| Codex | App Server | installed client and account quota; Windows additionally requires Windows sandbox readiness |
 | Claude Code | CLI | Claude Pro/Max login or an Anthropic API key |
 | Kimi Code | CLI | installed CLI with a Kimi login and configured model |
 | ZCode | bundled CLI | installed ZCode desktop with an enabled BigModel or Z.ai model provider |
@@ -227,8 +293,8 @@ are operated separately from this repository.
 - Legacy workspaces resolve inside configured allowlisted roots; project
   discovery roots are never executable workspaces themselves.
 - The HTTP service accepts loopback binding only.
-- Codex uses workspace-write with network access disabled and checks Windows
-  sandbox readiness before execution.
+- Codex uses workspace-write with network access disabled; on Windows, ACP
+  checks Windows sandbox readiness before execution.
 - Other CLI and model-endpoint adapters run with the local user's privileges;
   use trusted workspaces.
 - `AGENT_CONTROL_TOKEN` enables bearer authentication.

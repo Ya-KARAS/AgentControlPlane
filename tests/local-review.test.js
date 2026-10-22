@@ -7,6 +7,10 @@ import test from "node:test";
 import { createApplication } from "../src/server.js";
 import { TaskStore } from "../src/core/store.js";
 
+// These HTTP tests use native paths and a stub executor, not Windows path emulation.
+const allowedWorkspace = path.join(os.tmpdir(), "acp-review-fixture", "allowed");
+const outsideWorkspace = path.join(os.tmpdir(), "acp-review-fixture", "outside");
+
 class StubCodex extends EventEmitter {
   constructor() {
     super();
@@ -63,7 +67,7 @@ function reviewConfig() {
       maxMcpSessions: 32,
       mcpSessionIdleMinutes: 30,
     },
-    workspaceRoots: ["C:\\allowed"],
+    workspaceRoots: [allowedWorkspace],
     stateDir: fs.mkdtempSync(path.join(os.tmpdir(), "acp-review-state-")),
     limits: { maxStoredEventsPerTask: 20 },
     profiles: {
@@ -142,7 +146,10 @@ test("capability summary exposes safe natural-language choices", async () => {
       status: "available",
     });
     assert.deepEqual(body.capabilities.route_health, { providers: {} });
-    assert.doesNotMatch(JSON.stringify(body), /C:\\\\allowed/);
+    assert.equal(
+      JSON.stringify(body).includes(JSON.stringify(allowedWorkspace).slice(1, -1)),
+      false,
+    );
 
     const denied = await fetch(`${baseUrl}/v1/local-review/capabilities`, {
       headers: {
@@ -158,7 +165,7 @@ test("candidate creation cannot dispatch or override local choices", async () =>
   await withReviewServer(async ({ baseUrl, orchestrator }) => {
     const rejected = await createCandidate(baseUrl, {
       ...validCandidate,
-      workspace: "C:\\allowed",
+      workspace: allowedWorkspace,
     });
     assert.equal(rejected.status, 403);
     assert.equal((await rejected.json()).error.code, "candidate_fields_denied");
@@ -223,7 +230,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
       },
       body: new URLSearchParams({
         form_secret: formSecret,
-        workspace: "C:\\allowed",
+        workspace: allowedWorkspace,
         executor: "opencode",
         profile: "economy",
         auto_dispatch: "on",
@@ -257,7 +264,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
     assert.deepEqual(orchestrator.requests[0], {
       objective: validCandidate.objective,
       constraints: validCandidate.constraints,
-      workspace: "C:\\allowed",
+      workspace: allowedWorkspace,
       executor: "opencode",
       profile: "economy",
     });
@@ -287,7 +294,7 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
     assert.deepEqual(orchestrator.requests[1], {
       objective: validCandidate.objective,
       constraints: validCandidate.constraints,
-      workspace: "C:\\allowed",
+      workspace: allowedWorkspace,
       executor: "opencode",
       profile: "economy",
       model: "opencode-go/deepseek-v4-pro",
@@ -308,6 +315,42 @@ test("local settings can opt in to userscript-only automatic dispatch", async ()
       preflight.headers.get("access-control-allow-headers") ?? "",
       /x-acp-client/i,
     );
+  });
+});
+
+test("local settings language control uses a CSP-compatible external script", async () => {
+  await withReviewServer(async ({ baseUrl }) => {
+    const settingsResponse = await fetch(`${baseUrl}/local-review/settings`);
+    assert.equal(settingsResponse.status, 200);
+    assert.match(
+      settingsResponse.headers.get("content-security-policy") ?? "",
+      /script-src 'self'/,
+    );
+    const settingsHtml = await settingsResponse.text();
+    assert.match(settingsHtml, /<script src="\/local-review\/settings\.js" defer><\/script>/);
+    assert.doesNotMatch(settingsHtml, /onchange=/);
+
+    const scriptResponse = await fetch(`${baseUrl}/local-review/settings.js`);
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get("content-type") ?? "", /^text\/javascript/);
+    const script = await scriptResponse.text();
+
+    let changeHandler = null;
+    let submissions = 0;
+    const languageSelect = {
+      form: { requestSubmit: () => { submissions += 1; } },
+      addEventListener(event, handler) {
+        if (event === "change") changeHandler = handler;
+      },
+    };
+    Function("document", script)({
+      querySelector: (selector) => selector === 'select[name="language"]'
+        ? languageSelect
+        : null,
+    });
+    assert.equal(typeof changeHandler, "function");
+    changeHandler();
+    assert.equal(submissions, 1);
   });
 });
 
@@ -334,7 +377,7 @@ test("opaque browser origins can submit only a token-protected local review", as
       body: new URLSearchParams({
         id: "invalid",
         approval_secret: "invalid",
-        workspace: "C:\\allowed",
+        workspace: allowedWorkspace,
         executor: "opencode",
         profile: "economy",
       }),
@@ -374,7 +417,7 @@ test("local review escapes page content and dispatches exactly once", async () =
     const form = new URLSearchParams({
       id: candidateId,
       approval_secret: approvalSecret,
-      workspace: "C:\\allowed",
+      workspace: allowedWorkspace,
       executor: "opencode",
       profile: "economy",
     });
@@ -392,7 +435,7 @@ test("local review escapes page content and dispatches exactly once", async () =
     assert.deepEqual(orchestrator.requests[0], {
       objective: validCandidate.objective,
       constraints: validCandidate.constraints,
-      workspace: "C:\\allowed",
+      workspace: allowedWorkspace,
       executor: "opencode",
       profile: "economy",
     });
@@ -426,7 +469,7 @@ test("local review rejects a workspace not selected from local configuration", a
       body: new URLSearchParams({
         id: candidateId,
         approval_secret: approvalSecret,
-        workspace: "C:\\outside",
+        workspace: outsideWorkspace,
         executor: "opencode",
         profile: "economy",
       }),

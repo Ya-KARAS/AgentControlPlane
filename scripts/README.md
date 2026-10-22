@@ -8,7 +8,7 @@ script execution is useful when a command needs additional arguments.
 | Command | Script | Purpose |
 |---|---|---|
 | `npm run verify` | test and check scripts | Run the full repository gate. |
-| `npm run doctor` | `doctor.js` | Report executor discovery and readiness. |
+| `npm run doctor` | `doctor.js` | Report executor discovery and readiness; may run executor commands and active endpoint probes that use model quota. |
 | `npm start` | `src/server.js` | Start ACP on the configured loopback address. |
 | direct | `start-server.ps1`, `stop-server.ps1` | Manage the Windows background service process. A provider API key is optional; paired remote devices use their stored relay credential. |
 | direct | `install-autostart.ps1`, `uninstall-autostart.ps1` | Add or remove the per-user Windows Startup shortcut. |
@@ -27,7 +27,9 @@ script execution is useful when a command needs additional arguments.
 
 | Command | Script | Purpose |
 |---|---|---|
+| `npm run demo -- --check` | `demo.js --check` | Check Node.js 22+, configuration, MCP SDK/Zod dependencies, and passive executor prerequisites without tasks, model quota, network requests, subprocesses, or runtime/state/workspace writes. Reports `installed`/`configured`, not verified authentication, models, or connectivity. Exit codes: 0 pass, 1 missing prerequisite, 2 invalid arguments. `--executor <id>` limits candidates; `--yes` does not start a live run with `--check`. |
 | `npm run demo` | `demo.js` | Run the documented local executor demo. |
+| `npm run --silent demo -- --json --yes` | `demo.js --json --yes` | Run the live demo after reviewing quota use; emit one JSON result to stdout and progress to stderr. Use `--check --json` for passive preflight JSON. |
 | `npm run smoke` | `smoke.js` | Run the control-plane smoke flow. |
 | `npm run smoke:companion` | `smoke-companion.js` | Run the browser companion smoke flow. |
 | `npm run smoke:budget` | `smoke-budget.js` | Check budget accounting behavior. |

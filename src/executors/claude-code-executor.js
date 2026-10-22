@@ -2,6 +2,10 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 import { ControlPlaneError } from "../core/errors.js";
+import {
+  EXECUTION_REPORT_INSTRUCTION,
+  normalizeExecutionReportText,
+} from "../core/execution-report.js";
 import { ExecutorAdapter, formatCliExitError } from "./executor.js";
 import { probeCommandExecutor, readCommandVersion } from "./discovery.js";
 
@@ -338,7 +342,7 @@ export class ClaudeCodeExecutor extends ExecutorAdapter {
             {
               type: "agentMessage",
               phase: "final_answer",
-              text: this.#normalizeReport(resultText),
+              text: normalizeExecutionReportText(resultText),
             },
           ]
         : [];
@@ -378,7 +382,7 @@ export class ClaudeCodeExecutor extends ExecutorAdapter {
       "You are a secure software engineering execution agent.",
       "Work only inside the provided workspace.",
       "Verify your changes and return a compact final report.",
-      "The report must be a JSON object with keys: status, summary, changed_files, tests, blockers, next_action.",
+      EXECUTION_REPORT_INSTRUCTION,
       schemaLine,
       "",
       "TASK:",
@@ -386,50 +390,6 @@ export class ClaudeCodeExecutor extends ExecutorAdapter {
     ]
       .filter((line) => line !== "")
       .join("\n");
-  }
-
-  #normalizeReport(text) {
-    const cleaned = this.#stripFence(String(text ?? "")).trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return cleaned || "{}";
-    }
-    if (!parsed || typeof parsed !== "object") return cleaned;
-    const status = ["completed", "partial", "blocked", "failed"].includes(
-      parsed.status,
-    )
-      ? parsed.status
-      : parsed.status === "success"
-        ? "completed"
-        : "completed";
-    const tests = Array.isArray(parsed.tests)
-      ? parsed.tests.map((entry) => ({
-          command: String(entry?.command ?? ""),
-          status: ["passed", "failed", "not_run"].includes(entry?.status)
-            ? entry.status
-            : "not_run",
-          detail: entry?.detail == null ? null : String(entry.detail),
-        }))
-      : [];
-    return JSON.stringify({
-      status,
-      summary: String(parsed.summary ?? ""),
-      changed_files: Array.isArray(parsed.changed_files)
-        ? parsed.changed_files.map((item) => String(item))
-        : [],
-      tests,
-      blockers: Array.isArray(parsed.blockers)
-        ? parsed.blockers.map((item) => String(item))
-        : [],
-      next_action: parsed.next_action == null ? null : String(parsed.next_action),
-    });
-  }
-
-  #stripFence(text) {
-    const match = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);
-    return match ? match[1] : text;
   }
 
   #notifiedUsage(usage) {

@@ -23,8 +23,8 @@ Changed files:
 - tests/remote-relay.test.js
 - tests/project-library-page.test.js
 - tests/userscript.test.js
-- C:/Users/45928/Documents/Github/AcpDevicePortal (new standalone portal tree)
-- C:/Users/45928/Documents/Github/asterroute-acp/acp-device-relay-contract.md
+- C:/Users/YOUR_USER/Documents/Github/AcpDevicePortal (new standalone portal tree)
+- C:/Users/YOUR_USER/Documents/Github/asterroute-acp/acp-device-relay-contract.md
 
 What was implemented:
 - Added an outbound-only HTTPS relay worker with local encrypted-boundary credential storage, pairing, capability sync, task claim, lease renewal and safe-result upload.

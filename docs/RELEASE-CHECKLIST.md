@@ -2,6 +2,21 @@
 
 This checklist defines the repeatable release path for v0.9.0 and later.
 
+## Current candidate acceptance boundary
+
+Automatic reroute is excluded from this candidate's supported and validated
+feature set. Its error-classifier defect is not fixed: nonempty test evidence,
+including `passed` or `not_run` entries, can mask infrastructure failures and
+prevent rerouting. The shipped configuration defaults it off; existing opt-in
+configurations are not changed. Keep the opt-in protocol instructions available
+for evaluation without presenting the feature as supported.
+
+Passing unit tests, static checks, or simulated upgrade checks does not establish
+native Windows installation/upgrade, real browser dispatch, real-provider
+execution, or complete runtime isolation. Record each required acceptance result
+against the exact candidate artifact and runtime. Do not mark an unrun gate as
+passed or treat this checklist as publication authorization.
+
 ## Clean release worktree
 
 Create a dedicated worktree from the intended base branch. Keep machine

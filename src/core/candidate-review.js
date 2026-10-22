@@ -4,6 +4,9 @@ import { ControlPlaneError } from "./errors.js";
 const ALLOWED_CANDIDATE_FIELDS = new Set([
   "objective",
   "constraints",
+  "context",
+  "acceptance_criteria",
+  "evidence_required",
   "execution",
   "source",
 ]);
@@ -64,6 +67,20 @@ function normalizeCandidate(input) {
       "each constraint must contain 1 to 1000 characters",
     );
   }
+  const sections = {};
+  for (const field of ["context", "acceptance_criteria", "evidence_required"]) {
+    if (input[field] == null) continue;
+    const limit = field === "acceptance_criteria" ? 980 : 1000;
+    if (!Array.isArray(input[field]) || input[field].some((value) =>
+      typeof value !== "string" || !value.trim() || value.trim().length > limit)) {
+      throw new ControlPlaneError("invalid_candidate_section", `${field} must contain bounded nonempty strings`);
+    }
+    sections[field] = input[field].map((value) => value.trim());
+  }
+  if ((sections.context ?? []).join("\n").length > 1000 ||
+      constraints.length + Object.values(sections).reduce((sum, values) => sum + values.length, 0) > 16) {
+    throw new ControlPlaneError("candidate_brief_too_large", "Engineering sections exceed the existing 16-entry or 1000-character context limit");
+  }
   if (input.source !== "userscript-preview") {
     throw new ControlPlaneError(
       "invalid_candidate_source",
@@ -111,7 +128,13 @@ function normalizeCandidate(input) {
     );
     if (Object.keys(execution).length === 0) execution = null;
   }
-  return { objective, constraints, execution, source: input.source };
+  return { objective, constraints, ...sections, execution, source: input.source };
+}
+
+function candidateSections(candidate) {
+  return Object.fromEntries(["context", "acceptance_criteria", "evidence_required"]
+    .filter((field) => Array.isArray(candidate[field]))
+    .map((field) => [field, [...candidate[field]]]));
 }
 
 function publicCandidate(candidate) {
@@ -120,6 +143,7 @@ function publicCandidate(candidate) {
     status: candidate.status,
     objective: candidate.objective,
     constraints: [...candidate.constraints],
+    ...candidateSections(candidate),
     execution: candidate.execution ? { ...candidate.execution } : null,
     source: candidate.source,
     page_origin: candidate.pageOrigin,
@@ -336,6 +360,7 @@ export class CandidateReviewService {
       const task = this.dispatch({
         objective: candidate.objective,
         constraints: [...candidate.constraints],
+        ...candidateSections(candidate),
         workspace: approved.workspace,
         ...(approved.project_id ? { project_id: approved.project_id } : {}),
         ...(approved.project_path_revision != null
