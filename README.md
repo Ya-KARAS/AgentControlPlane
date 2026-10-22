@@ -146,10 +146,18 @@ web AI <- result/evidence <- persisted task  <- local executor
   token usage, executor history, and continuation packages.
 - Cross-executor continuation: an explicit follow-up can select a compatible
   executor while preserving the logical task lineage. Automatic infrastructure
-  rerouting is available as an opt-in policy and ships disabled.
+  rerouting remains an experimental opt-in policy and ships disabled; it is
+  outside this candidate's supported and validated feature set.
 - Local controls: loopback binding, workspace allowlists, rate limits,
   optional bearer authentication, and append-only audit records constrain the
   control-plane boundary.
+
+Current candidate limitation: automatic reroute has an unfixed error-classifier
+defect. Nonempty test evidence, including `passed` or `not_run` entries, can
+mask an infrastructure failure and prevent rerouting. The shipped default is
+off; existing configurations that explicitly set `executor.reroute.enabled=true`
+are not changed. The [opt-in configuration](docs/PROTOCOL.md) remains documented
+for evaluation, not as a supported release feature or a completed acceptance gate.
 
 ## Connect a web AI
 

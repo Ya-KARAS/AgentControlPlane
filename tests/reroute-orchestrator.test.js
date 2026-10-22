@@ -74,7 +74,7 @@ class RerouteExecutor extends EventEmitter {
                   status: taskFailure ? "failed" : "completed",
                   summary: taskFailure ? "Implementation failed" : `${this.id} done`,
                   changed_files: [],
-                  tests: taskFailure ? ["npm test failed"] : ["npm test passed"],
+                  tests: this.resultTests ?? (taskFailure ? ["npm test failed"] : ["npm test passed"]),
                   blockers: taskFailure ? ["build failed"] : [],
                   next_action: null,
                 }),
@@ -231,3 +231,169 @@ test("continue_project can start a compatible executor on the same lineage", asy
   assert.deepEqual(completed.executor_history.map((entry) => entry.executor), ["a", "b"]);
   assert.match(completed.threadId, /^b-thread-/);
 });
+
+for (const field of ["acceptance_criteria", "acceptanceCriteria"]) {
+  test(`reroute retains normalized acceptance criteria from ${field}`, async (t) => {
+    const { workspace, store, executors, orchestrator } = await setup({
+      a: "quota",
+      b: "success",
+    });
+    t.after(() => {
+      fs.rmSync(workspace, { recursive: true, force: true });
+      fs.rmSync(store.stateDir, { recursive: true, force: true });
+    });
+    const criteria = ["The file exists", "The regression tests pass"];
+    const task = orchestrator.dispatch({
+      workspace,
+      executor: "a",
+      objective: "Create a file",
+      profile: "economy",
+      [field]: criteria,
+    });
+    assert.deepEqual(task.brief.acceptanceCriteria, criteria);
+    assert.equal(task.brief.acceptance_criteria, undefined);
+
+    await waitFor(() => store.getTask(task.id)?.status === "completed");
+    const completed = store.getTask(task.id);
+    assert.deepEqual(completed.continuation.remaining_steps, criteria);
+    const prompt = executors.get("b").turnStarts[0].input[0].text;
+    const continuation = JSON.parse(
+      prompt.split("\n\nContinuation package (structured):\n")[1],
+    );
+    assert.deepEqual(continuation.remaining_steps, criteria);
+  });
+}
+
+for (const scenario of [
+  {
+    name: "falls back to normalized acceptance criteria",
+    expected: ["Keep the original behavior", "Pass regression tests"],
+  },
+  {
+    name: "supports legacy snake-case acceptance criteria",
+    brief: { acceptanceCriteria: undefined, acceptance_criteria: ["Legacy criterion"] },
+    expected: ["Legacy criterion"],
+  },
+  {
+    name: "prefers normalized criteria over legacy criteria",
+    brief: { acceptance_criteria: ["Stale legacy criterion"] },
+    expected: ["Keep the original behavior", "Pass regression tests"],
+  },
+  {
+    name: "preserves an empty normalized criteria list",
+    brief: { acceptanceCriteria: [], acceptance_criteria: ["Stale legacy criterion"] },
+    expected: [],
+  },
+  {
+    name: "defaults to empty when neither criteria field exists",
+    brief: { acceptanceCriteria: undefined },
+    expected: [],
+  },
+  {
+    name: "preserves explicit remaining steps instead of criteria",
+    result: { remaining_steps: ["Finish only the outstanding step"] },
+    expected: ["Finish only the outstanding step"],
+  },
+  {
+    name: "preserves explicitly empty remaining steps",
+    result: { remaining_steps: [] },
+    expected: [],
+  },
+  {
+    name: "falls back when remaining steps are not an array",
+    result: { remaining_steps: null },
+    expected: ["Keep the original behavior", "Pass regression tests"],
+  },
+]) {
+  test(`cross-executor continuation ${scenario.name}`, async (t) => {
+    const { workspace, store, executors, orchestrator } = await setup({
+      a: "success",
+      b: "success",
+    });
+    t.after(() => {
+      fs.rmSync(workspace, { recursive: true, force: true });
+      fs.rmSync(store.stateDir, { recursive: true, force: true });
+    });
+    const root = orchestrator.dispatch({
+      workspace,
+      executor: "a",
+      objective: "Preserve acceptance criteria across executor switches",
+      acceptance_criteria: ["Keep the original behavior", "Pass regression tests"],
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(root.id)?.status === "completed");
+    const parent = store.getTask(root.id);
+    // Exercise persisted legacy briefs and explicit continuation progress.
+    store.updateTask(root.id, {
+      brief: { ...parent.brief, ...scenario.brief },
+      result: { ...parent.result, ...scenario.result },
+    });
+
+    const child = orchestrator.continueTask(root.id, {
+      executor: "b",
+      objective: "Continue the original work",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(child.id)?.status === "completed");
+    const completed = store.getTask(child.id);
+    assert.equal(completed.logical_task_id, root.id);
+    assert.equal(completed.parentTaskId, root.id);
+    assert.deepEqual(completed.continuation.remaining_steps, scenario.expected);
+    const prompt = executors.get("b").turnStarts[0].input[0].text;
+    const continuation = JSON.parse(
+      prompt.split("\n\nContinuation package (structured):\n")[1],
+    );
+    assert.deepEqual(continuation.remaining_steps, scenario.expected);
+  });
+}
+
+for (const scenario of [
+  { name: "preserves not_run from the execution report", status: "not_run" },
+  { name: "preserves normalization of an unknown report status", status: "unknown" },
+  { name: "preserves normalization of a missing report status" },
+]) {
+  test(`cross-executor continuation ${scenario.name}`, async (t) => {
+    const { workspace, store, executors, orchestrator } = await setup({
+      a: "success",
+      b: "success",
+    });
+    t.after(() => {
+      fs.rmSync(workspace, { recursive: true, force: true });
+      fs.rmSync(store.stateDir, { recursive: true, force: true });
+    });
+    executors.get("a").resultTests = [
+      { command: "unit", status: "passed", detail: "3 passed" },
+      { command: "integration", status: "failed", detail: "1 failed" },
+      { command: "live", status: scenario.status, detail: "Not executed" },
+    ];
+    const root = orchestrator.dispatch({
+      workspace,
+      executor: "a",
+      objective: "Preserve reported test evidence across executor switches",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(root.id)?.status === "completed");
+    const parentTests = store.getTask(root.id).result.tests;
+    assert.deepEqual(parentTests.map((entry) => entry.status), [
+      "passed", "failed", "not_run",
+    ]);
+    const expected = parentTests.map(({ command, status }) => ({ command, status }));
+
+    const child = orchestrator.continueTask(root.id, {
+      executor: "b",
+      objective: "Continue without claiming unrun tests passed or failed",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(child.id)?.status === "completed");
+    const completed = store.getTask(child.id);
+    assert.equal(completed.logical_task_id, root.id);
+    assert.equal(completed.parentTaskId, root.id);
+    assert.deepEqual(completed.continuation.test_evidence, expected);
+    const prompt = executors.get("b").turnStarts[0].input[0].text;
+    const continuation = JSON.parse(
+      prompt.split("\n\nContinuation package (structured):\n")[1],
+    );
+    assert.deepEqual(continuation.test_evidence, expected);
+    assert.deepEqual(store.getTask(root.id).result.tests, parentTests);
+  });
+}

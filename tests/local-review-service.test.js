@@ -94,6 +94,45 @@ test("public status separates test commands from parsed test cases and classifie
   assert.doesNotMatch(JSON.stringify(failed), /AI_APICallError|private error/i);
 });
 
+for (const [format, detail] of [
+  ["unittest", "Previous run: Ran 8 tests in 0.001s\n\nOK"],
+  ["pytest", "Expected result: 8 passed"],
+  ["TAP", "Historical output:\n# tests 8\n# pass 8\n# fail 0"],
+]) {
+  test(`public status ignores ${format} counts for a not_run command`, () => {
+    const projected = publicTaskStatus({
+      id: "task-unrun-tests",
+      status: "completed",
+      result: {
+        status: "completed",
+        tests: [{ command: "run tests", status: "not_run", detail }],
+      },
+    });
+    assert.deepEqual(projected.test_commands, { total: 1, passed: 0, failed: 0 });
+    assert.equal(projected.test_cases, null);
+    // Execution completion is not the same as verified acceptance.
+    assert.equal(projected.result_status, "completed");
+  });
+}
+
+test("public status counts only executed cases in mixed test evidence", () => {
+  const projected = publicTaskStatus({
+    id: "task-mixed-tests",
+    status: "partial",
+    result: {
+      status: "partial",
+      tests: [
+        { command: "unit", status: "passed", detail: "Ran 3 tests in 0.001s\nOK" },
+        { command: "integration", status: "failed", detail: "2 passed, 1 failed" },
+        { command: "smoke", status: "passed", detail: "# tests 2\n# pass 2\n# fail 0" },
+        { command: "live", status: "not_run", detail: "Previous: 100 passed, 4 failed" },
+      ],
+    },
+  });
+  assert.deepEqual(projected.test_commands, { total: 4, passed: 2, failed: 1 });
+  assert.deepEqual(projected.test_cases, { total: 8, passed: 7, failed: 1 });
+});
+
 test("recent provider failures produce bounded provider cooldowns", () => {
   const health = localRouteHealth({
     listTasks: () => [{

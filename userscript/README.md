@@ -88,6 +88,21 @@ creates the versioned release file, and writes `release-manifest.json` with the
 stable URLs and SHA-256 hashes. The portal release tooling consumes that
 manifest instead of duplicating release metadata by hand.
 
+### Development snapshot: 0.9.6-dev.20261022
+
+The cloud-readiness branch uses `0.9.6-dev.20261022` to keep its generated
+userscript separate from the unchanged historical `0.9.5` artifact. This is a
+development snapshot, not a formal release; the ACP package version remains
+`0.9.0`. Rebuild this snapshot with `npm run userscript:build`. Its version is
+already set in `src/runtime.user.js`; the `userscript:release` helper accepts
+numeric stable versions only.
+
+The generated metadata retains the normal portal update/download URLs. This is
+not a separate prerelease update channel: pushing this branch does not deploy
+those endpoints. Do not promote this development manifest or its artifacts to
+the production portal. Real browser installation and automatic-update behavior
+remain unverified for this snapshot.
+
 Release 0.9.0 moves both automatic-update metadata and downloads to
 the ACP portal. It sends paired mobile
 capability and task requests to the HTTPS portal first, and accepts both direct

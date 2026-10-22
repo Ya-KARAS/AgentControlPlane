@@ -133,9 +133,9 @@ test("task envelope extraction accepts one bounded JSON object", () => {
 
 test("candidate conversion accepts bounded nested execution choices only", () => {
   const candidate = candidateFromEnvelope({
-    objective: ` Build feature ${"x".repeat(5000)} `,
+    objective: " Build feature ",
     context: "Repository already has tests",
-    constraints: ["No network", ""],
+    constraints: ["No network"],
     acceptance_criteria: ["All tests pass"],
     workspace: "C:\\attacker",
     executor: "codex",
@@ -146,15 +146,12 @@ test("candidate conversion accepts bounded nested execution choices only", () =>
       profile: "economy",
       model: "opencode-go/deepseek-v4-pro",
       reasoning_effort: "high",
-      api_key: "must-be-ignored",
     },
   });
-  assert.equal(candidate.objective.length, 4000);
-  assert.deepEqual(candidate.constraints, [
-    "Context: Repository already has tests",
-    "No network",
-    "Acceptance: All tests pass",
-  ]);
+  assert.equal(candidate.objective, "Build feature");
+  assert.deepEqual(candidate.constraints, ["No network"]);
+  assert.deepEqual(candidate.context, ["Repository already has tests"]);
+  assert.deepEqual(candidate.acceptance_criteria, ["All tests pass"]);
   assert.deepEqual(candidate.execution, {
     workspace: "acp-live-test",
     executor: "opencode",
@@ -162,9 +159,9 @@ test("candidate conversion accepts bounded nested execution choices only", () =>
     model: "opencode-go/deepseek-v4-pro",
     reasoning_effort: "high",
   });
-  assert.deepEqual(Object.keys(candidate).sort(), ["constraints", "execution", "objective", "source"]);
+  assert.deepEqual(Object.keys(candidate).sort(), ["acceptance_criteria", "constraints", "context", "execution", "objective", "source"]);
   assert.equal(candidate.source, "userscript-preview");
-  assert.throws(() => candidateFromEnvelope({}), /task_objective_missing/);
+  assert.throws(() => candidateFromEnvelope({}), /invalid_candidate_objective/);
 });
 
 test("execution summary shows a safe workspace label and explicit route", () => {

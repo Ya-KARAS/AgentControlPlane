@@ -102,6 +102,12 @@ export function reviewPage({ candidate, approvalSecret, options, settings = {} }
   const constraints = candidate.constraints.length
     ? `<ul>${candidate.constraints.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
     : `<p class="muted">${escapeHtml(t("noConstraints"))}</p>`;
+  const engineeringSections = [
+    ["context", language === "zh-CN" ? "已知上下文" : "Known context"],
+    ["acceptance_criteria", language === "zh-CN" ? "验收标准" : "Acceptance criteria"],
+    ["evidence_required", language === "zh-CN" ? "所需证据" : "Evidence required"],
+  ].filter(([field]) => candidate[field]?.length)
+    .map(([field, title]) => `<h2>${escapeHtml(title)}</h2><ul>${candidate[field].map((value) => `<li>${escapeHtml(value)}</li>`).join("")}</ul>`).join("");
   const requestedExecution = candidate.execution
     ? `<h2>${escapeHtml(t("executionChoices"))}</h2><ul>${Object.entries(candidate.execution)
         .map(([key, value]) => `<li>${escapeHtml(key)}: ${escapeHtml(value)}</li>`)
@@ -126,6 +132,7 @@ export function reviewPage({ candidate, approvalSecret, options, settings = {} }
 <p>${escapeHtml(t("reviewSource", { origin: candidate.page_origin }))}</p>
 <h2>${escapeHtml(t("objective"))}</h2><div class="objective">${escapeHtml(candidate.objective)}</div>
 <h2>${escapeHtml(t("constraints"))}</h2>${constraints}
+${engineeringSections}
 ${requestedExecution}
 <p class="muted">${escapeHtml(t("candidateExpiry", { expiresAt: candidate.expires_at }))}</p>${form}`,
     language,

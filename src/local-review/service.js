@@ -62,6 +62,8 @@ function parseTestCases(tests) {
   let failed = 0;
   let found = false;
   for (const entry of Array.isArray(tests) ? tests.slice(0, 1000) : []) {
+    // Unrun commands may quote expected or historical output, not current evidence.
+    if (entry && typeof entry === "object" && entry.status === "not_run") continue;
     const detail = typeof entry === "object" && entry
       ? String(entry.detail ?? "")
       : String(entry ?? "");

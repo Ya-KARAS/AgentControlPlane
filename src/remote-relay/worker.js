@@ -163,6 +163,9 @@ export class RemoteRelayWorker {
         {
           objective: claim.candidate.objective,
           constraints: claim.candidate.constraints ?? [],
+          ...Object.fromEntries(["context", "acceptance_criteria", "evidence_required"]
+            .filter((field) => claim.candidate[field] != null)
+            .map((field) => [field, claim.candidate[field]])),
           execution: claim.candidate.execution ?? null,
           source: "userscript-preview",
         },

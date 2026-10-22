@@ -123,7 +123,9 @@ function continuationTestEvidence(tests = []) {
     if (entry && typeof entry === "object") {
       return {
         command: String(entry.command ?? entry.name ?? "unknown"),
-        status: entry.status === "passed" ? "passed" : "failed",
+        status: entry.status === "not_run"
+          ? "not_run"
+          : entry.status === "passed" ? "passed" : "failed",
       };
     }
     const command = String(entry);
@@ -149,7 +151,9 @@ function buildContinuationPackage(task, rerouteReason, error = null) {
       : [],
     remaining_steps: Array.isArray(result.remaining_steps)
       ? structuredClone(result.remaining_steps)
-      : structuredClone(task.brief?.acceptance_criteria ?? []),
+      : structuredClone(
+          task.brief?.acceptanceCriteria ?? task.brief?.acceptance_criteria ?? [],
+        ),
     changed_files: structuredClone(result.changed_files ?? []),
     test_evidence: continuationTestEvidence(result.tests),
     decisions: structuredClone(result.decisions ?? []),
