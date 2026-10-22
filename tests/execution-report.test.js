@@ -169,3 +169,58 @@ test("maps error status to failed and supplies normalized defaults", () => {
   );
   assert.equal(normalizeExecutionReportText("  "), "{}");
 });
+
+test("normalization never invents completed for missing or unknown status", () => {
+  for (const input of [null, {}, { note: "unrelated" }, report({ status: "unknown" })]) {
+    assert.equal(normalizeExecutionReportObject(input).status, "failed");
+  }
+});
+
+test("recovers non-success reports without accepting incomplete success envelopes", () => {
+  for (const status of ["failed", "blocked", "error", "partial", "cancelled"]) {
+    const input = { status, summary: "Stopped", blockers: ["Access denied"] };
+    const text = `Before.\n${JSON.stringify(input)}\nAfter.`;
+    assert.deepEqual(extractExecutionReportObject(text), input);
+    const normalized = JSON.parse(normalizeExecutionReportText(text));
+    assert.equal(normalized.status, status === "error" ? "failed" : status);
+    assert.deepEqual(normalized.blockers, ["Access denied"]);
+    assert.equal(normalized.next_action, null);
+  }
+});
+
+test("does not extract example reports nested inside unrelated direct JSON", () => {
+  for (const text of [JSON.stringify({ example: report() }), JSON.stringify([report()])]) {
+    assert.equal(extractExecutionReportObject(text), null);
+    assert.equal(normalizeExecutionReportText(text), text);
+  }
+});
+
+test("does not substitute an earlier success for a rejected final report", () => {
+  for (const rejected of [
+    JSON.stringify(report({ status: "unknown" })),
+    JSON.stringify({ status: "completed", summary: "Incomplete" }),
+    '{"status":"blocked","summary":"Denied",}',
+  ]) {
+    const text = `Before.\n${JSON.stringify(report())}\n${rejected}`;
+    assert.equal(extractExecutionReportObject(text), null);
+    assert.equal(normalizeExecutionReportText(text), text);
+  }
+});
+
+test("does not extract nested examples from mixed arrays or wrappers", () => {
+  for (const example of [{ example: report() }, [report()]]) {
+    const text = `Example only: ${JSON.stringify(example)}`;
+    assert.equal(extractExecutionReportObject(text), null);
+    assert.equal(normalizeExecutionReportText(text), text);
+  }
+});
+
+test("rejects whole malformed JSON containers regardless of their first key", () => {
+  for (const text of [
+    `${JSON.stringify(report())}\n{"provider":"x","status":"blocked","summary":"Denied",}`,
+    `Note: {"example":${JSON.stringify(report())},} End.`,
+  ]) {
+    assert.equal(extractExecutionReportObject(text), null);
+    assert.equal(normalizeExecutionReportText(text), text);
+  }
+});

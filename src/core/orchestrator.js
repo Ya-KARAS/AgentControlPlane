@@ -8,6 +8,7 @@ import {
 import { ControlPlaneError, asErrorPayload } from "./errors.js";
 import {
   extractExecutionReportObject,
+  isJsonLikeExecutionOutput,
   normalizeExecutionReportObject,
 } from "./execution-report.js";
 import { resolveProfile, resolveEndpointModel, estimateTaskMinutes } from "./profiles.js";
@@ -206,15 +207,17 @@ function extractReport(turn, cachedFinalMessage = null) {
     return parsed;
   }
   const normalized = finalText.toLowerCase();
-  const status = normalized.includes("status: blocked")
-    ? "blocked"
-    : normalized.includes("status: failed")
-      ? "failed"
-      : normalized.includes("status: partial")
-        ? "partial"
-        : turn?.status === "completed"
-          ? "completed"
-          : "failed";
+  const status = isJsonLikeExecutionOutput(finalText)
+    ? "failed"
+    : normalized.includes("status: blocked")
+      ? "blocked"
+      : normalized.includes("status: failed")
+        ? "failed"
+        : normalized.includes("status: partial")
+          ? "partial"
+          : turn?.status === "completed"
+            ? "completed"
+            : "failed";
   return {
     status,
     summary: finalText,
