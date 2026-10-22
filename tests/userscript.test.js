@@ -15,21 +15,18 @@ import {
   readFloatingPosition,
 } from "../userscript/src/floating-position.js";
 
-const scriptPath = path.resolve(
-  "userscript",
-  "agent-control-plane-web-bridge.user.js",
-);
-const metaPath = path.resolve(
-  "userscript",
-  "agent-control-plane-web-bridge.meta.js",
-);
-const manifestPath = path.resolve("userscript", "release-manifest.json");
 const runtime = fs.readFileSync(
   path.resolve("userscript", "src", "runtime.user.js"),
   "utf8",
 );
 const currentVersion = runtime.match(/^\/\/ @version\s+(\S+)$/m)?.[1];
 assert.ok(currentVersion, "userscript runtime version metadata is required");
+const artifactRoot = currentVersion.includes("-")
+  ? path.resolve("userscript", "releases", currentVersion)
+  : path.resolve("userscript");
+const scriptPath = path.join(artifactRoot, "agent-control-plane-web-bridge.user.js");
+const metaPath = path.join(artifactRoot, "agent-control-plane-web-bridge.meta.js");
+const manifestPath = path.join(artifactRoot, "release-manifest.json");
 const releasePath = path.resolve(
   "userscript",
   "releases",

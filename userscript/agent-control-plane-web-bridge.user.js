@@ -2,7 +2,7 @@
 // @name         AgentControlPlane Web Bridge Preview
 // @name:zh-CN   AgentControlPlane 网页桥接预览
 // @namespace    https://github.com/Ya-KARAS/AgentControlPlane
-// @version      0.9.6-dev.20261022
+// @version      0.9.5
 // @description  Use natural-language web AI conversations to stage and dispatch local engineering tasks.
 // @description:zh-CN 通过网页 AI 自然语言对话暂存和派发本地工程任务。
 // @author       Ya-KARAS
@@ -352,7 +352,6 @@ function controllerPrompt(request = "", capabilities = {}, language = "en") {
         context: "工程执行所需的上下文",
         constraints: ["重要实现约束"],
         acceptance_criteria: ["可观察的完成标准"],
-        evidence_required: ["验收所需的命令和结果证据"],
         execution: {
           workspace: "已列出的项目别名或稳定项目 ID，或用户明确提供的绝对路径",
           executor: "已列出的执行器 ID",
@@ -366,7 +365,6 @@ function controllerPrompt(request = "", capabilities = {}, language = "en") {
         context: "Execution context needed by the engineering agent",
         constraints: ["Important implementation constraints"],
         acceptance_criteria: ["Observable completion criteria"],
-        evidence_required: ["Commands and result evidence needed for acceptance"],
         execution: {
           workspace: "A listed project alias or stable project id, or an absolute path explicitly supplied by the user",
           executor: "A listed executor id",
@@ -473,49 +471,42 @@ function extractTaskEnvelope(value) {
 }
 
 function candidateFromEnvelope(envelope) {
-  const text = (value, limit, field) => {
-    if (typeof value !== "string" || !value.trim() || value.trim().length > limit) {
-      throw new Error(`invalid_candidate_${field}`);
-    }
-    return value.trim();
-  };
-  const objective = text(envelope?.objective, 4000, "objective");
-  const list = (value, field, limit = 1000) => {
-    if (value == null) return [];
-    if (!Array.isArray(value)) throw new Error(`invalid_candidate_${field}`);
-    return value.map((entry) => text(entry, limit, field));
-  };
-  const constraints = list(envelope?.constraints, "constraints");
-  const sections = {};
-  for (const field of ["context", "acceptance_criteria", "evidence_required"]) {
-    if (envelope?.[field] == null) continue;
-    const value = field === "context" && typeof envelope[field] === "string"
-      ? [envelope[field]] : envelope[field];
-    sections[field] = list(value, field, field === "acceptance_criteria" ? 980 : 1000);
+  const objective = boundedText(envelope?.objective, 4000);
+  if (!objective) throw new Error("task_objective_missing");
+  const constraints = [];
+  const context = boundedText(envelope?.context, 1000);
+  if (context) constraints.push(`Context: ${context}`);
+  for (const entry of Array.isArray(envelope?.constraints)
+    ? envelope.constraints
+    : []) {
+    const value = boundedText(entry, 1000);
+    if (value) constraints.push(value);
   }
-  if ((sections.context ?? []).join("\n").length > 1000) {
-    throw new Error("invalid_candidate_context");
-  }
-  if (constraints.length + Object.values(sections).reduce((sum, values) => sum + values.length, 0) > 16) {
-    throw new Error("invalid_candidate_constraints");
+  for (const entry of Array.isArray(envelope?.acceptance_criteria)
+    ? envelope.acceptance_criteria
+    : []) {
+    const value = boundedText(entry, 980);
+    if (value) constraints.push(`Acceptance: ${value}`);
   }
   const executionLimits = {
-    workspace: 1000, executor: 64, profile: 64, model: 200, reasoning_effort: 32,
+    workspace: 1000,
+    executor: 64,
+    profile: 64,
+    model: 200,
+    reasoning_effort: 32,
   };
-  let execution = null;
-  if (envelope?.execution != null) {
-    if (typeof envelope.execution !== "object" || Array.isArray(envelope.execution)) {
-      throw new Error("invalid_candidate_execution");
-    }
-    if (Object.keys(envelope.execution).some((field) => !Object.hasOwn(executionLimits, field))) {
-      throw new Error("candidate_execution_fields_denied");
-    }
-    execution = Object.fromEntries(Object.entries(executionLimits)
-      .filter(([field]) => envelope.execution[field] != null && envelope.execution[field] !== "")
-      .map(([field, limit]) => [field, text(envelope.execution[field], limit, "execution")]));
-  }
+  const execution = envelope?.execution &&
+    typeof envelope.execution === "object" &&
+    !Array.isArray(envelope.execution)
+    ? Object.fromEntries(
+        Object.entries(executionLimits)
+          .map(([key, limit]) => [key, boundedText(envelope.execution[key], limit)])
+          .filter(([, value]) => value),
+      )
+    : null;
   return {
-    objective, constraints, ...sections,
+    objective,
+    constraints: constraints.slice(0, 16),
     ...(execution && Object.keys(execution).length ? { execution } : {}),
     source: "userscript-preview",
   };
@@ -581,9 +572,6 @@ function taskEnvelopeChanges(previous, next) {
     const before = boundedText(previous.execution?.[field], field === "workspace" ? 1000 : 200);
     const after = boundedText(next.execution?.[field], field === "workspace" ? 1000 : 200);
     if (before !== after) fields.push(field);
-  }
-  for (const field of ["context", "constraints", "acceptance_criteria", "evidence_required"]) {
-    if (JSON.stringify(previous[field] ?? []) !== JSON.stringify(next[field] ?? [])) fields.push(field);
   }
   return fields;
 }

@@ -90,18 +90,25 @@ manifest instead of duplicating release metadata by hand.
 
 ### Development snapshot: 0.9.6-dev.20261022
 
-The cloud-readiness branch uses `0.9.6-dev.20261022` to keep its generated
-userscript separate from the unchanged historical `0.9.5` artifact. This is a
-development snapshot, not a formal release; the ACP package version remains
-`0.9.0`. Rebuild this snapshot with `npm run userscript:build`. Its version is
-already set in `src/runtime.user.js`; the `userscript:release` helper accepts
-numeric stable versions only.
+The current source uses `0.9.6-dev.20261022`. This is a development snapshot,
+not a formal release; the ACP package version remains `0.9.0`.
+`npm run userscript:build` writes prerelease scripts, metadata and their manifest
+only under `releases/0.9.6-dev.20261022/`. `npm run userscript:check` verifies
+those exact generated artifacts against the current source.
 
-The generated metadata retains the normal portal update/download URLs. This is
-not a separate prerelease update channel: pushing this branch does not deploy
-those endpoints. Do not promote this development manifest or its artifacts to
-the production portal. Real browser installation and automatic-update behavior
-remain unverified for this snapshot.
+The root script, root metadata and root release manifest remain the stable
+`0.9.5` artifacts, byte-for-byte. Historical releases are unchanged. This keeps
+older installations that poll GitHub main's root metadata on their existing
+stable update channel. The `userscript:release` helper still accepts numeric
+stable versions only and must not be used to promote this development snapshot.
+
+For an explicit manual candidate evaluation, import
+`releases/0.9.6-dev.20261022/agent-control-plane-web-bridge.user.js` into a separate
+test browser profile rather than using the root stable script. Candidate
+metadata retains the normal portal update/download URLs; there is no automatic
+prerelease update channel. Do not promote the candidate manifest or artifacts
+to the production portal. Real browser installation and automatic-update
+behavior remain unverified for this snapshot.
 
 Release 0.9.0 moves both automatic-update metadata and downloads to
 the ACP portal. It sends paired mobile

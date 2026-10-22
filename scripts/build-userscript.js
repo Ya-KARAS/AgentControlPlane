@@ -14,9 +14,6 @@ const remoteTaskResponsePath = path.join(root, "src", "remote-task-response.js")
 const floatingPositionPath = path.join(root, "src", "floating-position.js");
 const stageStatePath = path.join(root, "src", "stage-state.js");
 const resultDeliveryStatePath = path.join(root, "src", "result-delivery-state.js");
-const outputPath = path.join(root, "agent-control-plane-web-bridge.user.js");
-const metaOutputPath = path.join(root, "agent-control-plane-web-bridge.meta.js");
-const releaseManifestPath = path.join(root, "release-manifest.json");
 const stableDownloadUrl =
   "https://acp.asterroute.com/downloads/agent-control-plane-web-bridge.user.js";
 const stableUpdateUrl =
@@ -109,6 +106,14 @@ const releaseOutputPath = path.join(
   versionMatch[1],
   "agent-control-plane-web-bridge.user.js",
 );
+// Legacy installations poll the root metadata on main. Prerelease builds must
+// not advertise a development version through that existing stable channel.
+const outputRoot = versionMatch[1].includes("-")
+  ? path.dirname(releaseOutputPath)
+  : root;
+const outputPath = path.join(outputRoot, "agent-control-plane-web-bridge.user.js");
+const metaOutputPath = path.join(outputRoot, "agent-control-plane-web-bridge.meta.js");
+const releaseManifestPath = path.join(outputRoot, "release-manifest.json");
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const releaseManifest = `${JSON.stringify({
   schema_version: 1,
@@ -152,9 +157,9 @@ if (process.argv.includes("--check")) {
     process.exitCode = 1;
   }
 } else {
+  fs.mkdirSync(path.dirname(releaseOutputPath), { recursive: true });
   fs.writeFileSync(outputPath, built, "utf8");
   fs.writeFileSync(metaOutputPath, meta, "utf8");
-  fs.mkdirSync(path.dirname(releaseOutputPath), { recursive: true });
   fs.writeFileSync(releaseOutputPath, built, "utf8");
   fs.writeFileSync(releaseManifestPath, releaseManifest, "utf8");
   console.log(
