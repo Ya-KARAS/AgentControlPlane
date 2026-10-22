@@ -80,7 +80,7 @@ host-permission failures on mobile networks.
 Prepare a release by setting the version once:
 
 ```powershell
-npm.cmd run userscript:release -- --version 0.9.4
+npm.cmd run userscript:release -- --version 0.9.6
 ```
 
 This updates the source metadata, rebuilds the stable script and metadata,
@@ -88,36 +88,37 @@ creates the versioned release file, and writes `release-manifest.json` with the
 stable URLs and SHA-256 hashes. The portal release tooling consumes that
 manifest instead of duplicating release metadata by hand.
 
-### Development snapshot: 0.9.6-dev.20261022
+### Public test release: Web Bridge 0.9.6
 
-The current source uses `0.9.6-dev.20261022`. This is a development snapshot,
-not a formal release; the ACP package version remains `0.9.0`.
-`npm run userscript:build` writes prerelease scripts, metadata and their manifest
-only under `releases/0.9.6-dev.20261022/`. `npm run userscript:check` verifies
-those exact generated artifacts against the current source.
+The current source, root script, root metadata, and root release manifest use
+`0.9.6`, paired with ACP package `0.9.1`. This is a public test release, not a
+certified release. `npm run userscript:check` verifies those generated stable
+artifacts and `releases/0.9.6/agent-control-plane-web-bridge.user.js` against the
+current source. All older versioned artifacts remain unchanged, including the
+archived development snapshot under `releases/0.9.6-dev.20261022/`.
 
-The root script, root metadata and root release manifest remain the stable
-`0.9.5` artifacts, byte-for-byte. Historical releases are unchanged. This keeps
-older installations that poll GitHub main's root metadata on their existing
-stable update channel. The `userscript:release` helper still accepts numeric
-stable versions only and must not be used to promote this development snapshot.
+For a manual GitHub/source-package installation, use this directory's
+`agent-control-plane-web-bridge.user.js` or the immutable `releases/0.9.6/` file.
+Keep local settings and pairing data; real-browser installation, automatic
+updates, dispatch, and provider execution still require manual verification.
 
-For an explicit manual candidate evaluation, import
-`releases/0.9.6-dev.20261022/agent-control-plane-web-bridge.user.js` into a separate
-test browser profile rather than using the root stable script. Candidate
-metadata retains the normal portal update/download URLs; there is no automatic
-prerelease update channel. Do not promote the candidate manifest or artifacts
-to the production portal. Real browser installation and automatic-update
-behavior remain unverified for this snapshot.
+At preparation time the portal's stable auto-update endpoint still serves
+`0.9.5`. Publishing the source package or manually installing 0.9.6 does not
+update that endpoint. The normal portal update/download URLs are unchanged;
+0.9.6 becomes available through that channel only after a separate authorized
+portal deployment and public version/hash checks. Do not deploy the archived
+development snapshot or describe it as the current source. See the
+[ACP v0.9.1 release notes](../docs/releases/v0.9.1.md) for the verification,
+upgrade, rollback, and portal deployment boundaries.
 
-Release 0.9.0 moves both automatic-update metadata and downloads to
-the ACP portal. It sends paired mobile
+Since Web Bridge 0.9.0, automatic-update metadata and downloads use
+the ACP portal. The bridge sends paired mobile
 capability and task requests to the HTTPS portal first, and accepts both direct
 and wrapped task response shapes from compatible portals. It also distinguishes
 remote status, expired pairing, and missing-task failures so mobile browsers do
-not misreport portal errors as a localhost failure. Install 0.9.0 once
-from the portal to migrate older GitHub-based update channels; later releases
-update automatically from the ACP domain. If
+not misreport portal errors as a localhost failure. Installing a portal-channel
+release once migrates older GitHub-based update channels; subsequent updates
+come from the ACP domain only when deployed there. If
 update checks still fail, open the browser extension details for Tampermonkey
 and confirm that Site access is set to **On all sites**. Tampermonkey documents
 that restricted runtime host permissions can break script updates and
