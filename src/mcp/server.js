@@ -562,7 +562,9 @@ export function createMcpHandler({ orchestrator, store, config }) {
   };
 
   function buildServer() {
-    const server = new McpServer(serverInfo);
+    // Compact briefs need far fewer entries; bound validation work as well as
+    // the HTTP parser's existing 1 MiB body cap (GHSA-46jr-4wx8-v453).
+    const server = new McpServer(serverInfo, { maxToolInputElements: 10_000 });
     for (const spec of toolSpecs) {
       server.registerTool(
         spec.name,

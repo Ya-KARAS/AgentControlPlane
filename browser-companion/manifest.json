@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AgentControlPlane Companion 浏览器伴侣",
   "description": "Connect supported web AI conversations to local engineering executors through AgentControlPlane. 将受支持的网页 AI 对话连接到本地工程执行器。",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "permissions": [
     "storage",
     "tabs",

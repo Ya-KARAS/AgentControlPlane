@@ -19,7 +19,7 @@ ZCode 或 OpenAI-compatible 执行器，再返回状态、变更文件、测试�
 
 </div>
 
-> 本地优先、面向单用户的预览版本。当前认证版本：v0.9.0。
+> 本地优先、面向单用户的公开测试版本：v0.9.1。不是认证版本。
 
 ## 用户反馈与登记
 
@@ -42,7 +42,7 @@ ZCode 或 OpenAI-compatible 执行器，再返回状态、变更文件、测试�
 并配置可用模型。使用其他执行器时，将 `opencode` 替换为对应 ID。
 自动选择模式会优先使用已就绪的 OpenCode。
 
-Windows（PowerShell）。本轮开发验证在 Windows 上完成。
+Windows（PowerShell）。本版本的原生 Windows 安装与升级仍需手动测试。
 
 ```powershell
 node --version
@@ -54,8 +54,9 @@ npm.cmd run demo -- --check --executor opencode
 npm.cmd run demo -- --executor opencode
 ```
 
-macOS / Linux（终端）。本轮尚未在 macOS 或 Linux 实机执行以下命令；
-执行器的安装、认证和模型支持需要在目标平台核查。
+macOS / Linux（终端）。仓库自动化测试与一致性检查已在 Linux 的 Node.js 22、24
+环境运行。本版本的原生 macOS 运行、Windows 安装与升级、真实浏览器派发和真实
+服务商执行仍未经手动验证。执行器的安装、认证和模型支持需要在目标平台核查。
 
 ```sh
 node --version
@@ -116,8 +117,12 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 预检对象，`status` 为 `"ready"` 或 `"blocked"`，附带依赖检查结果；任务字段为空，
 不启动任务。
 
-发布资产包括 Windows 源码包、可直接加载的浏览器 Companion ZIP、90 秒验证
-演示视频和 `SHA256SUMS`。下载地址：[v0.9.0 Release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.0)。
+v0.9.1 的发布资产约定为源码 ZIP、可直接加载的浏览器 Companion ZIP 和
+`SHA256SUMS`；独立的 Web Bridge 0.9.6 文件为可选附加资产。源码包沿用
+`-windows.zip` 文件名以保持兼容，不代表 Windows 已通过验证。参见
+[v0.9.1 Release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.1)
+和[含升级、回退步骤的发布说明](docs/releases/v0.9.1.md)。
+本版本不包含或承诺新的演示视频；v0.9.0 视频仅作历史证据，不能验证本版本。
 
 ## 项目功能
 

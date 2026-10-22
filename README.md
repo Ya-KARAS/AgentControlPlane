@@ -20,7 +20,7 @@ changed files, test evidence, usage, and continuation state.
 
 </div>
 
-> Local-first, single-user preview. Current certified release: v0.9.0.
+> Local-first, single-user public test release: v0.9.1. Not a certified release.
 
 ## Feedback and registration
 
@@ -44,7 +44,8 @@ The commands below use OpenCode: install its CLI, make `opencode` available on
 `PATH`, and configure a working model first. If you use another executor, replace
 `opencode` with its id. Automatic selection prefers OpenCode when it is ready.
 
-Windows (PowerShell). This development round was verified on Windows.
+Windows (PowerShell). Native Windows installation and upgrade remain subject to
+manual testing for this release.
 
 ```powershell
 node --version
@@ -56,9 +57,11 @@ npm.cmd run demo -- --check --executor opencode
 npm.cmd run demo -- --executor opencode
 ```
 
-macOS / Linux (terminal). These commands have not been run on a macOS or Linux
-machine in this development round; executor installation, authentication, and
-model support must be checked on the target platform.
+macOS / Linux (terminal). Automated repository tests and consistency checks have
+run on Linux with Node.js 22 and 24. Native macOS operation, Windows installation
+and upgrade, real-browser dispatch, and live-provider execution remain manually
+unverified for this release. Check executor installation, authentication, and
+model support on the target platform.
 
 ```sh
 node --version
@@ -126,9 +129,13 @@ Cancellation in JSON mode also exits `1`. `--check --json` emits a passive
 preflight object with `mode: "check"`, `status: "ready"` or `"blocked"`, and
 dependency checks; its task fields remain empty and it starts no task.
 
-Release assets include a Windows source archive, a load-unpacked browser
-companion ZIP, a 90-second verified demo video, and `SHA256SUMS`. Download them
-from the [v0.9.0 release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.0).
+The v0.9.1 release asset contract is a source ZIP, a load-unpacked browser
+companion ZIP, and `SHA256SUMS`; standalone Web Bridge 0.9.6 files are optional.
+The source archive retains the `-windows.zip` filename for compatibility, not as
+a claim of Windows validation. See the [v0.9.1 release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.1)
+and [release notes with upgrade and rollback steps](docs/releases/v0.9.1.md).
+No new demo video is included or promised; the v0.9.0 video is historical evidence
+only and does not validate this release.
 
 ## What it does
 

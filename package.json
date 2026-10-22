@@ -1,6 +1,6 @@
 {
   "name": "agent-control-plane",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "license": "AGPL-3.0",
   "description": "A local, model-agnostic control plane that lets web AI dispatch compact briefs to interchangeable engineering executors.",
@@ -36,7 +36,7 @@
     "key:fingerprint": "node scripts/key-fingerprint.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^3.25.0"
   }
 }
