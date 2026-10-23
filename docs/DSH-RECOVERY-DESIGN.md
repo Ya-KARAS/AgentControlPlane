@@ -59,6 +59,16 @@ this batch does not automate that decision or promise transparent crash resume.
 Readiness/discovery does not acquire a lease; opt-in start does write this scoped
 state lock, without starting a client or probing authentication.
 
+Every ordinary TaskStore state transaction takes a transient instance of the
+same mutex through fsync/rename, closing the check-before-write race with a
+checkpoint owner's acquisition. It releases the mutex after a successful write.
+All state writers compare the last loaded/persisted file hash; a stale instance
+fails closed rather than overwriting a newer snapshot after lease release.
+This safety check also applies when native recovery is disabled. Reopen the
+store after resolving a stale instance; do not retry its mutated in-memory state.
+Older ACP builds and programs that ignore this mutex cannot be coordinated by
+it, so never run them against the same state directory concurrently.
+
 The task's version-1 `executor_checkpoint` contains only metadata: task/logical/
 parent identity, ACP handle/turn, native ID, unique attempt, monotonic sequence,
 runtime/profile fingerprints, canonical workspace/client-home reference, model/

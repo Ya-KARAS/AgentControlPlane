@@ -260,25 +260,23 @@ export class TaskStore {
 
   persist() {
     if (this.checkpointFaulted) throw checkpointError("checkpoint_store_faulted");
-    if ((this.checkpointLeaseToken && !fs.existsSync(this.checkpointLeasePath)) ||
-        fs.existsSync(this.checkpointLeasePath) && fs.readFileSync(this.checkpointLeasePath, "utf8") !== this.checkpointLeaseToken)
-      throw checkpointError("checkpoint_store_locked");
-    const leased = Boolean(this.checkpointLeaseToken);
+    // Ordinary writers use the same exclusive file for the whole transaction.
+    // A pre-write exists check alone races with a checkpoint owner's acquisition.
+    const persistentLease = Boolean(this.checkpointLeaseToken);
+    if (!persistentLease) this.acquireExecutorLease();
     try {
-      if (leased && (fs.existsSync(this.statePath) ? sha256(fs.readFileSync(this.statePath)) : null) !== this.persistedStateHash)
-        throw checkpointError("checkpoint_store_drift");
-      const temporary = `${this.statePath}.${process.pid}${leased ? `.${crypto.randomUUID()}` : ""}.tmp`;
+      this.#requireExecutorLease();
+      const temporary = `${this.statePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
       const bytes = JSON.stringify(this.state, null, 2);
-      if (leased) {
-        const fd = fs.openSync(temporary, "wx");
-        try { fs.writeFileSync(fd, bytes, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-      } else fs.writeFileSync(temporary, bytes, "utf8");
+      const fd = fs.openSync(temporary, "wx");
+      try { fs.writeFileSync(fd, bytes, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(temporary, this.statePath);
       this.persistedStateHash = sha256(bytes);
     } catch (error) {
-      if (!leased) throw error;
       this.checkpointFaulted = true;
-      throw checkpointError(error?.code === "checkpoint_store_drift" ? error.code : "checkpoint_persist_failed");
+      throw checkpointError(["checkpoint_store_drift", "checkpoint_store_locked"].includes(error?.code) ? error.code : "checkpoint_persist_failed");
+    } finally {
+      if (!persistentLease && !this.checkpointFaulted) this.releaseExecutorLease();
     }
   }
 
@@ -293,7 +291,7 @@ export class TaskStore {
     this.checkpointLeaseToken = token;
     const diskHash = fs.existsSync(this.statePath) ? sha256(fs.readFileSync(this.statePath)) : null;
     if (diskHash !== this.persistedStateHash) {
-      this.releaseExecutorLease(); throw checkpointError("checkpoint_store_drift");
+      this.releaseExecutorLease(); this.checkpointFaulted = true; throw checkpointError("checkpoint_store_drift");
     }
   }
 

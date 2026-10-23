@@ -126,3 +126,25 @@ test("a newer unknown attempt blocks adoption of an older confirmed result for t
   s.store.beginExecutorAttempt(next.id, { ...s.binding, turnId: "next-turn" }, 10000);
   assert.throws(() => s.store.getAdoptableExecutorCheckpoint("fixture-handle", s.binding), { code: "checkpoint_not_adoptable" });
 });
+
+test("ordinary TaskStore writes hold the same mutex through rename as checkpoint owners", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "acp-state-mutex-"));
+  const writer = new TaskStore(root); const task = writer.createTask({ workspace: root, brief: {}, policy: { name: "economy" } });
+  const owner = new TaskStore(root); const rename = fs.renameSync; let acquiredDuringWrite = false;
+  t.after(() => { owner.releaseExecutorLease(); fs.rmSync(root, { recursive: true, force: true }); });
+  t.mock.method(fs, "renameSync", (from, to) => {
+    if (to === writer.statePath) { try { owner.acquireExecutorLease(); acquiredDuringWrite = true; } catch (e) { assert.equal(e.code, "checkpoint_store_locked"); } }
+    return rename(from, to);
+  });
+  writer.updateTask(task.id, { status: "running" });
+  assert.equal(acquiredDuringWrite, false, "the mutex must cover the entire ordinary write, not a prior exists check");
+  assert.equal(fs.existsSync(writer.checkpointLeasePath), false, "ordinary writes release their transient mutex");
+});
+
+test("a stale ordinary writer cannot overwrite state committed by a checkpoint owner after release", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "acp-state-stale-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const writer = new TaskStore(root); const task = writer.createTask({ workspace: root, brief: {}, policy: { name: "economy" } });
+  const owner = new TaskStore(root); owner.acquireExecutorLease(); owner.updateTask(task.id, { status: "completed" }); owner.releaseExecutorLease();
+  assert.throws(() => writer.updateTask(task.id, { status: "queued" }), { code: "checkpoint_store_drift" });
+  assert.equal(new TaskStore(root).getTask(task.id).status, "completed");
+});
