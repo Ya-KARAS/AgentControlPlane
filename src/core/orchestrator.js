@@ -43,6 +43,25 @@ function zeroUsage() {
   };
 }
 
+// Opt-in native adapters may have only partial aggregate evidence, not a billable
+// HTTP-request ledger. Never turn absent dimensions or a missing total into zero.
+function executorUsageEvidence(raw) {
+  const counts = (value) => {
+    if (!value || !["input_tokens", "output_tokens", "total_tokens"].every(
+      (key) => Number.isSafeInteger(value[key]) && value[key] >= 0,
+    ) || value.total_tokens !== value.input_tokens + value.output_tokens) return null;
+    return Object.fromEntries(["input_tokens", "output_tokens", "total_tokens",
+      "cached_input_tokens", "uncached_input_tokens", "reasoning_output_tokens"].map(
+      (key) => [key, Number.isSafeInteger(value[key]) && value[key] >= 0 ? value[key] : null],
+    ));
+  };
+  const known = counts(raw?.knownUsage ?? raw?.usage);
+  const usage = raw?.state === "complete" ? counts(raw.usage) : null;
+  return { state: usage ? "complete" : known ? "partial" : "unknown", usage,
+    knownUsage: known, observedSteps: Number.isSafeInteger(raw?.observedSteps) ? raw.observedSteps : null,
+    missingSteps: Number.isSafeInteger(raw?.missingSteps) ? raw.missingSteps : null };
+}
+
 function marginalTokens(usage) {
   return (
     Number(usage?.uncached_input_tokens ?? usage?.input_tokens ?? 0) +
@@ -255,6 +274,7 @@ export class Orchestrator extends EventEmitter {
       windowsSandbox: process.platform === "win32" ? "unknown" : "not_applicable",
     };
     for (const executor of this.executors.values()) {
+      executor.attachTaskStore?.(this.store);
       executor.on("notification", (message) =>
         this.#onNotification(message, executor),
       );
@@ -272,7 +292,8 @@ export class Orchestrator extends EventEmitter {
       ? this.config.executor?.routing?.profiles?.[profileName]
       : null;
     const configured = profileOrder ?? this.config.executor?.routing?.order ?? [];
-    return [...new Set([...configured, ...this.executors.keys()])];
+    return [...new Set([...configured, ...this.executors.keys()])]
+      .filter((id) => this.executors.get(id)?.explicitDispatchOnly !== true);
   }
 
   #executorEntry(task = {}) {
@@ -625,6 +646,8 @@ export class Orchestrator extends EventEmitter {
     const task = this.store.getTask(taskId, true);
     const reroute = this.config.executor?.reroute;
     if (!task || reroute?.enabled !== true) return false;
+    if (this.executors.get(task.executor)?.automaticReroute === false ||
+        error?.details?.safeToReroute === false || context.safeToReroute === false) return false;
     const reason = classifyExecutorFailure(error, context);
     if (
       reason === "task_failure" ||
@@ -847,6 +870,8 @@ export class Orchestrator extends EventEmitter {
         this.config,
       );
     const selectedExecutor = this.executors.get(provider);
+    if (selectedExecutor?.recoveryEnabled === true && !idempotencyKey)
+      throw new ControlPlaneError("dispatch_idempotency_required", "Checkpoint dispatch requires an explicit idempotency key", { safeToReroute: false });
     const executorCapabilities = snapshotExecutorCapabilities(selectedExecutor, {
       catalog,
       model: policy.model ?? null,
@@ -876,7 +901,16 @@ export class Orchestrator extends EventEmitter {
   }
 
   continueTask(taskId, request) {
-    this.#assertQueueCapacity();
+    const idempotencyKey = normalizeIdempotencyKey(request.idempotency_key);
+    if (idempotencyKey) {
+      const existing = this.store.findByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        const brief = normalizeBrief(request, this.config.limits.maxBriefCharacters);
+        const fingerprint = createHash("sha256").update(`${taskId}:${dispatchFingerprint(request, existing.workspace, brief)}`).digest("hex");
+        if (existing.request_fingerprint !== fingerprint) throw new ControlPlaneError("idempotency_conflict", "The idempotency key belongs to another continuation", { task_id: existing.id });
+        return existing;
+      }
+    }
     const parent = this.store.getTask(taskId);
     if (!parent) {
       throw new ControlPlaneError("task_not_found", `Unknown task: ${taskId}`);
@@ -914,6 +948,11 @@ export class Orchestrator extends EventEmitter {
       },
       this.config.limits.maxBriefCharacters,
     );
+    if (this.executors.get(provider)?.recoveryEnabled === true && !idempotencyKey)
+      throw new ControlPlaneError("continuation_idempotency_required", "Checkpoint continuation requires an explicit idempotency key", { safeToReroute: false });
+    const requestFingerprint = idempotencyKey
+      ? createHash("sha256").update(`${taskId}:${dispatchFingerprint(request, workspace, brief)}`).digest("hex") : null;
+    this.#assertQueueCapacity();
     const policy = resolveProfile(
       this.config,
       {
@@ -1007,6 +1046,8 @@ export class Orchestrator extends EventEmitter {
       projectPathRevision:
         project?.pathRevision ?? parent.project_path_revision ?? null,
       workspaceRelinked,
+      idempotencyKey,
+      requestFingerprint,
     });
     if (!sessionChanged) {
       this.store.updateTask(task.id, { threadId: parent.threadId });
@@ -1080,7 +1121,10 @@ export class Orchestrator extends EventEmitter {
         workspace: task.workspace,
         turnId: null,
       });
-      this.#run(queued.taskId, queued.followUp).finally(() => {
+      this.#run(queued.taskId, queued.followUp).catch(() => {
+        this.executors.get(task.executor)?.quarantineRecovery?.();
+        this.emit("diagnostic", { source: "task-persistence", text: "Task state could not be durably confirmed; executor quarantined" });
+      }).finally(() => {
         this.#finishActiveTask(queued.taskId);
         this.running.delete(queued.taskId);
         queueMicrotask(() => this.#drain());
@@ -1118,7 +1162,11 @@ export class Orchestrator extends EventEmitter {
       this.store.updateTask(taskId, {
         status: "running",
         startedAt: new Date().toISOString(),
+        ...(executor.usageEvidenceMode ? { usage: null, usage_state: "unknown", execution_outcome: "unknown" } : {}),
       });
+      if (executor.usageEvidenceMode) {
+        this.#updateCurrentExecutorHistory(taskId, { usage: null, usage_state: "unknown" });
+      }
 
       if (!executor.ready) {
         await executor.start();
@@ -1154,6 +1202,7 @@ export class Orchestrator extends EventEmitter {
             type: "thread.resume_failed",
             error: asErrorPayload(error),
           });
+          if (executor.resumeFailureIsFatal === true) throw error;
           threadId = null;
         }
       }
@@ -1162,9 +1211,9 @@ export class Orchestrator extends EventEmitter {
         const started = await executor.startThread({
           cwd: workspace,
           model: task.policy.model,
-          approvalPolicy: this.config.codex.approvalPolicy,
+          approvalPolicy: executor.executionPolicy?.approvalPolicy ?? this.config.codex.approvalPolicy,
           approvalsReviewer: "user",
-          sandbox: this.config.codex.sandbox,
+          sandbox: executor.executionPolicy?.sandbox ?? this.config.codex.sandbox,
           runtimeWorkspaceRoots: [workspace],
           historyMode: "paginated",
           baseInstructions:
@@ -1189,6 +1238,9 @@ export class Orchestrator extends EventEmitter {
       }
 
       this.store.updateTask(taskId, { threadId });
+      if (executor.executionPolicy) {
+        this.store.addEvent(taskId, { type: "thread.execution_policy", policy: executor.executionPolicy });
+      }
       this.#updateCurrentExecutorHistory(taskId, { thread_id: threadId });
       await executor.setGoal({
         threadId,
@@ -1214,12 +1266,12 @@ export class Orchestrator extends EventEmitter {
         summary: task.policy.summary,
         cwd: workspace,
         runtimeWorkspaceRoots: [workspace],
-        sandboxPolicy: {
+        sandboxPolicy: executor.executionPolicy?.sandboxPolicy ?? {
           type: "workspaceWrite",
           writableRoots: [workspace],
           networkAccess: Boolean(this.config.codex.networkAccess),
         },
-        approvalPolicy: this.config.codex.approvalPolicy,
+        approvalPolicy: executor.executionPolicy?.approvalPolicy ?? this.config.codex.approvalPolicy,
         outputSchema: finalReportSchema,
         ...(executor.kind === "model-endpoint"
           ? {
@@ -1373,6 +1425,9 @@ export class Orchestrator extends EventEmitter {
     }
     const pollPromise = (async () => {
       const executor = this.#executorFor(task);
+      // Native aggregate evidence arrives with the terminal notification. Its
+      // unknown counters must not pass through Codex's zero/default goal mapping.
+      if (executor.usageEvidenceMode) return null;
       const response = await executor.getGoal(
         { threadId: task.threadId },
         10000,
@@ -1684,11 +1739,12 @@ export class Orchestrator extends EventEmitter {
 
     if (message.method === "turn/completed") {
       this.#completeTask(taskId, params).catch((error) => {
-        this.store.updateTask(taskId, {
+        this.executors.get(executor.id)?.quarantineRecovery?.();
+        try { this.store.updateTask(taskId, {
           status: "failed",
           error: asErrorPayload(error),
           completedAt: new Date().toISOString(),
-        });
+        }); } catch { this.emit("diagnostic", { source: "task-persistence", text: "Terminal result persistence was not confirmed" }); }
         this.#finishActiveTask(taskId);
       });
       return;
@@ -1725,6 +1781,13 @@ export class Orchestrator extends EventEmitter {
       params.turn,
       active?.finalMessage ?? null,
     );
+    const evidenceMode = this.executors.get(current.executor)?.usageEvidenceMode === true;
+    const evidence = evidenceMode ? executorUsageEvidence(params.turn.usageEvidence) : null;
+    if (evidenceMode) {
+      this.store.updateTask(taskId, { usage: evidence.usage, usage_state: evidence.state,
+        usage_evidence: evidence, execution_outcome: params.turn.executionOutcome ?? "unknown" });
+      if (evidence.state !== "complete") report.summary += " Token usage unknown: no complete native run total.";
+    }
     const budgetInterrupted = Boolean(active?.budgetInterruptRequested);
     const turnFinished = params.turn.status === "completed";
     const finalStatus =
@@ -1748,7 +1811,7 @@ export class Orchestrator extends EventEmitter {
         : params.turn.error ?? null;
     if (
       ["failed", "blocked"].includes(finalStatus) &&
-      this.#attemptReroute(taskId, error ?? report, { result: report })
+      this.#attemptReroute(taskId, error ?? report, { result: report, safeToReroute: params.turn.safeToReroute })
     ) {
       return;
     }
@@ -1760,7 +1823,7 @@ export class Orchestrator extends EventEmitter {
         note: "The executor delivered its final report; the task keeps its completed status.",
       });
     }
-    this.store.updateTask(taskId, {
+    const terminalPatch = {
       status: finalStatus,
       result: report,
       error,
@@ -1769,7 +1832,13 @@ export class Orchestrator extends EventEmitter {
       ...(params.executorSessionId
         ? { executorSessionId: params.executorSessionId }
         : {}),
-    });
+    };
+    if (this.executors.get(current.executor)?.recoveryEnabled === true && finalStatus === "completed") {
+      const receipt = params.recoveryEvidence;
+      if (!receipt || receipt.taskId !== taskId) throw new ControlPlaneError("checkpoint_identity_mismatch", "Missing executor checkpoint receipt", { safeToReroute: false });
+      this.store.commitExecutorCheckpoint(taskId, receipt.attemptId, receipt, { ...terminalPatch,
+        usage: evidence?.usage ?? null, usage_state: evidence?.state ?? "unknown", execution_outcome: params.turn.executionOutcome ?? "unknown" });
+    } else this.store.updateTask(taskId, terminalPatch);
     const completedTask = this.store.getTask(taskId);
     this.#updateCurrentExecutorHistory(taskId, {
       ended_at: completedTask.completedAt,
@@ -1777,7 +1846,8 @@ export class Orchestrator extends EventEmitter {
       thread_id: completedTask.threadId,
       turn_id: completedTask.turnId,
       attempts: Math.max(1, Number(params.turn.retries ?? 0) + 1),
-      usage: structuredClone(completedTask.usage ?? zeroUsage()),
+      usage: structuredClone(evidenceMode ? completedTask.usage : completedTask.usage ?? zeroUsage()),
+      ...(evidenceMode ? { usage_state: evidence.state } : {}),
     });
     this.store.audit("task.completed", {
       taskId,

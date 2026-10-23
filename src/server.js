@@ -12,6 +12,7 @@ import { TaskStore } from "./core/store.js";
 import { CodexExecutor } from "./executors/codex-executor.js";
 import { ClaudeCodeExecutor } from "./executors/claude-code-executor.js";
 import { OpenCodeExecutor } from "./executors/opencode-executor.js";
+import { DshExecutor } from "./executors/dsh-executor.js";
 import { KimiCodeExecutor } from "./executors/kimi-code-executor.js";
 import { ZCodeExecutor } from "./executors/zcode-executor.js";
 import { OpenAICompatibleExecutor } from "./executors/openai-compatible-executor.js";
@@ -36,6 +37,15 @@ import { RemoteRelayCredentials } from "./remote-relay/credentials.js";
 import { RemoteRelayWorker } from "./remote-relay/worker.js";
 
 export function buildExecutor(config, provider) {
+  if (provider === "dsh") {
+    if (config.executor?.dsh?.enabled !== true) {
+      throw new ControlPlaneError("executor_disabled", "DSH CLI is disabled; explicit opt-in is required");
+    }
+    const options = config.executor.dsh;
+    return new DshExecutor({ installationRoot: options.installationRoot,
+      clientContract: options.clientContract, timeoutMs: options.timeoutMs,
+      limits: options.limits, recovery: options.recovery, workspaceRoots: config.workspaceRoots });
+  }
   if (provider === "openai-compatible") {
     const options = config.executor.openaiCompat ?? {};
     return new OpenAICompatibleExecutor({
@@ -124,6 +134,7 @@ export function buildExecutors(config) {
     "zcode",
   ];
   const executors = new Map();
+  if (config.executor?.dsh?.enabled === true) providers.push("dsh");
   for (const provider of providers) {
     executors.set(provider, buildExecutor(config, provider));
   }
