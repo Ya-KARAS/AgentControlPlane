@@ -5,3 +5,6 @@ tests/contract-schema.test.mjs text eol=lf
 # Userscript release hashes and generated-file checks require stable LF bytes.
 userscript/**/*.js text eol=lf
 userscript/release-manifest.json text eol=lf
+
+# Protocol fixtures use exact NDJSON line mutations in negative tests.
+tests/fixtures/dsh/*.ndjson text eol=lf
