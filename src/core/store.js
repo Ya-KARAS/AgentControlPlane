@@ -14,6 +14,12 @@ function now() {
   return new Date().toISOString();
 }
 
+const checkpointError = (code) => new ControlPlaneError(code, "Executor checkpoint could not be confirmed", { safeToReroute: false });
+const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
+const checkpointResultHash = (task) => sha256(JSON.stringify(Object.fromEntries(
+  ["status", "result", "error", "usage", "usage_state", "executorSessionId", "execution_outcome"].map((key) => [key, task[key] ?? null]),
+)));
+
 function emptyState() {
   return {
     version: 1,
@@ -100,6 +106,10 @@ export class TaskStore {
     this.state = fs.existsSync(this.statePath)
       ? JSON.parse(fs.readFileSync(this.statePath, "utf8"))
       : emptyState();
+    this.persistedStateHash = fs.existsSync(this.statePath) ? sha256(fs.readFileSync(this.statePath)) : null;
+    this.checkpointLeasePath = path.join(stateDir, "executor-checkpoint.lock");
+    this.checkpointLeaseToken = null;
+    this.checkpointFaulted = false;
     this.#loadUsageEvents();
     this.#loadReconciliations();
     this.#restoreAuditChain();
@@ -249,9 +259,128 @@ export class TaskStore {
   }
 
   persist() {
-    const temporary = `${this.statePath}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(this.state, null, 2), "utf8");
-    fs.renameSync(temporary, this.statePath);
+    if (this.checkpointFaulted) throw checkpointError("checkpoint_store_faulted");
+    // Ordinary writers use the same exclusive file for the whole transaction.
+    // A pre-write exists check alone races with a checkpoint owner's acquisition.
+    const persistentLease = Boolean(this.checkpointLeaseToken);
+    if (!persistentLease) this.acquireExecutorLease();
+    try {
+      this.#requireExecutorLease();
+      const temporary = `${this.statePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+      const bytes = JSON.stringify(this.state, null, 2);
+      const fd = fs.openSync(temporary, "wx");
+      try { fs.writeFileSync(fd, bytes, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      fs.renameSync(temporary, this.statePath);
+      this.persistedStateHash = sha256(bytes);
+    } catch (error) {
+      this.checkpointFaulted = true;
+      throw checkpointError(["checkpoint_store_drift", "checkpoint_store_locked"].includes(error?.code) ? error.code : "checkpoint_persist_failed");
+    } finally {
+      if (!persistentLease && !this.checkpointFaulted) this.releaseExecutorLease();
+    }
+  }
+
+  acquireExecutorLease() {
+    if (this.checkpointFaulted) throw checkpointError("checkpoint_store_faulted");
+    if (this.checkpointLeaseToken) { this.#requireExecutorLease(); return; }
+    const token = JSON.stringify({ version: 1, pid: process.pid, nonce: crypto.randomUUID() });
+    let fd;
+    try { fd = fs.openSync(this.checkpointLeasePath, "wx"); }
+    catch { throw checkpointError("checkpoint_store_locked"); }
+    try { fs.writeFileSync(fd, token); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    this.checkpointLeaseToken = token;
+    const diskHash = fs.existsSync(this.statePath) ? sha256(fs.readFileSync(this.statePath)) : null;
+    if (diskHash !== this.persistedStateHash) {
+      this.releaseExecutorLease(); this.checkpointFaulted = true; throw checkpointError("checkpoint_store_drift");
+    }
+  }
+
+  releaseExecutorLease() {
+    if (!this.checkpointLeaseToken) return;
+    if (!fs.existsSync(this.checkpointLeasePath) || fs.readFileSync(this.checkpointLeasePath, "utf8") !== this.checkpointLeaseToken)
+      throw checkpointError("checkpoint_store_locked");
+    fs.unlinkSync(this.checkpointLeasePath); this.checkpointLeaseToken = null;
+  }
+
+  #requireExecutorLease() {
+    if (this.checkpointFaulted) throw checkpointError("checkpoint_store_faulted");
+    if (!this.checkpointLeaseToken || !fs.existsSync(this.checkpointLeasePath) ||
+        fs.readFileSync(this.checkpointLeasePath, "utf8") !== this.checkpointLeaseToken) throw checkpointError("checkpoint_store_locked");
+    if ((fs.existsSync(this.statePath) ? sha256(fs.readFileSync(this.statePath)) : null) !== this.persistedStateHash) {
+      this.checkpointFaulted = true; throw checkpointError("checkpoint_store_drift");
+    }
+  }
+
+  beginExecutorAttempt(taskId, binding, retentionMs) {
+    this.#requireExecutorLease();
+    const task = this.state.tasks[taskId];
+    if (task?.executor_checkpoint) throw checkpointError("checkpoint_attempt_exists");
+    const allowed = ["executor", "acpHandle", "turnId", "runtimeFingerprint", "profileProofHash", "canonicalWorkspace", "clientHomeReference", "model", "effort"];
+    if (!task || Object.keys(binding).some((key) => !allowed.includes(key)) || task.status !== "running" || binding.executor !== task.executor || binding.acpHandle !== task.threadId ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(binding.turnId) ||
+        !task.idempotency_key || !/^[a-f0-9]{64}$/.test(task.request_fingerprint) ||
+        !Number.isSafeInteger(retentionMs) || retentionMs < 1000 || retentionMs > 86400000 ||
+        ![binding.runtimeFingerprint, binding.profileProofHash].every((h) => /^[a-f0-9]{64}$/.test(h)) ||
+        ![binding.canonicalWorkspace, binding.clientHomeReference].every((p) => typeof p === "string" && path.isAbsolute(p)) ||
+        binding.canonicalWorkspace !== task.workspace || binding.model !== task.policy.model || binding.effort !== task.policy.effort)
+      throw checkpointError("checkpoint_identity_mismatch");
+    const previous = Object.values(this.state.tasks).map((t) => t.executor_checkpoint).filter((c) => c?.acpHandle === binding.acpHandle)
+      .sort((a, b) => b.sequence - a.sequence)[0];
+    if (previous) this.getAdoptableExecutorCheckpoint(binding.acpHandle, binding);
+    const sequence = Math.max(0, ...Object.values(this.state.tasks).map((t) => t.executor_checkpoint?.sequence ?? 0)) + 1;
+    const c = { version: 1, ...binding, sequence, taskId, logicalTaskId: task.logical_task_id, parentTaskId: task.parentTaskId,
+      idempotencyKey: task.idempotency_key, requestFingerprint: task.request_fingerprint,
+      attemptId: crypto.randomUUID(), phase: "intent", range: "unknown", nativeSessionId: null,
+      retainUntil: Date.now() + retentionMs, resultHash: null };
+    this.updateTask(taskId, { executor_checkpoint: c });
+    return structuredClone(c);
+  }
+
+  #checkpointAttempt(taskId, attemptId) {
+    this.#requireExecutorLease();
+    const task = this.state.tasks[taskId]; const c = task?.executor_checkpoint;
+    if (!c || c.attemptId !== attemptId || c.version !== 1 || c.taskId !== taskId) throw checkpointError("checkpoint_identity_mismatch");
+    return { task, c };
+  }
+
+  observeExecutorSession(taskId, attemptId, nativeSessionId) {
+    const { c } = this.#checkpointAttempt(taskId, attemptId);
+    if (!["intent", "session-observed"].includes(c.phase) || !/^[A-Za-z0-9_-]{1,128}$/.test(nativeSessionId) ||
+        c.nativeSessionId && c.nativeSessionId !== nativeSessionId) throw checkpointError("checkpoint_identity_mismatch");
+    this.updateTask(taskId, { executorSessionId: nativeSessionId, executor_checkpoint: { ...c, nativeSessionId, phase: "session-observed" } });
+  }
+
+  invalidateExecutorCheckpoint(taskId, attemptId) {
+    const { c } = this.#checkpointAttempt(taskId, attemptId);
+    this.updateTask(taskId, { executor_checkpoint: { ...c, phase: "unknown", range: "unknown", resultHash: null } });
+  }
+
+  commitExecutorCheckpoint(taskId, attemptId, evidence, patch) {
+    const { task, c } = this.#checkpointAttempt(taskId, attemptId);
+    if (c.phase !== "session-observed" || evidence.nativeSessionId !== c.nativeSessionId || evidence.range !== "empty" ||
+        evidence.toolVerified !== true || evidence.status !== "completed" || patch.status !== "completed" ||
+        patch.executorSessionId !== c.nativeSessionId || patch.execution_outcome !== "confirmed" || patch.executor_checkpoint)
+      throw checkpointError("checkpoint_not_adoptable");
+    const checkpoint = { ...c, phase: "terminal-confirmed", range: "empty", resultHash: checkpointResultHash({ ...task, ...patch }) };
+    return this.updateTask(taskId, { ...patch, executor_checkpoint: checkpoint });
+  }
+
+  getAdoptableExecutorCheckpoint(handle, binding) {
+    this.#requireExecutorLease();
+    const candidates = Object.values(this.state.tasks).filter((t) => t.executor_checkpoint?.acpHandle === handle);
+    if (candidates.some((t) => !Number.isSafeInteger(t.executor_checkpoint.sequence) || t.executor_checkpoint.sequence < 1))
+      throw checkpointError("checkpoint_not_adoptable");
+    const task = candidates.sort((a, b) => b.executor_checkpoint.sequence - a.executor_checkpoint.sequence)[0];
+    const c = task?.executor_checkpoint;
+    if (!c || c.version !== 1 || c.phase !== "terminal-confirmed" || c.range !== "empty" || !Number.isSafeInteger(c.retainUntil) || c.retainUntil <= Date.now() ||
+        c.taskId !== task.id || c.logicalTaskId !== task.logical_task_id || c.parentTaskId !== task.parentTaskId ||
+        c.acpHandle !== task.threadId || c.turnId !== task.turnId || c.canonicalWorkspace !== task.workspace ||
+        c.nativeSessionId !== task.executorSessionId || task.status !== "completed" ||
+        c.idempotencyKey !== task.idempotency_key || !c.idempotencyKey || c.requestFingerprint !== task.request_fingerprint ||
+        c.resultHash !== checkpointResultHash(task) || task.policy.model !== c.model || task.policy.effort !== c.effort ||
+        ["executor", "runtimeFingerprint", "profileProofHash", "canonicalWorkspace", "clientHomeReference", "model", "effort"].some((key) => c[key] !== binding[key]))
+      throw checkpointError("checkpoint_not_adoptable");
+    return structuredClone({ task, checkpoint: c });
   }
 
   audit(type, payload) {
@@ -584,7 +713,7 @@ export class TaskStore {
       "interrupted",
     ]);
     const removable = tasks
-      .filter((task) => terminal.has(task.status))
+      .filter((task) => terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()))
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     const removeCount = tasks.length - this.maxTasks + 1;
     if (removable.length < removeCount) {

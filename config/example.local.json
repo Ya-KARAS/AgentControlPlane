@@ -15,6 +15,12 @@
     "mcpSessionIdleMinutes": 30
   },
   "executor": {
+    "dsh": {
+      "enabled": false,
+      "installationRoot": "C:\\Users\\YOUR_USER\\AppData\\Local\\Programs\\DeepSeek Harness",
+      "clientContract": null,
+      "timeoutMs": 25000
+    },
     "openaiCompat": {
       "baseUrl": "http://127.0.0.1:10100/v1",
       "apiKey": null,
