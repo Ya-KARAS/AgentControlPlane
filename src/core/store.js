@@ -614,6 +614,14 @@ export class TaskStore {
       });
   }
 
+  listTaskTimings() {
+    return Object.values(this.state.tasks).map((task) => ({
+      model: task.policy?.model ?? task.model ?? null,
+      startedAt: task.startedAt ?? null,
+      completedAt: task.completedAt ?? null,
+    }));
+  }
+
   resolveTaskId(prefixOrId) {
     const value = String(prefixOrId ?? "").trim();
     if (!value) return null;

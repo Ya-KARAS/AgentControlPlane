@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { asErrorPayload } from "../core/errors.js";
+import { estimateCost, latencyStats } from "../core/cost-latency.js";
 import { publicModels } from "../core/profiles.js";
 import { readPackageVersion } from "../core/config.js";
 import { usageDimensions, reconcileUsage } from "../core/usage-dimensions.js";
@@ -586,6 +587,67 @@ function buildToolSpecs({ orchestrator, store, config }) {
           { csv: usageEventsToCsv(events) },
           `Exported ${events.length} usage events.`,
         );
+      },
+    },
+    {
+      name: "estimate_cost",
+      title: "Estimate model cost from the published formula",
+      description:
+        "Return the cost formula and the token-estimate and catalog-price inputs used for one model. Missing prices stay unknown. This does not select or switch a model.",
+      inputSchema: {
+        model: z.string().min(1),
+        profile: z.enum(["economy", "balanced", "deep"]).default("balanced"),
+        executor: z.string().default("auto"),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
+      async handler({ model, profile, executor }) {
+        const catalog = orchestrator.getModels(executor);
+        const entry = catalog.find((item) => item.model === model || item.id === model) ?? null;
+        const estimate = estimateCost(
+          { profile },
+          entry
+            ? { model: entry.model ?? entry.id ?? model, pricing: entry.pricing ?? null }
+            : { model, pricing: null },
+          config,
+        );
+        return result(
+          { estimate },
+          estimate.range
+            ? `Estimated ${estimate.range.expected_microusd} micro-USD for ${model}. This does not select a model.`
+            : `No catalog price for ${model}. Returned the formula with unknown pricing. This does not select a model.`,
+        );
+      },
+    },
+    {
+      name: "latency_stats",
+      title: "Read recorded task latency for one model",
+      description:
+        "Return count, p50, and p95 from recorded task durations for one model and a time window. This does not select or switch a model.",
+      inputSchema: {
+        model: z.string().min(1),
+        window: z.string().default("7d"),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
+      async handler({ model, window }) {
+        try {
+          const latency = latencyStats(store.listTaskTimings(), model, window);
+          return result(
+            { latency },
+            `Returned latency for ${latency.count} recorded tasks of ${model}. This does not select a model.`,
+          );
+        } catch (error) {
+          return failure(error);
+        }
       },
     },
     {

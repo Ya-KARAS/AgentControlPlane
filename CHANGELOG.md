@@ -4,6 +4,12 @@
 
 ### Added
 
+- `estimate_cost` returns the cost formula together with the token estimate
+  and catalog price inputs it uses. A missing catalog price stays unknown.
+  The call does not select a model.
+- `latency_stats` returns count, p50, and p95 milliseconds from recorded
+  task durations for one model and a time window. The call does not select
+  a model.
 - `handoff_project` queues a terminal task's compact evidence onto another
   executor in the same logical lineage. Project threads are stored per
   executor, so a handoff never resumes a foreign thread. The default resumes

@@ -79,7 +79,10 @@ Contracts:
 
 ## Phase 4 — cost-aware model picker
 
-Interface only for now. The picker presents candidates with facts:
+`estimate_cost` and `latency_stats` are read-only facts. The picker UI is
+not built. Neither call selects or switches a model.
+
+The picker presents candidates with facts:
 
 ```text
 Task: Refactor authentication

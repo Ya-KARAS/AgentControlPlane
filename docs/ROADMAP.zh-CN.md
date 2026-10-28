@@ -71,7 +71,10 @@ Phase 2-4 的接口形状，让后续工作接在稳定契约上。Phase 1 交�
 
 ## Phase 4 —— 成本感知的模型选择器
 
-当前只定接口。选择器用事实展示候选：
+`estimate_cost` 和 `latency_stats` 是只读事实。选择器界面尚未实现。
+两者都不会选择或切换模型。
+
+选择器用事实展示候选：
 
 ```text
 Task: Refactor authentication
