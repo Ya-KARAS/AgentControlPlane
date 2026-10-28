@@ -43,6 +43,97 @@ test("test, build, implementation, and validation evidence never reroute", () =>
   );
 });
 
+test("passed or not_run tests do not mask quota or rate-limit failures", () => {
+  const benignTests = [
+    { command: "unit", status: "passed", detail: "3 passed" },
+    { command: "live", status: "not_run", detail: "Not executed" },
+    "npm test passed",
+    "not_run",
+  ];
+  assert.equal(
+    classifyExecutorFailure(
+      { status: 402, code: "insufficient_balance", message: "quota exhausted" },
+      {
+        result: {
+          status: "failed",
+          summary: "Stopped before the task could finish",
+          tests: benignTests,
+          blockers: [],
+        },
+      },
+    ),
+    "quota_exhausted",
+  );
+  assert.equal(
+    classifyExecutorFailure(
+      { status: 429, message: "rate limit exceeded" },
+      {
+        result: {
+          status: "blocked",
+          summary: "Stopped before the task could finish",
+          tests: [
+            { command: "unit", status: "passed" },
+            { command: "live", status: "not_run" },
+          ],
+        },
+      },
+    ),
+    "rate_limited",
+  );
+  assert.equal(
+    classifyExecutorFailure(
+      { message: "ordinary coding failure" },
+      { result: { tests: [{ command: "unit", status: "passed" }] } },
+    ),
+    "task_failure",
+  );
+});
+
+test("failed, error, or blocked tests stay task failures despite a quota hint", () => {
+  for (const status of ["failed", "error", "blocked"]) {
+    assert.equal(
+      classifyExecutorFailure(
+        { status: 402, message: "quota exhausted" },
+        {
+          result: {
+            status: "failed",
+            summary: "quota exhausted",
+            tests: [{ command: "unit", status, detail: "1 failed" }],
+          },
+        },
+      ),
+      "task_failure",
+    );
+  }
+  assert.equal(
+    classifyExecutorFailure(
+      { status: 429, message: "rate limit exceeded" },
+      {
+        result: {
+          tests: [
+            { command: "unit", status: "passed" },
+            { command: "integration", status: "failed" },
+            { command: "live", status: "not_run", detail: "Previous: 4 failed" },
+          ],
+        },
+      },
+    ),
+    "task_failure",
+  );
+  assert.equal(
+    classifyExecutorFailure(
+      { status: 429, message: "rate limit exceeded" },
+      {
+        result: {
+          summary: "validation failed",
+          tests: [{ command: "unit", status: "passed" }],
+        },
+      },
+    ),
+    "task_failure",
+  );
+});
+
 test("reroute config is disabled by default and validates its guardrails", () => {
   const defaults = resolveRerouteConfig();
   assert.equal(defaults.enabled, false);

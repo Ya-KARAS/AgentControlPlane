@@ -34,21 +34,50 @@ function compactFailure(error, context) {
     .join(" ");
 }
 
+const FAILURE_TEST_STATUSES = new Set(["failed", "error", "blocked"]);
+
+function testEvidenceStatus(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+  if (typeof entry.status !== "string") return null;
+  return entry.status.trim().toLowerCase();
+}
+
+// Passed and not_run evidence is not a task failure. Only a failed, error, or
+// blocked test, or explicit task-failure text, may mask an infrastructure reroute.
+function isBenignTestEvidence(entry) {
+  const status = testEvidenceStatus(entry);
+  if (status === "passed" || status === "not_run") return true;
+  if (typeof entry !== "string") return false;
+  const text = entry.toLowerCase();
+  return /\b(passed|not_run)\b/.test(text) && !/\b(fail|error|block)/.test(text);
+}
+
+function isFailedTestEvidence(entry) {
+  if (isBenignTestEvidence(entry)) return false;
+  const status = testEvidenceStatus(entry);
+  if (status && FAILURE_TEST_STATUSES.has(status)) return true;
+  return (
+    typeof entry === "string" && /\b(fail|error|block)/.test(entry.toLowerCase())
+  );
+}
+
 function hasTaskFailureEvidence(context = {}) {
   const result = context.result ?? context;
   const tests = Array.isArray(result?.tests) ? result.tests : [];
   const blockers = Array.isArray(result?.blockers) ? result.blockers : [];
-  const text = [result?.summary, ...tests, ...blockers]
+  if (tests.some((entry) => isFailedTestEvidence(entry))) return true;
+  const text = [
+    result?.summary,
+    ...tests.filter((entry) => !isBenignTestEvidence(entry)),
+    ...blockers,
+  ]
     .map((value) =>
       typeof value === "string" ? value : JSON.stringify(value ?? ""),
     )
     .join(" ")
     .toLowerCase();
-  return (
-    tests.length > 0 ||
-    /\b(test|build|implementation|validation)\b.{0,40}\b(fail|error|block)/.test(
-      text,
-    )
+  return /\b(test|build|implementation|validation)\b.{0,40}\b(fail|error|block)/.test(
+    text,
   );
 }
 

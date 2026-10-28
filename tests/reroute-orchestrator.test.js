@@ -7,6 +7,30 @@ import test from "node:test";
 import { Orchestrator } from "../src/core/orchestrator.js";
 import { TaskStore } from "../src/core/store.js";
 
+const REPORTED_INFRASTRUCTURE_FAILURES = {
+  "quota-with-benign-tests": {
+    error: { status: 402, code: "insufficient_balance", message: "quota exhausted" },
+    summary: "Stopped before the task could finish",
+    tests: [
+      { command: "unit", status: "passed", detail: "3 passed" },
+      { command: "live", status: "not_run", detail: "Not executed" },
+    ],
+  },
+  "rate-limit-with-benign-tests": {
+    error: { status: 429, code: "rate_limit", message: "rate limit exceeded" },
+    summary: "Stopped before the task could finish",
+    tests: [
+      { command: "unit", status: "passed", detail: "3 passed" },
+      { command: "live", status: "not_run", detail: "Not executed" },
+    ],
+  },
+  "quota-with-failed-tests": {
+    error: { status: 402, code: "insufficient_balance", message: "quota exhausted" },
+    summary: "quota exhausted",
+    tests: [{ command: "unit", status: "failed", detail: "1 failed" }],
+  },
+};
+
 class RerouteExecutor extends EventEmitter {
   constructor(id, behavior = "success") {
     super();
@@ -52,6 +76,38 @@ class RerouteExecutor extends EventEmitter {
       error.status = 402;
       error.code = "insufficient_balance";
       throw error;
+    }
+    const reported = REPORTED_INFRASTRUCTURE_FAILURES[this.behavior];
+    if (reported) {
+      const turnId = `${this.id}-turn-${this.turnStarts.length}`;
+      queueMicrotask(() => {
+        this.emit("notification", {
+          method: "turn/completed",
+          params: {
+            threadId: params.threadId,
+            turn: {
+              id: turnId,
+              status: "failed",
+              error: reported.error,
+              items: [
+                {
+                  type: "agentMessage",
+                  phase: "final_answer",
+                  text: JSON.stringify({
+                    status: "failed",
+                    summary: reported.summary,
+                    changed_files: [],
+                    tests: reported.tests,
+                    blockers: [],
+                    next_action: null,
+                  }),
+                },
+              ],
+            },
+          },
+        });
+      });
+      return { turn: { id: turnId } };
     }
     const turnId = `${this.id}-turn-${this.turnStarts.length}`;
     queueMicrotask(() => {
@@ -212,6 +268,96 @@ test("implementation failures never switch executors", async () => {
   const failed = store.getTask(task.id);
   assert.equal(failed.executor, "a");
   assert.equal(failed.executor_history.length, 1);
+});
+
+for (const scenario of [
+  {
+    name: "quota exhaustion",
+    behavior: "quota-with-benign-tests",
+    reason: "quota_exhausted",
+  },
+  {
+    name: "rate limiting",
+    behavior: "rate-limit-with-benign-tests",
+    reason: "rate_limited",
+  },
+]) {
+  test(`${scenario.name} with only passed or not_run tests reroutes when enabled`, async (t) => {
+    const { workspace, store, executors, orchestrator } = await setup({
+      a: scenario.behavior,
+      b: "success",
+    });
+    t.after(() => {
+      fs.rmSync(workspace, { recursive: true, force: true });
+      fs.rmSync(store.stateDir, { recursive: true, force: true });
+    });
+    const task = orchestrator.dispatch({
+      workspace,
+      executor: "a",
+      objective: "Continue after an infrastructure failure",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(task.id)?.status === "completed");
+    const completed = store.getTask(task.id, true);
+    assert.equal(completed.executor, "b");
+    assert.equal(completed.reroute_reason, scenario.reason);
+    assert.equal(completed.logical_task_id, task.id);
+    assert.deepEqual(
+      completed.executor_history.map((entry) => entry.executor),
+      ["a", "b"],
+    );
+    assert.ok(completed.events.some((entry) => entry.type === "task.rerouted"));
+    assert.equal(executors.get("b").turnStarts.length, 1);
+  });
+}
+
+test("quota hint with a failed test does not reroute", async (t) => {
+  const { workspace, store, executors, orchestrator } = await setup({
+    a: "quota-with-failed-tests",
+    b: "success",
+  });
+  t.after(() => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(store.stateDir, { recursive: true, force: true });
+  });
+  const task = orchestrator.dispatch({
+    workspace,
+    executor: "a",
+    objective: "Keep a real test failure on the original executor",
+    profile: "economy",
+  });
+  await waitFor(() => store.getTask(task.id)?.status === "failed");
+  const failed = store.getTask(task.id, true);
+  assert.equal(failed.executor, "a");
+  assert.equal(failed.executor_history.length, 1);
+  assert.equal(failed.reroute_reason ?? null, null);
+  assert.equal(executors.get("b").turnStarts.length, 0);
+  assert.equal(
+    failed.events.some((entry) => entry.type === "task.rerouted"),
+    false,
+  );
+});
+
+test("benign tests with quota exhaustion do not reroute while reroute is disabled", async (t) => {
+  const { workspace, store, executors, orchestrator } = await setup(
+    { a: "quota-with-benign-tests", b: "success" },
+    { enabled: false },
+  );
+  t.after(() => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(store.stateDir, { recursive: true, force: true });
+  });
+  const task = orchestrator.dispatch({
+    workspace,
+    executor: "a",
+    objective: "Stay put while reroute is disabled",
+    profile: "economy",
+  });
+  await waitFor(() => store.getTask(task.id)?.status === "failed");
+  const failed = store.getTask(task.id);
+  assert.equal(failed.executor, "a");
+  assert.equal(failed.executor_history.length, 1);
+  assert.equal(executors.get("b").turnStarts.length, 0);
 });
 
 test("continue_project can start a compatible executor on the same lineage", async () => {
