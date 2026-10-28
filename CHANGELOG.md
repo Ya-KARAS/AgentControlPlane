@@ -4,17 +4,6 @@
 
 ### Added
 
-- `handoff_project` queues a terminal task's compact evidence onto another
-  executor in the same logical lineage. Project threads are stored per
-  executor, so a handoff never resumes a foreign thread. The default resumes
-  the target executor's saved project thread. `fresh_session: true` starts an
-  independent session and leaves that saved thread in place.
-  `continue_project` without `executor` still keeps the original session. The
-  handoff package bounds every text field and keeps the prompt within
-  `limits.maxBriefCharacters`. An idempotency key belongs to one operation.
-  Infrastructure reroute of a handoff starts a fresh fallback session. A
-  project relink drops saved threads from the previous location. CI runs the
-  suite on Ubuntu and Windows.
 - Web Bridge 0.8.1 records result delivery by conversation and task id. A
   terminal `<ACP_RESULT>` is inserted only once, survives DeepSeek/ChatGPT DOM
   rerenders without duplication, and never overwrites user-authored composer
@@ -100,13 +89,29 @@
 
 ## v0.9.3 — 2026-10-28
 
+### Added
+
+- `handoff_project` queues a terminal task's compact evidence onto another
+  executor in the same logical lineage. Project threads are stored per
+  executor, so a handoff never resumes a foreign thread. The default resumes
+  the target executor's saved project thread. `fresh_session: true` starts an
+  independent session and leaves that saved thread in place.
+  `continue_project` without `executor` still keeps the original session. The
+  handoff package bounds every text field and keeps the prompt within
+  `limits.maxBriefCharacters`. An idempotency key belongs to one operation.
+  Infrastructure reroute of a handoff starts a fresh fallback session. A
+  project relink drops saved threads from the previous location. CI runs the
+  suite on Ubuntu and Windows.
+
 ### Fixed
 
-- Automatic reroute no longer treats unproven or failed test evidence as
-  benign. Only an explicit `passed` result, or an explicit `not_run` result
-  whose detail has no failure wording and no nonzero exit code, can leave a
-  quota or rate-limit error eligible to reroute. Plural summaries such as
-  `Tests failed`, negated pass strings, a missing status, and `exit status`
+- Automatic reroute classification now matches the classifier. An object is
+  benign only when its status is `passed` or `not_run` and its detail has no
+  failure wording. A string is benign only when it contains `passed` or
+  `not_run` and has no failure wording. A `passed` status whose detail says
+  `Tests failed; exit status 1` stays `task_failure`. A bare string such as
+  `npm test passed` is treated as a pass and can reroute. Negated pass
+  wording, a missing status, and a plural summary such as `Tests failed`
   stay `task_failure`. The feature remains off by default.
 
 ### Changed
