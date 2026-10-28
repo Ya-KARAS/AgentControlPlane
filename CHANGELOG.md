@@ -98,6 +98,26 @@
   conversation scope to match while holding a browser-wide Web Lock. Starting
   a new planning request invalidates older tabs before the web AI replies.
 
+## v0.9.3 — 2026-10-28
+
+### Fixed
+
+- Automatic reroute no longer treats unproven or failed test evidence as
+  benign. Only an explicit `passed` result, or an explicit `not_run` result
+  whose detail has no failure wording and no nonzero exit code, can leave a
+  quota or rate-limit error eligible to reroute. Plural summaries such as
+  `Tests failed`, negated pass strings, a missing status, and `exit status`
+  stay `task_failure`. The feature remains off by default.
+
+### Changed
+
+- CI reports an aggregate status check named `test`. It fails when any
+  `test (ubuntu-latest)` or `test (windows-latest)` matrix job fails or is
+  cancelled.
+- README, README.zh-CN, and the release checklist describe the fixed
+  classifier. Automatic reroute stays experimental and outside the supported
+  acceptance gate.
+
 ## v0.9.0 — 2026-08-21
 
 ### Added
