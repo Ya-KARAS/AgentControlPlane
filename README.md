@@ -20,7 +20,7 @@ changed files, test evidence, usage, and continuation state.
 
 </div>
 
-> Local-first, single-user public test release: v0.9.2. Not a certified release.
+> Local-first, single-user public test release: v0.9.3. Not a certified release.
 
 ## Feedback and registration
 
@@ -129,11 +129,11 @@ Cancellation in JSON mode also exits `1`. `--check --json` emits a passive
 preflight object with `mode: "check"`, `status: "ready"` or `"blocked"`, and
 dependency checks; its task fields remain empty and it starts no task.
 
-The v0.9.2 release asset contract is a source ZIP, a load-unpacked browser
+The v0.9.3 release asset contract is a source ZIP, a load-unpacked browser
 companion ZIP, and `SHA256SUMS`; standalone Web Bridge 0.9.6 files are optional.
 The source archive retains the `-windows.zip` filename for compatibility, not as
-a claim of Windows validation. See the [v0.9.2 release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.2)
-and [release notes with upgrade and rollback steps](docs/releases/v0.9.2.md).
+a claim of Windows validation. See the [v0.9.3 release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.3)
+and [release notes with upgrade and rollback steps](docs/releases/v0.9.3.md).
 No new demo video is included or promised; the v0.9.0 video is historical evidence
 only and does not validate this release.
 
