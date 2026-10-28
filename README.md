@@ -162,12 +162,15 @@ web AI <- result/evidence <- persisted task  <- local executor
   optional bearer authentication, and append-only audit records constrain the
   control-plane boundary.
 
-Current candidate limitation: automatic reroute has an unfixed error-classifier
-defect. Nonempty test evidence, including `passed` or `not_run` entries, can
-mask an infrastructure failure and prevent rerouting. The shipped default is
-off; existing configurations that explicitly set `executor.reroute.enabled=true`
-are not changed. The [opt-in configuration](docs/PROTOCOL.md) remains documented
-for evaluation, not as a supported release feature or a completed acceptance gate.
+Automatic reroute remains experimental and outside this candidate's supported
+and validated feature set. The classifier defect that let nonempty `passed` or
+`not_run` test evidence mask an infrastructure failure is fixed. Only evidence
+proven benign, an explicit `passed` result or an explicit `not_run` result whose
+detail has no failure wording, leaves a quota or rate-limit failure eligible to
+reroute. The shipped default stays off; existing configurations that explicitly
+set `executor.reroute.enabled=true` are not changed. The
+[opt-in configuration](docs/PROTOCOL.md) remains documented for evaluation, not
+as a supported release feature or a completed acceptance gate.
 
 ## Connect a web AI
 

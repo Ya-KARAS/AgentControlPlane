@@ -158,14 +158,20 @@ function legacyContinuationFingerprint(taskId, request, workspace, brief, freshS
   return createHash("sha256").update(`${taskId}:${dispatch}${fresh}`).digest("hex");
 }
 
+function continuationEvidenceStatus(entry) {
+  const status = typeof entry?.status === "string" ? entry.status.trim().toLowerCase() : "";
+  if (status === "passed") return "passed";
+  // skipped used to be normalized to not_run before it reached this package.
+  if (status === "not_run" || status === "skipped") return "not_run";
+  return "failed";
+}
+
 function continuationTestEvidence(tests = []) {
   return (Array.isArray(tests) ? tests : []).map((entry) => {
     if (entry && typeof entry === "object") {
       return {
         command: String(entry.command ?? entry.name ?? "unknown"),
-        status: entry.status === "not_run"
-          ? "not_run"
-          : entry.status === "passed" ? "passed" : "failed",
+        status: continuationEvidenceStatus(entry),
       };
     }
     const command = String(entry);
@@ -245,9 +251,7 @@ function handoffTestEvidence(tests = []) {
       const output = entry.output ?? entry.detail ?? "";
       return {
         command: boundedText(entry.command ?? entry.name ?? "unknown"),
-        status: entry.status === "not_run"
-          ? "not_run"
-          : entry.status === "passed" ? "passed" : "failed",
+        status: continuationEvidenceStatus(entry),
         ...(output ? { output: boundedText(output) } : {}),
       };
     }

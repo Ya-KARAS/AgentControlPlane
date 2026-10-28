@@ -158,14 +158,14 @@ function normalizeTestEntry(entry) {
   // String evidence must survive so "npm test failed" is not rewritten as not_run.
   if (typeof entry === "string") return entry;
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-    return { command: "", status: "not_run", detail: null };
+    return { command: "", status: "unknown", detail: null };
   }
   const rawStatus = typeof entry.status === "string" ? entry.status.trim().toLowerCase() : "";
   return {
     command: String(entry.command ?? ""),
-    // Missing status is unrun. error, blocked, skipped, and other explicit
-    // statuses stay themselves so they cannot be mistaken for not_run.
-    status: rawStatus || "not_run",
+    // A missing status is not proof the test was skipped. error, blocked,
+    // skipped, and other explicit statuses stay themselves.
+    status: rawStatus || "unknown",
     detail: entry.detail == null ? null : String(entry.detail),
   };
 }

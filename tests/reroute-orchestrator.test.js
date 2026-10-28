@@ -361,6 +361,31 @@ for (const evidence of [
     name: "not_run detail that names a failure",
     tests: [{ command: "live", status: "not_run", detail: "Previous: 4 failed" }],
   },
+  {
+    name: "an exit-code string",
+    tests: ["npm test exited with code 1"],
+  },
+  {
+    name: "a not-ok string",
+    tests: ["not ok 1 - expected 200, got 500"],
+  },
+  {
+    name: "a cross-mark summary string",
+    tests: ["✖ 3 of 10 tests"],
+  },
+  {
+    name: "a bare npm test string",
+    tests: ["npm test"],
+  },
+  {
+    name: "a test object with no status",
+    tests: [{ command: "npm test", detail: "exit code 1" }],
+    stored: [{ command: "npm test", status: "unknown", detail: "exit code 1" }],
+  },
+  {
+    name: "a passed status whose detail has a nonzero exit code",
+    tests: [{ command: "unit", status: "passed", detail: "exit code 1" }],
+  },
 ]) {
   for (const infra of [
     {
@@ -397,7 +422,7 @@ for (const evidence of [
       assert.equal(failed.executor, "a");
       assert.equal(failed.executor_history.length, 1);
       assert.equal(failed.reroute_reason ?? null, null);
-      assert.deepEqual(failed.result.tests, evidence.tests);
+      assert.deepEqual(failed.result.tests, evidence.stored ?? evidence.tests);
       assert.equal(executors.get("b").turnStarts.length, 0);
       assert.equal(failed.events.some((entry) => entry.type === "task.rerouted"), false);
     });
@@ -613,9 +638,15 @@ for (const scenario of [
     continued: "failed",
   },
   {
-    name: "preserves normalization of a missing test status",
-    stored: "not_run",
+    name: "keeps a skipped test as not_run in the continuation package",
+    status: "skipped",
+    stored: "skipped",
     continued: "not_run",
+  },
+  {
+    name: "records a missing test status as unknown",
+    stored: "unknown",
+    continued: "failed",
   },
 ]) {
   test(`cross-executor continuation ${scenario.name}`, async (t) => {
@@ -667,3 +698,34 @@ for (const scenario of [
     assert.deepEqual(store.getTask(root.id).result.tests, parentTests);
   });
 }
+
+test("handoff labels a skipped test as not_run", async (t) => {
+  const { workspace, store, orchestrator, executors } = await setup({
+    a: "success",
+    b: "success",
+  });
+  t.after(() => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(store.stateDir, { recursive: true, force: true });
+  });
+  executors.get("a").resultTests = [
+    { command: "live", status: "skipped", detail: "Not executed" },
+  ];
+  const root = orchestrator.dispatch({
+    workspace,
+    executor: "a",
+    objective: "Record a skipped test",
+    profile: "economy",
+  });
+  await waitFor(() => store.getTask(root.id)?.status === "completed");
+  assert.equal(store.getTask(root.id).result.tests[0].status, "skipped");
+  const child = orchestrator.handoffTask(root.id, {
+    executor: "b",
+    objective: "Review the skipped test",
+    profile: "economy",
+  });
+  await waitFor(() => store.getTask(child.id)?.status === "completed");
+  assert.deepEqual(store.getTask(child.id).continuation.test_evidence, [
+    { command: "live", status: "not_run", output: "Not executed" },
+  ]);
+});

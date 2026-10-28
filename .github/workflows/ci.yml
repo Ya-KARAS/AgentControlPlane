@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
+  test-matrix:
+    name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -21,3 +22,19 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
+
+  # Branch protection requires a check named exactly "test". The matrix
+  # checks keep the names "test (ubuntu-latest)" and "test (windows-latest)".
+  test:
+    name: test
+    needs: test-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every matrix result
+        run: |
+          result="${{ needs.test-matrix.result }}"
+          echo "matrix result: $result"
+          if [ "$result" != "success" ]; then
+            exit 1
+          fi

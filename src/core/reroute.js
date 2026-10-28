@@ -42,13 +42,17 @@ function testEvidenceStatus(entry) {
 
 function withoutZeroFailureCounts(text) {
   return String(text ?? "").toLowerCase().replace(
-    /\b0\s+(?:failed|failures?|errors?|blocked)\b|\b(?:failed|failures?|errors?|blocked)\s*[:=]\s*0\b|#\s*(?:fail(?:ed|ures?)?|errors?)\s+0\b/g,
+    /\b0\s+(?:failed|failing|failures?|errors?|blocked)\b|\b(?:failed|failing|failures?|errors?|blocked)\s*[:=]\s*0\b|[#\u2139]\uFE0F?\s*(?:fail(?:ed|ing|ures?)?|errors?)\s+0\b|\bno\s+(?:errors?|failures?|failing)\b/g,
     " ",
   );
 }
 
 function hasFailureKeyword(text) {
-  return /\b(?:fail|error|block)/.test(withoutZeroFailureCounts(text));
+  const cleaned = withoutZeroFailureCounts(text);
+  return /\b(?:fail|error|block)/.test(cleaned)
+    || /\bnot\s+ok\b/.test(cleaned)
+    || /[✖✗×]/.test(cleaned)
+    || /\bexit(?:ed)?(?:\s+with)?\s+code\s+[1-9]\d*\b/.test(cleaned);
 }
 
 function testDetail(entry) {
@@ -61,9 +65,9 @@ function isExplicitPassOrNotRun(status) {
   return status === "passed" || status === "not_run";
 }
 
-// Only explicit passed or not_run evidence is harmless, and only when its
-// detail does not describe a real failure. A zero count such as "0 failed"
-// is not a failure. error, blocked, skipped, and other statuses are not.
+// A test entry is benign only when it is explicitly passed, or explicitly
+// not_run, and its detail has no failure wording or nonzero exit code.
+// Every other entry is task-failure evidence, including a bare "npm test".
 function isBenignTestEvidence(entry) {
   const status = testEvidenceStatus(entry);
   if (status) {
@@ -73,28 +77,18 @@ function isBenignTestEvidence(entry) {
   return /\b(?:passed|not_run)\b/.test(entry.toLowerCase()) && !hasFailureKeyword(entry);
 }
 
-function isFailedTestEvidence(entry) {
-  if (isBenignTestEvidence(entry)) return false;
-  const status = testEvidenceStatus(entry);
-  if (status && !isExplicitPassOrNotRun(status)) return true;
-  return hasFailureKeyword(typeof entry === "string" ? entry : testDetail(entry));
-}
-
 function hasTaskFailureEvidence(context = {}) {
   const result = context.result ?? context;
   const tests = Array.isArray(result?.tests) ? result.tests : [];
   const blockers = Array.isArray(result?.blockers) ? result.blockers : [];
-  if (tests.some((entry) => isFailedTestEvidence(entry))) return true;
-  const text = [
-    result?.summary,
-    ...tests.filter((entry) => !isBenignTestEvidence(entry)),
-    ...blockers,
-  ]
-    .map((value) =>
-      typeof value === "string" ? value : JSON.stringify(value ?? ""),
-    )
-    .join(" ")
-    .toLowerCase();
+  if (tests.some((entry) => !isBenignTestEvidence(entry))) return true;
+  const text = withoutZeroFailureCounts(
+    [result?.summary, ...blockers]
+      .map((value) =>
+        typeof value === "string" ? value : JSON.stringify(value ?? ""),
+      )
+      .join(" "),
+  );
   return /\b(test|build|implementation|validation)\b.{0,40}\b(fail|error|block)/.test(
     text,
   );

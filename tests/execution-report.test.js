@@ -174,7 +174,7 @@ test("preserves failure statuses and string test evidence", () => {
     { command: "live", status: "skipped", detail: "Not executed" },
     { command: "unit", status: "passed", detail: "3 passed" },
     { command: "live", status: "not_run", detail: "Previous: 4 failed" },
-    { command: "missing-status", status: "not_run", detail: "Not executed" },
+    { command: "missing-status", status: "unknown", detail: "Not executed" },
     "npm test failed",
     "npm test passed (0 failed)",
   ]);

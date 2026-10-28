@@ -6,11 +6,13 @@ Version 0.9.2 is a public test release, not a certified release.
 ## Current candidate acceptance boundary
 
 Automatic reroute is excluded from this candidate's supported and validated
-feature set. Its error-classifier defect is not fixed: nonempty test evidence,
-including `passed` or `not_run` entries, can mask infrastructure failures and
-prevent rerouting. The shipped configuration defaults it off; existing opt-in
-configurations are not changed. Keep the opt-in protocol instructions available
-for evaluation without presenting the feature as supported.
+feature set. The classifier defect is fixed: nonempty `passed` or `not_run`
+test evidence no longer masks an infrastructure failure. Only evidence proven
+benign, an explicit `passed` result or an explicit `not_run` result whose detail
+has no failure wording, leaves quota or rate-limit failures eligible to reroute.
+The shipped configuration still defaults it off; existing opt-in configurations
+are not changed. Keep the opt-in protocol instructions available for evaluation
+without presenting the feature as supported.
 
 Passing unit tests, static checks, or simulated upgrade checks does not establish
 native Windows installation/upgrade, real browser dispatch, real-provider

@@ -165,6 +165,86 @@ test("normalized failure evidence still blocks quota and rate-limit reroute", ()
   }
 });
 
+test("unproven test entries stay task failures for quota and rate limits", () => {
+  const cases = [
+    ["npm test exited with code 1"],
+    ["not ok 1 - expected 200, got 500"],
+    ["✖ 3 of 10 tests"],
+    ["npm test"],
+    [{ command: "npm test", detail: "exit code 1" }],
+    [{ command: "unit", status: "passed", detail: "exit code 1" }],
+    [{ command: "unit", status: "passed", detail: "not ok 1" }],
+    [{ command: "unit", status: "passed", detail: "✖ 1 of 2 tests" }],
+  ];
+  for (const tests of cases) {
+    const result = normalizeExecutionReportObject({
+      status: "failed",
+      summary: "Stopped before the task could finish",
+      changed_files: [],
+      tests,
+      blockers: [],
+      next_action: null,
+    });
+    assert.equal(
+      classifyExecutorFailure({ status: 402, message: "quota exhausted" }, { result }),
+      "task_failure",
+      JSON.stringify(result),
+    );
+    assert.equal(
+      classifyExecutorFailure({ status: 429, message: "rate limit exceeded" }, { result }),
+      "task_failure",
+      JSON.stringify(result),
+    );
+  }
+  const missing = resultFrom([{ command: "npm test", detail: "exit code 1" }]);
+  assert.equal(missing.tests[0].status, "unknown");
+});
+
+function resultFrom(tests, summary = "Stopped before the task could finish") {
+  return normalizeExecutionReportObject({
+    status: "failed",
+    summary,
+    changed_files: [],
+    tests,
+    blockers: [],
+    next_action: null,
+  });
+}
+
+test("zero failure counts in details and summaries stay benign", () => {
+  const infoFail = "\u2139 fail 0";
+  for (const tests of [
+    ["npm test passed (0 failed)"],
+    ["npm test passed (0 failing)"],
+    [{ command: "unit", status: "passed", detail: infoFail }],
+    [{ command: "unit", status: "passed", detail: "no errors" }],
+    [{ command: "unit", status: "not_run", detail: "Previous: 0 failed" }],
+  ]) {
+    const result = resultFrom(tests);
+    assert.equal(
+      classifyExecutorFailure({ status: 402, message: "quota exhausted" }, { result }),
+      "quota_exhausted",
+      JSON.stringify(result),
+    );
+  }
+  for (const summary of [
+    "npm test passed (0 failed)",
+    `node --test\n${infoFail}`,
+    "mocha: 0 failing",
+    "test reported no errors",
+  ]) {
+    const result = resultFrom(
+      [{ command: "unit", status: "passed", detail: "3 passed" }],
+      summary,
+    );
+    assert.equal(
+      classifyExecutorFailure({ status: 429, message: "rate limit exceeded" }, { result }),
+      "rate_limited",
+      summary,
+    );
+  }
+});
+
 test("a zero failure count stays benign after normalization", () => {
   for (const tests of [
     ["npm test passed (0 failed)"],
