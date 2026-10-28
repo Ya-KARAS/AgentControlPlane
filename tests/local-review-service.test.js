@@ -172,6 +172,9 @@ test("natural-language workspace paths and route choices stay inside local capab
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const workspace = path.join(root, "project-a");
   fs.mkdirSync(workspace);
+  // GitHub's Windows runner reports os.tmpdir() as an 8.3 short name
+  // (RUNNER~1). Selection returns the realpath, which expands that prefix.
+  const canonicalWorkspace = fs.realpathSync.native(workspace);
   const orchestrator = {
     getExecutors: () => [{ id: "opencode", ready: true }],
     getModels: () => [{
@@ -192,7 +195,7 @@ test("natural-language workspace paths and route choices stay inside local capab
       reasoning_effort: "high",
     }),
     {
-      workspace: fs.realpathSync.native(workspace),
+      workspace: canonicalWorkspace,
       executor: "opencode",
       profile: "economy",
       model: "provider/model-a",
@@ -227,7 +230,7 @@ test("natural-language workspace paths and route choices stay inside local capab
       reasoning_effort: "auto",
     }),
     {
-      workspace,
+      workspace: canonicalWorkspace,
       executor: "opencode",
       profile: "economy",
       model: "provider/model-a",
@@ -248,7 +251,7 @@ test("natural-language workspace paths and route choices stay inside local capab
       { preserveAuto: true },
     ),
     {
-      workspace,
+      workspace: canonicalWorkspace,
       executor: "auto",
       profile: "auto",
       model: "auto",
