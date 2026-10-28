@@ -137,6 +137,9 @@ Runtime constraints:
   creates a child task with the same logical id.
 - `continue_project` without an executor preserves the original executor and
   persistent session for backward compatibility.
+- Persistent project threads are isolated per executor. `handoff_project`
+  passes a compact terminal package to another executor in the same logical
+  lineage and does not reuse the source thread.
 - Tasks record an append-only executor history and the latest continuation
   package.
 - Capability matching (task requirements ∩ executor capabilities) gates

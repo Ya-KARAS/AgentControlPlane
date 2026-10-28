@@ -115,7 +115,16 @@ stable `logical_task_id`, an append-only `executor_history`, and an optional
 structured continuation package. Automatic reroute remains disabled by
 default. `continue_project` without `executor` preserves the original
 executor/session; an explicit `executor` is capability-gated and starts a new
-session in the same logical lineage.
+session in the same logical lineage. `handoff_project` is the explicit
+terminal review path: the child stays in the lineage, receives only the compact
+package, and by default resumes the target executor's own project thread.
+`fresh_session: true` starts a new target session and leaves that saved thread
+in place. An infrastructure reroute of a handoff starts a fresh session on the
+fallback executor. A project relink invalidates saved threads from the previous
+location. The handoff package bounds every text field and stays within
+`limits.maxBriefCharacters`. Task `kind`
+remains the usage classification (`production`, `certification`, `benchmark`,
+`maintenance`) and does not encode dispatch, continue, or handoff.
 
 Repository-level handoffs remain required when the development executor itself
 changes outside ACP. In either path:

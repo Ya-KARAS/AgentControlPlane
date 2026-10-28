@@ -568,6 +568,19 @@ export async function createApplication(overrides = {}) {
         parts.length === 4 &&
         parts[0] === "v1" &&
         parts[1] === "tasks" &&
+        parts[3] === "handoff"
+      ) {
+        const body = await readJson(request);
+        const task = orchestrator.handoffTask(parts[2], body);
+        sendJson(response, 202, { task });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        parts.length === 4 &&
+        parts[0] === "v1" &&
+        parts[1] === "tasks" &&
         parts[3] === "cancel"
       ) {
         const task = await orchestrator.cancel(parts[2]);

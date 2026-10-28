@@ -155,6 +155,9 @@ web AI <- result/evidence <- persisted task  <- local executor
   executor while preserving the logical task lineage. Automatic infrastructure
   rerouting remains an experimental opt-in policy and ships disabled; it is
   outside this candidate's supported and validated feature set.
+- Executor-scoped sessions: each workspace keeps a separate persistent thread
+  per executor. `handoff_project` sends a terminal task's compact evidence to
+  another executor without replaying the web conversation or the source thread.
 - Local controls: loopback binding, workspace allowlists, rate limits,
   optional bearer authentication, and append-only audit records constrain the
   control-plane boundary.
@@ -250,7 +253,9 @@ brief and continue the same project.
 ```
 
 The client calls `dispatch_project`, polls `task_status`, and calls
-`continue_project` for a correction or follow-up.
+`continue_project` for a same-executor correction or follow-up. After the task
+is terminal, `handoff_project` can ask a different executor to review or
+continue from the compact result.
 
 ## Profiles and usage
 
@@ -278,6 +283,7 @@ success, input, cached input, output, reasoning, and total tokens. See
 | `dispatch_opencode` | Dispatch through the OpenCode compatibility shortcut |
 | `task_status` | Read state, result, evidence, usage, lineage, and optional events |
 | `continue_project` | Send a correction or follow-up to the same logical project |
+| `handoff_project` | Pass compact terminal evidence to another executor |
 | `cancel_task` | Stop queued or active work |
 | `list_tasks` | List recent tasks |
 | `list_executors` | List discovery, readiness, capabilities, and default route |

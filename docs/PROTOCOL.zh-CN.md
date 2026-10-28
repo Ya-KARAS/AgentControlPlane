@@ -28,9 +28,16 @@
 
 `executor` 可以是 `auto`、`opencode`、`codex`、`claude`、`openai-compatible` 或 `deepseek`。`auto` 会在任务持久化之前解析为实际的执行器，因此状态和审计记录始终显示工作实际运行在哪里。
 
+持久项目线程按执行器分开保存。同一个工作区可以同时保留 Codex 线程和
+OpenCode 会话。任务只会恢复属于自己执行器的线程。没有执行器归属的旧项目
+状态按 Codex 状态读取。项目重新链接后，旧位置保存的线程全部失效，下一次
+运行会开启新会话，而不会恢复记录在旧路径上的线程。
+
 `idempotency_key` 是可选字段，可包含 8–200 个字母、数字、点、下划线、冒号或
 连字符。相同 key 和相同规范化派发内容会返回原任务；相同 key 携带不同内容时
-返回 `idempotency_conflict`。浏览器伴侣根据页面 URL 和规范化请求生成该 key。
+返回 `idempotency_conflict`。该 key 只属于一种操作：在 dispatch、continue
+和 handoff 之间复用也会返回 `idempotency_conflict`。浏览器伴侣根据页面 URL
+和规范化请求生成该 key。
 
 ## 紧凑结果
 
@@ -55,6 +62,18 @@
 
 Web 控制器应轮询直到出现终态。当结果为 `blocked`、`partial` 或 `failed` 时，它应使用结构化的 `blocker` 和证据来修正简报，或解释为什么需要用户输入。这就是自动反馈回路，它取代了在两个对话之间复制输出的做法。
 
+两种后续工具都只传递紧凑证据：
+
+- `continue_project` 在未指定 `executor` 时保留原执行器和持久会话。指定
+  `executor` 时，会在能力门禁通过后于同一逻辑链路开启一个新会话。
+- `handoff_project` 要求源任务已经进入终态。它在同一逻辑链路上为所选执行器
+  创建子任务，并且只传递紧凑 continuation package：源状态、摘要、变更文件、
+  测试证据、阻塞项和错误文本。package 不包含网页对话，也不包含源执行器线程
+  id。默认情况下，子任务恢复目标执行器自己已保存的项目线程。
+  `fresh_session: true` 会为独立复查开启新会话，并且不替换已保存的项目线程。
+  package 中的每个文本字段都有长度上限，序列化后的 package 也会被限制，
+  使 handoff 提示不超过 `limits.maxBriefCharacters`。
+
 ## MCP 工具
 
 - `dispatch_project` — 创建带 `auto` 或显式路由的异步任务。
@@ -63,6 +82,10 @@ Web 控制器应轮询直到出现终态。当结果为 `blocked`、`partial` �
   package、reroute 原因和可选的最新事件。
 - `continue_project` — 向同一项目发送更正或后续消息。可选的 `executor`
   会在能力门禁通过后使用另一个执行器继续；省略时保留原执行器和持久会话。
+- `handoff_project` — 源任务进入终态后，把紧凑源证据交给所选执行器做复查或
+  续接。可选的 `fresh_session: true` 会开启新的目标会话，而不是恢复该执行器
+  已保存的项目线程。`POST /v1/tasks/:id/handoff` 接受同一请求体，包括
+  `fresh_session`。
 - `cancel_task` — 中断排队或进行中的工作。
 - `list_tasks` — 列出最近的任务。
 - `list_executors` — 检查发现结果、能力和当前默认值。
@@ -84,8 +107,15 @@ Web 控制器应轮询直到出现终态。当结果为 `blocked`、`partial` �
 执行器时任务进入 `blocked`，不会静默使用不兼容后端。
 
 ACP 启动时会检查已持久化的 `queued` 和 `running` 任务。排队中的续接任务保留
-follow-up 提示语义；恢复到终态的 turn 会更新执行器历史；符合允许分类的基础
-设施故障可以进入同一套能力门禁 reroute 流程。
+follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢复源线程。恢复到
+终态的 turn 会更新执行器历史；符合允许分类的基础设施故障可以进入同一套能力
+门禁 reroute 流程。
+
+`handoff_project` 不是自动 reroute。基础设施 reroute 仍遵循
+`executor.reroute`，并开启新会话。handoff 是显式请求，只复用紧凑的终态证据。
+默认只会恢复目标执行器已经保存的项目线程。`fresh_session: true` 强制开启新
+会话，并保留已保存的项目线程给后续任务使用。如果基础设施 reroute 之后又
+移动了这次 handoff，回退执行器会开启新会话，不会恢复它已保存的项目线程。
 
 ## Token 预算
 

@@ -173,6 +173,11 @@ Classification is deterministic from structured error codes already present in e
 - `list_executors` already exposes discovery and capabilities; no change.
 - No new MCP tool in the minimal slice; the surface change is additive fields plus the optional continue_project parameter.
 
+`handoff_project` was added after this slice. It is an explicit terminal
+review tool, not a replacement for `continue_project` or automatic reroute.
+The child keeps `logical_task_id`, receives a bounded continuation package,
+and may resume only the target executor's project thread.
+
 ## Backward compatibility
 
 - All new fields optional; existing tools, records, and dispatch flows behave exactly as today.
