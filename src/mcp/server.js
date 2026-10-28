@@ -593,7 +593,7 @@ function buildToolSpecs({ orchestrator, store, config }) {
       name: "estimate_cost",
       title: "Estimate model cost from the published formula",
       description:
-        "Return the cost formula and the token-estimate and catalog-price inputs used for one model. Missing prices stay unknown. This does not select or switch a model.",
+        "Return the cost formula and the token-estimate and catalog-price inputs used for one model. A missing price, or a missing input or output rate the estimate needs, stays unknown and names the missing rate. This does not select or switch a model.",
       inputSchema: {
         model: z.string().min(1),
         profile: z.enum(["economy", "balanced", "deep"]).default("balanced"),
@@ -619,7 +619,9 @@ function buildToolSpecs({ orchestrator, store, config }) {
           { estimate },
           estimate.range
             ? `Estimated ${estimate.range.expected_microusd} micro-USD for ${model}. This does not select a model.`
-            : `No catalog price for ${model}. Returned the formula with unknown pricing. This does not select a model.`,
+            : estimate.inputs.pricing
+              ? `Catalog price for ${model} is missing ${estimate.missing_rates.join(", ")}. Cost stays unknown. This does not select a model.`
+              : `No catalog price for ${model}. Returned the formula with unknown pricing. This does not select a model.`,
         );
       },
     },

@@ -86,6 +86,6 @@ Recommended models:
 
 契约：
 
-- `estimate_cost(task_requirements, model)` 返回公式及其输入。
+- `estimate_cost(task_requirements, model)` 返回公式及其输入。缺失的价格，或估算所需的缺失输入/输出单价，保持未知并列出缺失的单价，不按零计算。
 - `latency_stats(model, window)` 从已记录任务时长返回 count、p50、p95。
 - 选择器里每个标签都陈述可测量的事实；选择器永不静默换模型。

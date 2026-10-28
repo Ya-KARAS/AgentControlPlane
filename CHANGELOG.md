@@ -6,7 +6,8 @@
 
 - `estimate_cost` returns the cost formula together with the token estimate
   and catalog price inputs it uses. A missing catalog price stays unknown.
-  The call does not select a model.
+  A price that omits an input or output rate the estimate needs also stays
+  unknown and lists that rate. The call does not select a model.
 - `latency_stats` returns count, p50, and p95 milliseconds from recorded
   task durations for one model and a time window. The call does not select
   a model.

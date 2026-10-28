@@ -35,7 +35,8 @@ test("estimate_cost returns the formula and the inputs that feed it", () => {
     estimate.range,
     computeCostRange(tokenEstimate, normalizePricing(pricing)),
   );
-  assert.equal(typeof estimate.range.expected_microusd, "number");
+  assert.equal(estimate.range.expected_microusd, 44100);
+  assert.deepEqual(estimate.missing_rates, []);
 });
 
 test("estimate_cost leaves a missing catalog price unknown", () => {
@@ -43,7 +44,53 @@ test("estimate_cost leaves a missing catalog price unknown", () => {
   assert.equal(estimate.formula, COST_FORMULA);
   assert.equal(estimate.inputs.pricing, null);
   assert.equal(estimate.range, null);
+  assert.deepEqual(estimate.missing_rates, [
+    "input_microusd_per_token",
+    "cached_input_microusd_per_token",
+    "output_microusd_per_token",
+    "reasoning_output_microusd_per_token",
+  ]);
   assert.equal(estimate.inputs.token_estimate.profile, "balanced");
+});
+
+test("estimate_cost leaves an input-only price unknown", () => {
+  const estimate = estimateCost(
+    { profile: "balanced" },
+    { model: "input-only", pricing: { input: 3 } },
+  );
+  assert.equal(estimate.range, null);
+  assert.deepEqual(estimate.inputs.pricing, {
+    input_microusd_per_token: 3,
+    cached_input_microusd_per_token: 3,
+    output_microusd_per_token: null,
+    reasoning_output_microusd_per_token: null,
+    currency: "USD",
+    pricing_version: null,
+  });
+  assert.deepEqual(estimate.missing_rates, [
+    "output_microusd_per_token",
+    "reasoning_output_microusd_per_token",
+  ]);
+});
+
+test("estimate_cost leaves an output-only price unknown", () => {
+  const estimate = estimateCost(
+    { profile: "balanced" },
+    { model: "output-only", pricing: { output: 15 } },
+  );
+  assert.equal(estimate.range, null);
+  assert.deepEqual(estimate.inputs.pricing, {
+    input_microusd_per_token: null,
+    cached_input_microusd_per_token: null,
+    output_microusd_per_token: 15,
+    reasoning_output_microusd_per_token: 15,
+    currency: "USD",
+    pricing_version: null,
+  });
+  assert.deepEqual(estimate.missing_rates, [
+    "input_microusd_per_token",
+    "cached_input_microusd_per_token",
+  ]);
 });
 
 test("latency_stats returns count, p50, and p95 for one model and window", () => {

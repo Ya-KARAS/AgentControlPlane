@@ -8,6 +8,34 @@ import { extractTokenEstimate } from "./token-estimate.js";
 export const COST_FORMULA =
   "round(max(0, input_tokens - cached_input_tokens) * input_microusd_per_token + cached_input_tokens * cached_input_microusd_per_token + max(0, output_tokens - reasoning_output_tokens) * output_microusd_per_token + reasoning_output_tokens * reasoning_output_microusd_per_token)";
 
+const RATE_FIELDS = [
+  "input_microusd_per_token",
+  "cached_input_microusd_per_token",
+  "output_microusd_per_token",
+  "reasoning_output_microusd_per_token",
+];
+
+function scenarioUsesRate(scenario, field) {
+  const uncached = Math.max(0, scenario.input_tokens - scenario.cached_input_tokens);
+  const plainOutput = Math.max(0, scenario.output_tokens - scenario.reasoning_output_tokens);
+  if (field === "input_microusd_per_token") return uncached > 0;
+  if (field === "cached_input_microusd_per_token") return scenario.cached_input_tokens > 0;
+  if (field === "output_microusd_per_token") return plainOutput > 0;
+  return scenario.reasoning_output_tokens > 0;
+}
+
+function missingCostRates(tokenEstimate, pricing) {
+  const scenarios = [
+    tokenEstimate?.scenarios?.low,
+    tokenEstimate?.scenarios?.expected,
+    tokenEstimate?.scenarios?.high,
+  ].filter(Boolean);
+  return RATE_FIELDS.filter((field) => {
+    if (!scenarios.some((scenario) => scenarioUsesRate(scenario, field))) return false;
+    return !Number.isFinite(pricing?.[field]);
+  });
+}
+
 export function estimateCost(taskRequirements = {}, model = null, config = {}) {
   const modelId = typeof model === "string"
     ? model
@@ -19,6 +47,7 @@ export function estimateCost(taskRequirements = {}, model = null, config = {}) {
   const pricing = normalizePricing(
     typeof model === "string" ? null : model?.pricing,
   );
+  const missingRates = missingCostRates(tokenEstimate, pricing);
   return {
     formula: COST_FORMULA,
     inputs: {
@@ -26,7 +55,8 @@ export function estimateCost(taskRequirements = {}, model = null, config = {}) {
       token_estimate: tokenEstimate,
       pricing,
     },
-    range: computeCostRange(tokenEstimate, pricing),
+    range: missingRates.length === 0 ? computeCostRange(tokenEstimate, pricing) : null,
+    missing_rates: missingRates,
   };
 }
 
