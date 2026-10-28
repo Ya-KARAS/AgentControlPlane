@@ -74,7 +74,7 @@ test("normalizes a direct structured report", () => {
     status: "completed",
     summary: "done",
     changed_files: ["42"],
-    tests: [{ command: "7", status: "not_run", detail: "9" }],
+    tests: [{ command: "7", status: "unknown", detail: "9" }],
     blockers: ["false"],
     next_action: "11",
   });
@@ -153,6 +153,31 @@ test("does not mistake unrelated mixed JSON for an execution report", () => {
   const mixed = 'Explanation with {"status":"completed"} but no report.';
   assert.equal(extractExecutionReportObject(mixed), null);
   assert.equal(normalizeExecutionReportText(mixed), mixed);
+});
+
+test("preserves failure statuses and string test evidence", () => {
+  const normalized = normalizeExecutionReportObject(report({
+    tests: [
+      { command: "unit", status: "Error", detail: "Compilation failed" },
+      { command: "lint", status: "blocked", detail: "waiting" },
+      { command: "live", status: "skipped", detail: "Not executed" },
+      { command: "unit", status: "passed", detail: "3 passed" },
+      { command: "live", status: "not_run", detail: "Previous: 4 failed" },
+      { command: "missing-status", detail: "Not executed" },
+      "npm test failed",
+      "npm test passed (0 failed)",
+    ],
+  }));
+  assert.deepEqual(normalized.tests, [
+    { command: "unit", status: "error", detail: "Compilation failed" },
+    { command: "lint", status: "blocked", detail: "waiting" },
+    { command: "live", status: "skipped", detail: "Not executed" },
+    { command: "unit", status: "passed", detail: "3 passed" },
+    { command: "live", status: "not_run", detail: "Previous: 4 failed" },
+    { command: "missing-status", status: "unknown", detail: "Not executed" },
+    "npm test failed",
+    "npm test passed (0 failed)",
+  ]);
 });
 
 test("maps error status to failed and supplies normalized defaults", () => {

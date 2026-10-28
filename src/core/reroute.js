@@ -34,21 +34,77 @@ function compactFailure(error, context) {
     .join(" ");
 }
 
+function testEvidenceStatus(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+  if (typeof entry.status !== "string") return null;
+  return entry.status.trim().toLowerCase();
+}
+
+function withoutZeroFailureCounts(text) {
+  return String(text ?? "").toLowerCase().replace(
+    /\b0\s+(?:failed|failing|failures?|errors?|blocked)\b|\b(?:failed|failing|failures?|errors?|blocked)\s*[:=]\s*0\b|[#\u2139]\uFE0F?\s*(?:fail(?:ed|ing|ures?)?|errors?)\s+0\b|\bno\s+(?:errors?|failures?|failing)\b/g,
+    " ",
+  );
+}
+
+function hasNegatedPass(text) {
+  const value = String(text ?? "").toLowerCase().replace(/['’]/g, "");
+  return /\bnot\s+pass(?:ed)?\b/.test(value)
+    || /\b(?:has|have|had|did|does|do)\s+not\s+pass(?:ed)?\b/.test(value)
+    || /\b(?:hasnt|havent|hadnt|didnt|doesnt|dont|never)\s+pass(?:ed)?\b/.test(value);
+}
+
+function hasFailureKeyword(text) {
+  const cleaned = withoutZeroFailureCounts(text);
+  return /\b(?:fail|error|block)/.test(cleaned)
+    || /\bnot\s+ok\b/.test(cleaned)
+    || hasNegatedPass(cleaned)
+    || /[✖✗×]/.test(cleaned)
+    || /\bexit(?:ed)?(?:\s+with)?\s+(?:code|status)\s+[1-9]\d*\b/.test(cleaned)
+    || /\breturned\s+non-?zero\b/.test(cleaned)
+    || /(?<!status\s)\bcode\s+[1-9]\d*\b/.test(cleaned);
+}
+
+function testDetail(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "";
+  return typeof entry.detail === "string" ? entry.detail : "";
+}
+
+function isExplicitPassOrNotRun(status) {
+  return status === "passed" || status === "not_run";
+}
+
+// A test entry is benign only when it is explicitly passed, or explicitly
+// not_run, and its detail has no failure wording or nonzero exit code.
+// Every other entry is task-failure evidence, including a bare "npm test".
+function isBenignTestEvidence(entry) {
+  const status = testEvidenceStatus(entry);
+  if (status) {
+    return isExplicitPassOrNotRun(status) && !hasFailureKeyword(testDetail(entry));
+  }
+  if (typeof entry !== "string") return false;
+  const text = entry.toLowerCase();
+  // "passed" inside "not passed" / "hasn't passed" is not a pass.
+  return /\b(?:passed|not_run)\b/.test(text)
+    && !hasNegatedPass(text)
+    && !hasFailureKeyword(entry);
+}
+
 function hasTaskFailureEvidence(context = {}) {
   const result = context.result ?? context;
   const tests = Array.isArray(result?.tests) ? result.tests : [];
   const blockers = Array.isArray(result?.blockers) ? result.blockers : [];
-  const text = [result?.summary, ...tests, ...blockers]
-    .map((value) =>
-      typeof value === "string" ? value : JSON.stringify(value ?? ""),
-    )
-    .join(" ")
-    .toLowerCase();
-  return (
-    tests.length > 0 ||
-    /\b(test|build|implementation|validation)\b.{0,40}\b(fail|error|block)/.test(
-      text,
-    )
+  if (tests.some((entry) => !isBenignTestEvidence(entry))) return true;
+  const text = withoutZeroFailureCounts(
+    [result?.summary, ...blockers]
+      .map((value) =>
+        typeof value === "string" ? value : JSON.stringify(value ?? ""),
+      )
+      .join(" "),
+  );
+  return /\b(tests?|builds?|implementation|validation)\b.{0,40}\b(fail|error|block)/.test(
+    text,
   );
 }
 

@@ -154,6 +154,22 @@ export function extractExecutionReportObject(text) {
   return start >= 0 ? null : candidate;
 }
 
+function normalizeTestEntry(entry) {
+  // String evidence must survive so "npm test failed" is not rewritten as not_run.
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return { command: "", status: "unknown", detail: null };
+  }
+  const rawStatus = typeof entry.status === "string" ? entry.status.trim().toLowerCase() : "";
+  return {
+    command: String(entry.command ?? ""),
+    // A missing status is not proof the test was skipped. error, blocked,
+    // skipped, and other explicit statuses stay themselves.
+    status: rawStatus || "unknown",
+    detail: entry.detail == null ? null : String(entry.detail),
+  };
+}
+
 export function normalizeExecutionReportObject(parsed) {
   const status = ["completed", "partial", "blocked", "failed", "cancelled"].includes(
     parsed?.status,
@@ -163,13 +179,7 @@ export function normalizeExecutionReportObject(parsed) {
       ? "completed"
       : "failed";
   const tests = Array.isArray(parsed?.tests)
-    ? parsed.tests.map((entry) => ({
-        command: String(entry?.command ?? ""),
-        status: ["passed", "failed", "not_run"].includes(entry?.status)
-          ? entry.status
-          : "not_run",
-        detail: entry?.detail == null ? null : String(entry.detail),
-      }))
+    ? parsed.tests.map((entry) => normalizeTestEntry(entry))
     : [];
   return {
     status,
