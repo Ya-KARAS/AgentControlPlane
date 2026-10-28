@@ -19,7 +19,7 @@ ZCode 或 OpenAI-compatible 执行器，再返回状态、变更文件、测试�
 
 </div>
 
-> 本地优先、面向单用户的公开测试版本：v0.9.2。不是认证版本。
+> 本地优先、面向单用户的公开测试版本：v0.9.3。不是认证版本。
 
 ## 用户反馈与登记
 
@@ -117,11 +117,11 @@ DEMO PASS: MCP dispatch, local execution, file verification, and result persiste
 预检对象，`status` 为 `"ready"` 或 `"blocked"`，附带依赖检查结果；任务字段为空，
 不启动任务。
 
-v0.9.2 的发布资产约定为源码 ZIP、可直接加载的浏览器 Companion ZIP 和
+v0.9.3 的发布资产约定为源码 ZIP、可直接加载的浏览器 Companion ZIP 和
 `SHA256SUMS`；独立的 Web Bridge 0.9.6 文件为可选附加资产。源码包沿用
 `-windows.zip` 文件名以保持兼容，不代表 Windows 已通过验证。参见
-[v0.9.2 Release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.2)
-和[含升级、回退步骤的发布说明](docs/releases/v0.9.2.md)。
+[v0.9.3 Release](https://github.com/Ya-KARAS/AgentControlPlane/releases/tag/v0.9.3)
+和[含升级、回退步骤的发布说明](docs/releases/v0.9.3.md)。
 本版本不包含或承诺新的演示视频；v0.9.0 视频仅作历史证据，不能验证本版本。
 
 ## 项目功能

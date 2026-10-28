@@ -11,17 +11,6 @@
 - `latency_stats` returns count, p50, and p95 milliseconds from recorded
   task durations for one model and a time window. The call does not select
   a model.
-- `handoff_project` queues a terminal task's compact evidence onto another
-  executor in the same logical lineage. Project threads are stored per
-  executor, so a handoff never resumes a foreign thread. The default resumes
-  the target executor's saved project thread. `fresh_session: true` starts an
-  independent session and leaves that saved thread in place.
-  `continue_project` without `executor` still keeps the original session. The
-  handoff package bounds every text field and keeps the prompt within
-  `limits.maxBriefCharacters`. An idempotency key belongs to one operation.
-  Infrastructure reroute of a handoff starts a fresh fallback session. A
-  project relink drops saved threads from the previous location. CI runs the
-  suite on Ubuntu and Windows.
 - Web Bridge 0.8.1 records result delivery by conversation and task id. A
   terminal `<ACP_RESULT>` is inserted only once, survives DeepSeek/ChatGPT DOM
   rerenders without duplication, and never overwrites user-authored composer
@@ -104,6 +93,42 @@
 - Candidate creation requires the current page task, persisted revision, and
   conversation scope to match while holding a browser-wide Web Lock. Starting
   a new planning request invalidates older tabs before the web AI replies.
+
+## v0.9.3 — 2026-10-28
+
+### Added
+
+- `handoff_project` queues a terminal task's compact evidence onto another
+  executor in the same logical lineage. Project threads are stored per
+  executor, so a handoff never resumes a foreign thread. The default resumes
+  the target executor's saved project thread. `fresh_session: true` starts an
+  independent session and leaves that saved thread in place.
+  `continue_project` without `executor` still keeps the original session. The
+  handoff package bounds every text field and keeps the prompt within
+  `limits.maxBriefCharacters`. An idempotency key belongs to one operation.
+  Infrastructure reroute of a handoff starts a fresh fallback session. A
+  project relink drops saved threads from the previous location. CI runs the
+  suite on Ubuntu and Windows.
+
+### Fixed
+
+- Automatic reroute classification now matches the classifier. An object is
+  benign only when its status is `passed` or `not_run` and its detail has no
+  failure wording. A string is benign only when it contains `passed` or
+  `not_run` and has no failure wording. A `passed` status whose detail says
+  `Tests failed; exit status 1` stays `task_failure`. A bare string such as
+  `npm test passed` is treated as a pass and can reroute. Negated pass
+  wording, a missing status, and a plural summary such as `Tests failed`
+  stay `task_failure`. The feature remains off by default.
+
+### Changed
+
+- CI reports an aggregate status check named `test`. It fails when any
+  `test (ubuntu-latest)` or `test (windows-latest)` matrix job fails or is
+  cancelled.
+- README, README.zh-CN, and the release checklist describe the fixed
+  classifier. Automatic reroute stays experimental and outside the supported
+  acceptance gate.
 
 ## v0.9.0 — 2026-08-21
 

@@ -1,7 +1,7 @@
 # AgentControlPlane release checklist
 
-This checklist defines the repeatable release path for v0.9.2 and later.
-Version 0.9.2 is a public test release, not a certified release.
+This checklist defines the repeatable release path for v0.9.3 and later.
+Version 0.9.3 is a public test release, not a certified release.
 
 ## Current candidate acceptance boundary
 
@@ -20,7 +20,7 @@ execution, or complete runtime isolation. Record each required acceptance result
 against the exact candidate artifact and runtime. Do not mark an unrun gate as
 passed or treat this checklist as publication authorization. Linux Node.js 22/24
 automated checks must be distinguished from the manual platform/browser/provider
-checks still outstanding. See [v0.9.2 release notes](releases/v0.9.2.md).
+checks still outstanding. See [v0.9.3 release notes](releases/v0.9.3.md).
 
 ## Clean release worktree
 
@@ -44,7 +44,7 @@ Ensure the intended source files, including the new release notes and generated
 userscript release, are tracked before packaging; the source packager uses
 `git ls-files`. Do not add local configuration, state, credentials, or dependencies.
 
-For v0.9.2 the ACP and browser companion versions are `0.9.2`, and the userscript
+For v0.9.3 the ACP and browser companion versions are `0.9.3`, and the userscript
 version is `0.9.6`. Promote the userscript through the supported command without
 editing or replacing any historical release artifact:
 
@@ -53,15 +53,15 @@ npm.cmd run userscript:release -- --version 0.9.6
 npm.cmd run verify
 npm.cmd run release:package
 npm.cmd run release:sha256 -- `
-  dist\agent-control-plane-v0.9.2-windows.zip `
-  dist\agent-control-plane-browser-companion-v0.9.2.zip `
+  dist\agent-control-plane-v0.9.3-windows.zip `
+  dist\agent-control-plane-browser-companion-v0.9.3.zip `
   --output dist\SHA256SUMS
 ```
 
 Required assets:
 
-- `agent-control-plane-v0.9.2-windows.zip`
-- `agent-control-plane-browser-companion-v0.9.2.zip`
+- `agent-control-plane-v0.9.3-windows.zip`
+- `agent-control-plane-browser-companion-v0.9.3.zip`
 - `SHA256SUMS`
 
 The source archive contains tracked repository files under one versioned root
@@ -76,7 +76,7 @@ If published, add those exact files to the `release:sha256` command before
 uploading. Validate every referenced userscript manifest hash, including the
 immutable `userscript/releases/0.9.6/agent-control-plane-web-bridge.user.js`.
 
-There is no new v0.9.2 demo video requirement. Do not rename or reuse the v0.9.0
+There is no new v0.9.3 demo video requirement. Do not rename or reuse the v0.9.0
 video as evidence for this release. Building these files does not update the
 portal's stable auto-update endpoint; deployment requires the portal's existing
 release process and separate public version/hash checks.
@@ -112,10 +112,10 @@ not part of the passive preflight or automatic release checks.
 Only perform publication when authorized:
 
 1. Merge the release pull request after CI succeeds.
-2. Create a new immutable `v0.9.2` version tag pointing to the exact verified
+2. Create a new immutable `v0.9.3` version tag pointing to the exact verified
    merge commit. A lightweight tag created by the normal GitHub Release flow
    is acceptable; do not move or replace any existing version tag.
-3. Publish the GitHub Release using `docs/releases/v0.9.2.md`, clearly labeled as
+3. Publish the GitHub Release using `docs/releases/v0.9.3.md`, clearly labeled as
    a public test release with the remaining manual verification boundary.
 4. Upload the three required assets and any chosen optional userscript assets.
 5. Download each uploaded asset and verify it against `SHA256SUMS`.
@@ -126,7 +126,7 @@ Only perform publication when authorized:
 ## Historical v0.9.0 evidence
 
 The v0.9.0 video presents the following historical OpenCode run. This is not
-v0.9.2 acceptance evidence:
+v0.9.3 acceptance evidence:
 
 - task id: `c3aaa988-95a0-44ae-a646-090cd60ab105`
 - executor: `opencode`
