@@ -115,6 +115,22 @@ for (const [format, detail] of [
   });
 }
 
+test("public status ignores historical counts on skipped and unknown commands", () => {
+  const projected = publicTaskStatus({
+    id: "task-skipped-tests",
+    status: "completed",
+    result: {
+      status: "completed",
+      tests: [
+        { command: "live", status: "skipped", detail: "Previous: 4 failed" },
+        { command: "extra", status: "unknown", detail: "Ran 8 tests in 0.001s\n\nFAILED" },
+      ],
+    },
+  });
+  assert.deepEqual(projected.test_commands, { total: 2, passed: 0, failed: 0 });
+  assert.equal(projected.test_cases, null);
+});
+
 test("public status counts only executed cases in mixed test evidence", () => {
   const projected = publicTaskStatus({
     id: "task-mixed-tests",

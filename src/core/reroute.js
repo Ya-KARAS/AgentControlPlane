@@ -34,31 +34,50 @@ function compactFailure(error, context) {
     .join(" ");
 }
 
-const FAILURE_TEST_STATUSES = new Set(["failed", "error", "blocked"]);
-
 function testEvidenceStatus(entry) {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
   if (typeof entry.status !== "string") return null;
   return entry.status.trim().toLowerCase();
 }
 
-// Passed and not_run evidence is not a task failure. Only a failed, error, or
-// blocked test, or explicit task-failure text, may mask an infrastructure reroute.
+function withoutZeroFailureCounts(text) {
+  return String(text ?? "").toLowerCase().replace(
+    /\b0\s+(?:failed|failures?|errors?|blocked)\b|\b(?:failed|failures?|errors?|blocked)\s*[:=]\s*0\b|#\s*(?:fail(?:ed|ures?)?|errors?)\s+0\b/g,
+    " ",
+  );
+}
+
+function hasFailureKeyword(text) {
+  return /\b(?:fail|error|block)/.test(withoutZeroFailureCounts(text));
+}
+
+function testDetail(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "";
+  return typeof entry.detail === "string" ? entry.detail : "";
+}
+
+function isExplicitPassOrNotRun(status) {
+  return status === "passed" || status === "not_run";
+}
+
+// Only explicit passed or not_run evidence is harmless, and only when its
+// detail does not describe a real failure. A zero count such as "0 failed"
+// is not a failure. error, blocked, skipped, and other statuses are not.
 function isBenignTestEvidence(entry) {
   const status = testEvidenceStatus(entry);
-  if (status === "passed" || status === "not_run") return true;
+  if (status) {
+    return isExplicitPassOrNotRun(status) && !hasFailureKeyword(testDetail(entry));
+  }
   if (typeof entry !== "string") return false;
-  const text = entry.toLowerCase();
-  return /\b(passed|not_run)\b/.test(text) && !/\b(fail|error|block)/.test(text);
+  return /\b(?:passed|not_run)\b/.test(entry.toLowerCase()) && !hasFailureKeyword(entry);
 }
 
 function isFailedTestEvidence(entry) {
   if (isBenignTestEvidence(entry)) return false;
   const status = testEvidenceStatus(entry);
-  if (status && FAILURE_TEST_STATUSES.has(status)) return true;
-  return (
-    typeof entry === "string" && /\b(fail|error|block)/.test(entry.toLowerCase())
-  );
+  if (status && !isExplicitPassOrNotRun(status)) return true;
+  return hasFailureKeyword(typeof entry === "string" ? entry : testDetail(entry));
 }
 
 function hasTaskFailureEvidence(context = {}) {

@@ -63,7 +63,11 @@ function parseTestCases(tests) {
   let found = false;
   for (const entry of Array.isArray(tests) ? tests.slice(0, 1000) : []) {
     // Unrun commands may quote expected or historical output, not current evidence.
-    if (entry && typeof entry === "object" && entry.status === "not_run") continue;
+    // not_run, skipped, and other non-executed statuses are not current results.
+    if (entry && typeof entry === "object") {
+      const status = typeof entry.status === "string" ? entry.status.trim().toLowerCase() : "";
+      if (status && !["passed", "failed", "error", "blocked"].includes(status)) continue;
+    }
     const detail = typeof entry === "object" && entry
       ? String(entry.detail ?? "")
       : String(entry ?? "");

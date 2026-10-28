@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { normalizeExecutionReportObject } from "../src/core/execution-report.js";
 import {
   classifyExecutorFailure,
   evaluateExecutorCompatibility,
@@ -132,6 +133,63 @@ test("failed, error, or blocked tests stay task failures despite a quota hint", 
     ),
     "task_failure",
   );
+});
+
+test("normalized failure evidence still blocks quota and rate-limit reroute", () => {
+  const cases = [
+    [{ command: "unit", status: "error", detail: "Compilation failed" }],
+    [{ command: "lint", status: "blocked", detail: "waiting" }],
+    [{ command: "live", status: "skipped", detail: "Not executed" }],
+    ["npm test failed"],
+    [{ command: "live", status: "not_run", detail: "Previous: 4 failed" }],
+  ];
+  for (const tests of cases) {
+    const result = normalizeExecutionReportObject({
+      status: "failed",
+      summary: "Stopped before the task could finish",
+      changed_files: [],
+      tests,
+      blockers: [],
+      next_action: null,
+    });
+    assert.equal(
+      classifyExecutorFailure({ status: 402, message: "quota exhausted" }, { result }),
+      "task_failure",
+      JSON.stringify(result),
+    );
+    assert.equal(
+      classifyExecutorFailure({ status: 429, message: "rate limit exceeded" }, { result }),
+      "task_failure",
+      JSON.stringify(result),
+    );
+  }
+});
+
+test("a zero failure count stays benign after normalization", () => {
+  for (const tests of [
+    ["npm test passed (0 failed)"],
+    [{ command: "unit", status: "passed", detail: "npm test passed (0 failed)" }],
+    [{ command: "live", status: "not_run", detail: "Previous: 0 failed" }],
+  ]) {
+    const result = normalizeExecutionReportObject({
+      status: "failed",
+      summary: "Stopped before the task could finish",
+      changed_files: [],
+      tests,
+      blockers: [],
+      next_action: null,
+    });
+    assert.equal(
+      classifyExecutorFailure({ status: 402, message: "quota exhausted" }, { result }),
+      "quota_exhausted",
+      JSON.stringify(result),
+    );
+    assert.equal(
+      classifyExecutorFailure({ status: 429, message: "rate limit exceeded" }, { result }),
+      "rate_limited",
+      JSON.stringify(result),
+    );
+  }
 });
 
 test("reroute config is disabled by default and validates its guardrails", () => {

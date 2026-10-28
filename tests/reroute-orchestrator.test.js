@@ -77,7 +77,9 @@ class RerouteExecutor extends EventEmitter {
       error.code = "insufficient_balance";
       throw error;
     }
-    const reported = REPORTED_INFRASTRUCTURE_FAILURES[this.behavior];
+    const reported = this.behavior === "reported"
+      ? this.reported
+      : REPORTED_INFRASTRUCTURE_FAILURES[this.behavior];
     if (reported) {
       const turnId = `${this.id}-turn-${this.turnStarts.length}`;
       queueMicrotask(() => {
@@ -338,6 +340,110 @@ test("quota hint with a failed test does not reroute", async (t) => {
   );
 });
 
+for (const evidence of [
+  {
+    name: "an error status",
+    tests: [{ command: "unit", status: "error", detail: "Compilation failed" }],
+  },
+  {
+    name: "a blocked status",
+    tests: [{ command: "lint", status: "blocked", detail: "waiting" }],
+  },
+  {
+    name: "an unknown skipped status",
+    tests: [{ command: "live", status: "skipped", detail: "Not executed" }],
+  },
+  {
+    name: "a failed string entry",
+    tests: ["npm test failed"],
+  },
+  {
+    name: "not_run detail that names a failure",
+    tests: [{ command: "live", status: "not_run", detail: "Previous: 4 failed" }],
+  },
+]) {
+  for (const infra of [
+    {
+      name: "quota exhaustion",
+      error: { status: 402, code: "insufficient_balance", message: "quota exhausted" },
+    },
+    {
+      name: "rate limiting",
+      error: { status: 429, code: "rate_limit", message: "rate limit exceeded" },
+    },
+  ]) {
+    test(`${infra.name} with ${evidence.name} does not reroute after normalization`, async (t) => {
+      const { workspace, store, executors, orchestrator } = await setup({
+        a: "reported",
+        b: "success",
+      });
+      t.after(() => {
+        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(store.stateDir, { recursive: true, force: true });
+      });
+      executors.get("a").reported = {
+        error: infra.error,
+        summary: "Stopped before the task could finish",
+        tests: evidence.tests,
+      };
+      const task = orchestrator.dispatch({
+        workspace,
+        executor: "a",
+        objective: "Keep real test evidence on the original executor",
+        profile: "economy",
+      });
+      await waitFor(() => store.getTask(task.id)?.status === "failed");
+      const failed = store.getTask(task.id, true);
+      assert.equal(failed.executor, "a");
+      assert.equal(failed.executor_history.length, 1);
+      assert.equal(failed.reroute_reason ?? null, null);
+      assert.deepEqual(failed.result.tests, evidence.tests);
+      assert.equal(executors.get("b").turnStarts.length, 0);
+      assert.equal(failed.events.some((entry) => entry.type === "task.rerouted"), false);
+    });
+  }
+}
+
+for (const infra of [
+  {
+    name: "quota exhaustion",
+    error: { status: 402, code: "insufficient_balance", message: "quota exhausted" },
+    reason: "quota_exhausted",
+  },
+  {
+    name: "rate limiting",
+    error: { status: 429, code: "rate_limit", message: "rate limit exceeded" },
+    reason: "rate_limited",
+  },
+]) {
+  test(`${infra.name} with a zero failure count still reroutes after normalization`, async (t) => {
+    const { workspace, store, executors, orchestrator } = await setup({
+      a: "reported",
+      b: "success",
+    });
+    t.after(() => {
+      fs.rmSync(workspace, { recursive: true, force: true });
+      fs.rmSync(store.stateDir, { recursive: true, force: true });
+    });
+    executors.get("a").reported = {
+      error: infra.error,
+      summary: "Stopped before the task could finish",
+      tests: ["npm test passed (0 failed)"],
+    };
+    const task = orchestrator.dispatch({
+      workspace,
+      executor: "a",
+      objective: "Continue after a zero failure count",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(task.id)?.status === "completed");
+    const completed = store.getTask(task.id, true);
+    assert.equal(completed.executor, "b");
+    assert.equal(completed.reroute_reason, infra.reason);
+    assert.equal(executors.get("b").turnStarts.length, 1);
+  });
+}
+
 test("benign tests with quota exhaustion do not reroute while reroute is disabled", async (t) => {
   const { workspace, store, executors, orchestrator } = await setup(
     { a: "quota-with-benign-tests", b: "success" },
@@ -494,9 +600,23 @@ for (const scenario of [
 }
 
 for (const scenario of [
-  { name: "preserves not_run from the execution report", status: "not_run" },
-  { name: "preserves normalization of an unknown report status", status: "unknown" },
-  { name: "preserves normalization of a missing report status" },
+  {
+    name: "preserves not_run from the execution report",
+    status: "not_run",
+    stored: "not_run",
+    continued: "not_run",
+  },
+  {
+    name: "keeps an unknown test status instead of marking it not_run",
+    status: "unknown",
+    stored: "unknown",
+    continued: "failed",
+  },
+  {
+    name: "preserves normalization of a missing test status",
+    stored: "not_run",
+    continued: "not_run",
+  },
 ]) {
   test(`cross-executor continuation ${scenario.name}`, async (t) => {
     const { workspace, store, executors, orchestrator } = await setup({
@@ -521,9 +641,13 @@ for (const scenario of [
     await waitFor(() => store.getTask(root.id)?.status === "completed");
     const parentTests = store.getTask(root.id).result.tests;
     assert.deepEqual(parentTests.map((entry) => entry.status), [
-      "passed", "failed", "not_run",
+      "passed", "failed", scenario.stored,
     ]);
-    const expected = parentTests.map(({ command, status }) => ({ command, status }));
+    const expected = [
+      { command: "unit", status: "passed" },
+      { command: "integration", status: "failed" },
+      { command: "live", status: scenario.continued },
+    ];
 
     const child = orchestrator.continueTask(root.id, {
       executor: "b",
