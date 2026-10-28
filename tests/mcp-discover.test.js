@@ -106,6 +106,8 @@ test("server/discover is served statelessly without an MCP session", async () =>
       "list_executors",
       "list_profiles",
       "list_models",
+      "estimate_cost",
+      "latency_stats",
       "usage_report",
     ]) {
       assert.ok(names.includes(expected), `missing tool: ${expected}`);

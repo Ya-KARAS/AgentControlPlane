@@ -79,7 +79,10 @@ Contracts:
 
 ## Phase 4 — cost-aware model picker
 
-Interface only for now. The picker presents candidates with facts:
+`estimate_cost` and `latency_stats` are read-only facts. The picker UI is
+not built. Neither call selects or switches a model.
+
+The picker presents candidates with facts:
 
 ```text
 Task: Refactor authentication
@@ -92,7 +95,8 @@ Recommended models:
 Contracts:
 
 - `estimate_cost(task_requirements, model)` returns the formula together
-  with its inputs.
+  with its inputs. A missing price, or a missing input or output rate the
+  estimate needs, stays unknown and lists that rate. It is not treated as zero.
 - `latency_stats(model, window)` returns count, p50, p95 from recorded task
   durations.
 - Every label in the picker states a measurable fact; the picker never
