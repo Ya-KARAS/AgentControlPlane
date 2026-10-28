@@ -211,6 +211,60 @@ function resultFrom(tests, summary = "Stopped before the task could finish") {
   });
 }
 
+test("plural summaries, negated passes, and exit status stay task failures", () => {
+  const cases = [
+    {
+      summary: "Tests failed: expected 200, got 429",
+      tests: [{ command: "lint", status: "passed", detail: "ok" }],
+    },
+    {
+      summary: "Builds failed before packaging",
+      tests: [{ command: "lint", status: "passed", detail: "ok" }],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: ["npm test has not passed"],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: ["npm test not passed"],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: ["npm test didn't pass"],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: [{ command: "unit", status: "passed", detail: "10 passed; exit status 1" }],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: [{ command: "unit", status: "passed", detail: "exited with status 2" }],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: [{ command: "unit", status: "passed", detail: "returned non-zero" }],
+    },
+    {
+      summary: "Stopped before the task could finish",
+      tests: [{ command: "unit", status: "passed", detail: "code 1" }],
+    },
+  ];
+  for (const { summary, tests } of cases) {
+    const result = resultFrom(tests, summary);
+    for (const error of [
+      { status: 402, message: "quota exhausted" },
+      { status: 429, message: "rate limit exceeded" },
+    ]) {
+      assert.equal(
+        classifyExecutorFailure(error, { result }),
+        "task_failure",
+        JSON.stringify({ error, result }),
+      );
+    }
+  }
+});
+
 test("zero failure counts in details and summaries stay benign", () => {
   const infoFail = "\u2139 fail 0";
   for (const tests of [
