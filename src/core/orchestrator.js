@@ -185,6 +185,34 @@ function buildContinuationPackage(task, rerouteReason, error = null) {
   };
 }
 
+const HANDOFF_TEXT_LIMIT = 4000;
+const HANDOFF_LIST_LIMIT = 20;
+
+function boundedText(value, limit = HANDOFF_TEXT_LIMIT) {
+  return String(value ?? "").slice(0, limit);
+}
+
+function buildHandoffPackage(parent) {
+  const pack = buildContinuationPackage(parent, null, parent.error);
+  const blockers = (Array.isArray(parent.result?.blockers) ? parent.result.blockers : [])
+    .slice(0, HANDOFF_LIST_LIMIT)
+    .map((entry) => boundedText(entry, 500));
+  pack.purpose = "handoff";
+  pack.current_state = parent.status;
+  pack.summary = boundedText(parent.result?.summary);
+  pack.changed_files = (pack.changed_files ?? [])
+    .slice(0, 100)
+    .map((entry) => boundedText(entry, 500));
+  pack.test_evidence = (pack.test_evidence ?? []).slice(0, HANDOFF_LIST_LIMIT);
+  pack.known_failures = [
+    ...new Set([
+      ...(pack.known_failures ?? []).map((entry) => boundedText(entry, 500)),
+      ...blockers,
+    ]),
+  ].slice(0, HANDOFF_LIST_LIMIT);
+  return pack;
+}
+
 function extractReport(turn, cachedFinalMessage = null) {
   const messages = (turn?.items ?? []).filter(
     (item) => item.type === "agentMessage" && typeof item.text === "string",
@@ -1065,6 +1093,191 @@ export class Orchestrator extends EventEmitter {
     return this.store.getTask(task.id);
   }
 
+  handoffTask(taskId, request) {
+    const idempotencyKey = normalizeIdempotencyKey(request.idempotency_key);
+    if (idempotencyKey) {
+      const existing = this.store.findByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        const brief = normalizeBrief(request, this.config.limits.maxBriefCharacters);
+        const fingerprint = createHash("sha256")
+          .update(`${taskId}:${dispatchFingerprint(request, existing.workspace, brief)}`)
+          .digest("hex");
+        if (existing.request_fingerprint !== fingerprint) {
+          throw new ControlPlaneError(
+            "idempotency_conflict",
+            "The idempotency key belongs to another handoff",
+            { task_id: existing.id },
+          );
+        }
+        return existing;
+      }
+    }
+    const parent = this.store.getTask(taskId);
+    if (!parent) {
+      throw new ControlPlaneError("task_not_found", `Unknown task: ${taskId}`);
+    }
+    const terminal = new Set([
+      "completed",
+      "partial",
+      "blocked",
+      "failed",
+      "interrupted",
+      "cancelled",
+    ]);
+    if (!terminal.has(parent.status)) {
+      throw new ControlPlaneError(
+        "task_not_terminal",
+        "A handoff requires the source task to reach a terminal state",
+        { taskId: parent.id, status: parent.status },
+      );
+    }
+    const requestedExecutor =
+      request.executor ?? parent.executor ?? this.defaultProvider;
+    const { id: provider } = this.#executorEntry({
+      executor: requestedExecutor,
+      profile: request.profile ?? parent.policy?.name,
+    });
+    const executorChanged = provider !== parent.executor;
+    const project = parent.project_id
+      ? this.projectRegistry?.resolve(parent.project_id)
+      : null;
+    const workspace = project?.workspace ?? parent.workspace;
+    const workspaceRelinked = Boolean(
+      project &&
+      (project.pathRevision !== parent.project_path_revision ||
+        project.workspace.toLowerCase() !== parent.workspace.toLowerCase()),
+    );
+    const brief = normalizeBrief(
+      {
+        objective: request.objective,
+        constraints: request.constraints,
+        acceptance_criteria: request.acceptance_criteria,
+        context: request.context,
+        evidence_required: request.evidence_required,
+      },
+      this.config.limits.maxBriefCharacters,
+    );
+    if (this.executors.get(provider)?.recoveryEnabled === true && !idempotencyKey) {
+      throw new ControlPlaneError(
+        "handoff_idempotency_required",
+        "Checkpoint handoff requires an explicit idempotency key",
+        { safeToReroute: false },
+      );
+    }
+    const requestFingerprint = idempotencyKey
+      ? createHash("sha256")
+          .update(`${taskId}:${dispatchFingerprint(request, workspace, brief)}`)
+          .digest("hex")
+      : null;
+    this.#assertQueueCapacity();
+    const policy = resolveProfile(
+      this.config,
+      {
+        profile: request.profile ?? parent.policy?.name ?? "balanced",
+        model: request.model,
+        reasoning_effort: request.reasoning_effort,
+        max_subagents: request.max_subagents,
+        token_budget: request.token_budget,
+        time_limit_minutes: request.time_limit_minutes,
+      },
+      this.modelCatalogs.get(provider) ?? [],
+    );
+    if (provider !== "codex" && !request.model) policy.model = null;
+    const capabilityRequirements = extractTaskRequirements(
+      {
+        objective: brief.objective,
+        profile: policy.name,
+        reasoning_effort: policy.effort ?? null,
+        model: policy.model ?? null,
+      },
+      this.config,
+    );
+    const selectedExecutor = this.executors.get(provider);
+    const executorCapabilities = snapshotExecutorCapabilities(selectedExecutor, {
+      catalog: this.modelCatalogs.get(provider) ?? [],
+      model: policy.model ?? null,
+      discovery: this.executorDiscovery[provider] ?? null,
+    });
+    const compatibility = evaluateExecutorCompatibility(
+      capabilityRequirements,
+      executorCapabilities,
+    );
+    if (executorChanged && !compatibility.compatible) {
+      throw new ControlPlaneError(
+        "incompatible_executor",
+        `Executor ${provider} cannot take this handoff`,
+        {
+          executor: provider,
+          reasons: compatibility.reasons,
+          warnings: compatibility.warnings,
+        },
+      );
+    }
+    const continuation = buildHandoffPackage(parent);
+    if (workspaceRelinked) {
+      continuation.workspace_relinked = true;
+      continuation.previous_path_revision = parent.project_path_revision ?? null;
+      continuation.current_path_revision = project.pathRevision;
+    }
+    const sessionChanged = executorChanged || workspaceRelinked;
+    const history = structuredClone(parent.executor_history ?? []);
+    if (sessionChanged) {
+      const changedAt = new Date().toISOString();
+      if (history.length > 0 && history.at(-1).ended_at == null) {
+        history[history.length - 1] = {
+          ...history.at(-1),
+          ended_at: changedAt,
+          ended_reason: "handoff",
+          thread_id: parent.threadId ?? history.at(-1).thread_id ?? null,
+          turn_id: parent.turnId ?? history.at(-1).turn_id ?? null,
+          usage: structuredClone(parent.usage ?? history.at(-1).usage ?? zeroUsage()),
+        };
+      }
+      history.push({
+        executor: provider,
+        started_at: changedAt,
+        ended_at: null,
+        ended_reason: null,
+        thread_id: null,
+        turn_id: null,
+        attempts: 1,
+        usage: zeroUsage(),
+      });
+    }
+    const task = this.store.createTask({
+      workspace,
+      brief,
+      policy,
+      parentTaskId: parent.id,
+      executor: provider,
+      kind: parent.kind ?? "production",
+      logicalTaskId: parent.logical_task_id ?? parent.id,
+      executorHistory: history,
+      continuation,
+      capabilityRequirements,
+      executorCapabilities,
+      projectId: project?.projectId ?? parent.project_id ?? null,
+      projectPathRevision:
+        project?.pathRevision ?? parent.project_path_revision ?? null,
+      workspaceRelinked,
+      idempotencyKey,
+      requestFingerprint,
+      handoff: true,
+    });
+    if (!sessionChanged && parent.threadId) {
+      this.store.updateTask(task.id, { threadId: parent.threadId });
+    }
+    this.store.addEvent(task.id, {
+      type: "task.handoff",
+      source_task_id: parent.id,
+      from: parent.executor ?? null,
+      to: provider,
+    });
+    this.queue.push({ taskId: task.id, followUp: false });
+    queueMicrotask(() => this.#drain());
+    return this.store.getTask(task.id);
+  }
+
   async cancel(taskId) {
     const task = this.store.getTask(taskId);
     if (!task) {
@@ -1182,11 +1395,15 @@ export class Orchestrator extends EventEmitter {
         }
       }
       const projectKey = task.project_id ?? task.workspace;
-      const project = this.store.getProject(projectKey);
+      const project = this.store.getProject(projectKey, task.executor);
+      const pathMatches =
+        !task.project_id || project?.pathRevision === task.project_path_revision;
+      const freshContinuationSession =
+        Boolean(task.continuation) && task.handoff !== true;
       const reusableProjectThread =
-        !task.continuation &&
-        (!task.project_id || project?.pathRevision === task.project_path_revision) &&
-        (!project?.executor || project.executor === task.executor)
+        !freshContinuationSession &&
+        pathMatches &&
+        task.workspace_relinked !== true
           ? project?.threadId ?? null
           : null;
       let threadId = task.threadId ?? reusableProjectThread;
@@ -1230,11 +1447,15 @@ export class Orchestrator extends EventEmitter {
           },
         });
         threadId = started.thread.id;
-        this.store.setProject(projectKey, {
-          threadId,
-          executor: task.executor,
-          pathRevision: task.project_path_revision ?? null,
-        });
+        this.store.setProject(
+          projectKey,
+          {
+            threadId,
+            executor: task.executor,
+            pathRevision: task.project_path_revision ?? null,
+          },
+          task.executor,
+        );
       }
 
       this.store.updateTask(taskId, { threadId });
@@ -1496,8 +1717,11 @@ export class Orchestrator extends EventEmitter {
       if (task.status === "queued") {
         this.queue.push({
           taskId: task.id,
-          followUp: Boolean(task.parentTaskId || task.continuation),
-          rerouted: Boolean(task.continuation),
+          followUp:
+            task.handoff === true
+              ? false
+              : Boolean(task.parentTaskId || task.continuation),
+          rerouted: task.handoff === true ? false : Boolean(task.continuation),
         });
         continue;
       }

@@ -55,6 +55,16 @@ function defaultExecutorHistory(task) {
   ];
 }
 
+// Legacy project records stored one thread. Records without an executor owner
+// predate multi-executor routing and are treated as Codex state.
+function executorThreads(project) {
+  const threads = { ...(project?.threads ?? {}) };
+  if (Object.keys(threads).length === 0 && project?.threadId) {
+    threads[project.executor || "codex"] = project.threadId;
+  }
+  return threads;
+}
+
 function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
@@ -72,6 +82,7 @@ function normalizeTaskRecord(task) {
     project_id: task.project_id ?? null,
     project_path_revision: task.project_path_revision ?? null,
     workspace_relinked: task.workspace_relinked === true,
+    handoff: task.handoff === true,
   };
 }
 
@@ -463,6 +474,7 @@ export class TaskStore {
     projectId = null,
     projectPathRevision = null,
     workspaceRelinked = false,
+    handoff = false,
   }) {
     this.#pruneTasks();
     const id = crypto.randomUUID();
@@ -478,6 +490,7 @@ export class TaskStore {
       project_id: projectId,
       project_path_revision: projectPathRevision,
       workspace_relinked: workspaceRelinked === true,
+      handoff: handoff === true,
       brief,
       policy,
       executor,
@@ -533,6 +546,7 @@ export class TaskStore {
       taskId: id,
       workspace,
       policy: policy.name,
+      handoff: handoff === true,
     });
     return normalizeTaskRecord(task);
   }
@@ -653,23 +667,38 @@ export class TaskStore {
     return normalizeTaskRecord(task ?? null);
   }
 
-  getProject(workspace) {
-    return structuredClone(this.state.projects[workspace] ?? null);
+  getProject(workspace, executor = null) {
+    const project = this.state.projects[workspace];
+    if (!project) return null;
+    const copy = structuredClone(project);
+    copy.threads = executorThreads(project);
+    if (!executor) return copy;
+    return {
+      ...copy,
+      executor,
+      threadId: copy.threads[executor] ?? null,
+    };
   }
 
-  setProject(workspace, patch) {
+  setProject(workspace, patch, executor = null) {
     const current = this.state.projects[workspace] ?? {
       workspace,
       threadId: null,
       createdAt: now(),
     };
+    const resolvedExecutor = executor ?? patch.executor ?? null;
+    const threads = executorThreads(current);
+    if (resolvedExecutor && patch.threadId) {
+      threads[resolvedExecutor] = patch.threadId;
+    }
     this.state.projects[workspace] = {
       ...current,
       ...patch,
+      threads,
       updatedAt: now(),
     };
     this.persist();
-    return structuredClone(this.state.projects[workspace]);
+    return this.getProject(workspace, executor);
   }
 
   usageReport() {

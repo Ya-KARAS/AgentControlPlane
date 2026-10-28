@@ -67,6 +67,9 @@ automatic routing.
 - `EngineeringBrief` includes only objective, constraints, acceptance criteria,
   known context, and requested evidence.
 - A project identity is reused where the executor supports persistent sessions.
+  Threads are stored per executor, so one executor never resumes another's id.
+- `handoff_project` carries a compact continuation package to a terminal
+  review on another executor. It does not replay the web conversation.
 - Final output is normalized to compact summary, files, tests, blockers, next
   action, and usage.
 - The web controller polls the task and can turn a structured blocker into a

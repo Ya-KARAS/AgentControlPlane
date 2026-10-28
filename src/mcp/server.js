@@ -30,12 +30,14 @@ const SERVER_INSTRUCTIONS =
   "matter, then send a compact objective through dispatch_project. Leave " +
   "executor as auto unless the user requests a specific backend. Treat " +
   "dispatch tools as asynchronous: " +
-  "it queues a background agent task and returns a task id; " +
+  "they queue a background agent task and return a task id; " +
   "poll task_status until it completes. If the structured result is blocked, " +
   "partial, failed, or shows a misunderstanding, correct the compact brief " +
-  "with continue_project when it is safe to do so; ask the user only when a " +
-  "real decision or permission is required. Never run engineering work directly " +
-  "in the conversation; route all of it through these tools.";
+  "with continue_project when the same executor should keep its session. Use " +
+  "handoff_project after the source task is terminal when a different executor " +
+  "should review or continue from compact source evidence. Ask the user only " +
+  "when a real decision or permission is required. Never run engineering work " +
+  "directly in the conversation; route all of it through these tools.";
 
 const briefFields = {
   workspace: z.string().describe("Absolute project workspace path"),
@@ -234,6 +236,58 @@ function buildToolSpecs({ orchestrator, store, config }) {
           return result(
             { task },
             `Follow-up task ${task.id} was queued on executor ${task.executor} within logical task ${task.logical_task_id}.`,
+          );
+        } catch (error) {
+          return failure(error);
+        }
+      },
+    },
+    {
+      name: "handoff_project",
+      title: "Hand off project to another engineering executor",
+      description:
+        "After a source task is terminal, queue a review or continuation on another executor in the same logical lineage. The target receives only a compact continuation package (status, summary, changed files, tests, blockers, and error), not the web conversation or the source executor thread.",
+      inputSchema: {
+        source_task_id: z.string().min(4),
+        executor: z
+          .string()
+          .default("auto")
+          .describe("Target executor id, or auto for capability-based routing"),
+        objective: z.string().min(1),
+        idempotency_key: z
+          .string()
+          .min(8)
+          .max(200)
+          .regex(/^[A-Za-z0-9._:-]+$/)
+          .optional()
+          .describe("Stable retry key; an identical replay returns the original handoff"),
+        constraints: z.array(z.string()).optional(),
+        acceptance_criteria: z.array(z.string()).optional(),
+        context: z.array(z.string()).optional(),
+        evidence_required: z.array(z.string()).optional(),
+        profile: z.enum(["economy", "balanced", "deep"]).optional(),
+        model: z.string().nullable().optional(),
+        reasoning_effort: z.string().nullable().optional(),
+        max_subagents: z.number().int().min(0).max(8).nullable().optional(),
+        token_budget: z.number().int().min(1000).max(250000).nullable().optional(),
+        time_limit_minutes: z.number().int().min(1).max(240).nullable().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        openWorldHint: networkAccess,
+        idempotentHint: false,
+      },
+      async handler({ source_task_id, ...args }) {
+        try {
+          const resolved = store.resolveTaskId(source_task_id);
+          if (!resolved) {
+            throw new Error(`Unknown or ambiguous task id: ${source_task_id}`);
+          }
+          const task = orchestrator.handoffTask(resolved, args);
+          return result(
+            { task },
+            `Handoff task ${task.id} was queued on ${task.executor} from source task ${resolved}.`,
           );
         } catch (error) {
           return failure(error);

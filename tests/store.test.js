@@ -124,4 +124,29 @@ test("old task records receive read-time continuation defaults", () => {
   assert.equal(task.executor_history.length, 1);
   assert.equal(task.executor_history[0].thread_id, "thread-legacy");
   assert.equal(task.executor_history[0].usage.total_tokens, 3);
+  assert.equal(task.handoff, false);
+});
+
+test("project threads stay isolated per executor and legacy records stay on codex", () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-store-threads-"));
+  const store = new TaskStore(stateDir, 20);
+  store.setProject("C:\\workspace", { threadId: "legacy-thread" });
+  assert.equal(store.getProject("C:\\workspace", "codex").threadId, "legacy-thread");
+  assert.equal(store.getProject("C:\\workspace", "opencode").threadId, null);
+
+  store.setProject(
+    "C:\\workspace",
+    { threadId: "opencode-thread", executor: "opencode" },
+    "opencode",
+  );
+  store.setProject(
+    "C:\\workspace",
+    { threadId: "codex-thread", executor: "codex" },
+    "codex",
+  );
+  const reloaded = new TaskStore(stateDir, 20);
+  assert.equal(reloaded.getProject("C:\\workspace", "codex").threadId, "codex-thread");
+  assert.equal(reloaded.getProject("C:\\workspace", "opencode").threadId, "opencode-thread");
+  assert.equal(reloaded.getProject("C:\\workspace").threads.codex, "codex-thread");
+  assert.equal(reloaded.getProject("C:\\workspace").threads.opencode, "opencode-thread");
 });

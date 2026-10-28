@@ -73,6 +73,7 @@ try {
   const expectedTools = [
     "continue_project",
     "dispatch_opencode",
+    "handoff_project",
     "dispatch_project",
     "list_executors",
     "list_models",

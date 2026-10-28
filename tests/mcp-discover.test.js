@@ -100,6 +100,7 @@ test("server/discover is served statelessly without an MCP session", async () =>
       "dispatch_opencode",
       "task_status",
       "continue_project",
+      "handoff_project",
       "cancel_task",
       "list_tasks",
       "list_executors",
@@ -125,6 +126,11 @@ test("server/discover is served statelessly without an MCP session", async () =>
       (tool) => tool.name === "continue_project",
     );
     assert.equal(continuation.inputSchema.properties.executor.type, "string");
+    const handoff = body.result.tools.find((tool) => tool.name === "handoff_project");
+    assert.equal(handoff.inputSchema.properties.source_task_id.type, "string");
+    assert.equal(handoff.inputSchema.properties.executor.type, "string");
+    assert.equal(handoff.inputSchema.properties.idempotency_key.type, "string");
+    assert.equal(handoff.inputSchema.required.includes("objective"), true);
   } finally {
     await app.close();
   }
