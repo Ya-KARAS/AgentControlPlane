@@ -138,6 +138,26 @@ function dispatchFingerprint(request, workspace, brief) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+function storedOperation(task) {
+  if (task?.handoff === true) return "handoff";
+  if (task?.parentTaskId) return "continue";
+  return "dispatch";
+}
+
+function continuationFingerprint(operation, taskId, request, workspace, brief, freshSession = null) {
+  const dispatch = dispatchFingerprint(request, workspace, brief);
+  const fresh = freshSession == null ? "" : `:${freshSession}`;
+  return createHash("sha256")
+    .update(`${operation}:${taskId}:${dispatch}${fresh}`)
+    .digest("hex");
+}
+
+function legacyContinuationFingerprint(taskId, request, workspace, brief, freshSession = null) {
+  const dispatch = dispatchFingerprint(request, workspace, brief);
+  const fresh = freshSession == null ? "" : `:${freshSession}`;
+  return createHash("sha256").update(`${taskId}:${dispatch}${fresh}`).digest("hex");
+}
+
 function continuationTestEvidence(tests = []) {
   return (Array.isArray(tests) ? tests : []).map((entry) => {
     if (entry && typeof entry === "object") {
@@ -187,9 +207,86 @@ function buildContinuationPackage(task, rerouteReason, error = null) {
 
 const HANDOFF_TEXT_LIMIT = 4000;
 const HANDOFF_LIST_LIMIT = 20;
+const HANDOFF_PACKAGE_SEPARATOR = "\n\nContinuation package (structured):\n";
+const HANDOFF_DROP_FIELDS = [
+  "constraints",
+  "decisions",
+  "completed_steps",
+  "remaining_steps",
+  "test_evidence",
+  "changed_files",
+  "known_failures",
+  "summary",
+  "next_action",
+  "objective",
+];
 
 function boundedText(value, limit = HANDOFF_TEXT_LIMIT) {
   return String(value ?? "").slice(0, limit);
+}
+
+function boundStructured(value, limit = HANDOFF_TEXT_LIMIT, listLimit = HANDOFF_LIST_LIMIT) {
+  if (typeof value === "string") return value.slice(0, limit);
+  if (typeof value === "number" || typeof value === "boolean" || value == null) return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, listLimit).map((entry) => boundStructured(entry, limit, listLimit));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, boundStructured(entry, limit, listLimit)]),
+    );
+  }
+  return null;
+}
+
+function handoffTestEvidence(tests = []) {
+  return (Array.isArray(tests) ? tests : []).slice(0, HANDOFF_LIST_LIMIT).map((entry) => {
+    if (entry && typeof entry === "object") {
+      const output = entry.output ?? entry.detail ?? "";
+      return {
+        command: boundedText(entry.command ?? entry.name ?? "unknown"),
+        status: entry.status === "not_run"
+          ? "not_run"
+          : entry.status === "passed" ? "passed" : "failed",
+        ...(output ? { output: boundedText(output) } : {}),
+      };
+    }
+    const command = boundedText(entry);
+    return {
+      command,
+      status: /\b(pass|passed|ok)\b/i.test(command) ? "passed" : "failed",
+    };
+  });
+}
+
+function handoffPromptBudget(brief, policy, maxCharacters) {
+  const prefix = buildEngineeringPrompt(brief, policy, false);
+  const limit = Number(maxCharacters);
+  const budget = (Number.isFinite(limit) ? limit : 24000) - prefix.length - HANDOFF_PACKAGE_SEPARATOR.length;
+  return budget;
+}
+
+function fitHandoffPackage(pack, budget) {
+  if (!pack || budget < 2) return null;
+  const current = structuredClone(pack);
+  const size = () => JSON.stringify(current).length;
+  if (size() <= budget) return current;
+  for (const field of HANDOFF_DROP_FIELDS) {
+    if (!Object.hasOwn(current, field)) continue;
+    delete current[field];
+    if (size() <= budget) return current;
+  }
+  for (const key of Object.keys(current)) {
+    if (typeof current[key] !== "string" || size() <= budget) continue;
+    let value = current[key];
+    while (value.length > 0 && size() > budget) {
+      const overflow = size() - budget;
+      value = value.slice(0, Math.max(0, value.length - Math.max(1, overflow)));
+      current[key] = value;
+    }
+    if (!current[key]) delete current[key];
+  }
+  return size() <= budget ? current : null;
 }
 
 function normalizeFreshSession(value) {
@@ -202,23 +299,27 @@ function normalizeFreshSession(value) {
 }
 
 function buildHandoffPackage(parent) {
-  const pack = buildContinuationPackage(parent, null, parent.error);
+  const source = buildContinuationPackage(parent, null, parent.error);
+  const pack = boundStructured(source);
   const blockers = (Array.isArray(parent.result?.blockers) ? parent.result.blockers : [])
     .slice(0, HANDOFF_LIST_LIMIT)
-    .map((entry) => boundedText(entry, 500));
+    .map((entry) => boundedText(entry));
   pack.purpose = "handoff";
-  pack.current_state = parent.status;
-  pack.summary = boundedText(parent.result?.summary);
-  pack.changed_files = (pack.changed_files ?? [])
+  pack.current_state = boundedText(parent.status, 64);
+  pack.summary = parent.result?.summary == null ? null : boundedText(parent.result.summary);
+  pack.changed_files = (source.changed_files ?? [])
     .slice(0, 100)
     .map((entry) => boundedText(entry, 500));
-  pack.test_evidence = (pack.test_evidence ?? []).slice(0, HANDOFF_LIST_LIMIT);
+  pack.test_evidence = handoffTestEvidence(parent.result?.tests);
+  pack.next_action = parent.result?.next_action == null
+    ? null
+    : boundStructured(parent.result.next_action);
   pack.known_failures = [
     ...new Set([
-      ...(pack.known_failures ?? []).map((entry) => boundedText(entry, 500)),
+      ...(pack.known_failures ?? []).map((entry) => boundedText(entry)),
       ...blockers,
     ]),
-  ].slice(0, HANDOFF_LIST_LIMIT);
+  ].filter(Boolean).slice(0, HANDOFF_LIST_LIMIT);
   return pack;
 }
 
@@ -943,8 +1044,18 @@ export class Orchestrator extends EventEmitter {
       const existing = this.store.findByIdempotencyKey(idempotencyKey);
       if (existing) {
         const brief = normalizeBrief(request, this.config.limits.maxBriefCharacters);
-        const fingerprint = createHash("sha256").update(`${taskId}:${dispatchFingerprint(request, existing.workspace, brief)}`).digest("hex");
-        if (existing.request_fingerprint !== fingerprint) throw new ControlPlaneError("idempotency_conflict", "The idempotency key belongs to another continuation", { task_id: existing.id });
+        if (storedOperation(existing) !== "continue") {
+          throw new ControlPlaneError(
+            "idempotency_conflict",
+            "The idempotency key belongs to another operation",
+            { task_id: existing.id, operation: storedOperation(existing) },
+          );
+        }
+        const fingerprint = continuationFingerprint("continue", taskId, request, existing.workspace, brief);
+        const legacy = legacyContinuationFingerprint(taskId, request, existing.workspace, brief);
+        if (existing.request_fingerprint !== fingerprint && existing.request_fingerprint !== legacy) {
+          throw new ControlPlaneError("idempotency_conflict", "The idempotency key belongs to another continuation", { task_id: existing.id });
+        }
         return existing;
       }
     }
@@ -988,7 +1099,8 @@ export class Orchestrator extends EventEmitter {
     if (this.executors.get(provider)?.recoveryEnabled === true && !idempotencyKey)
       throw new ControlPlaneError("continuation_idempotency_required", "Checkpoint continuation requires an explicit idempotency key", { safeToReroute: false });
     const requestFingerprint = idempotencyKey
-      ? createHash("sha256").update(`${taskId}:${dispatchFingerprint(request, workspace, brief)}`).digest("hex") : null;
+      ? continuationFingerprint("continue", taskId, request, workspace, brief)
+      : null;
     this.#assertQueueCapacity();
     const policy = resolveProfile(
       this.config,
@@ -1109,10 +1221,29 @@ export class Orchestrator extends EventEmitter {
       const existing = this.store.findByIdempotencyKey(idempotencyKey);
       if (existing) {
         const brief = normalizeBrief(request, this.config.limits.maxBriefCharacters);
-        const fingerprint = createHash("sha256")
-          .update(`${taskId}:${dispatchFingerprint(request, existing.workspace, brief)}:${freshSession}`)
-          .digest("hex");
-        if (existing.request_fingerprint !== fingerprint) {
+        if (storedOperation(existing) !== "handoff") {
+          throw new ControlPlaneError(
+            "idempotency_conflict",
+            "The idempotency key belongs to another operation",
+            { task_id: existing.id, operation: storedOperation(existing) },
+          );
+        }
+        const fingerprint = continuationFingerprint(
+          "handoff",
+          taskId,
+          request,
+          existing.workspace,
+          brief,
+          freshSession,
+        );
+        const legacy = legacyContinuationFingerprint(
+          taskId,
+          request,
+          existing.workspace,
+          brief,
+          freshSession,
+        );
+        if (existing.request_fingerprint !== fingerprint && existing.request_fingerprint !== legacy) {
           throw new ControlPlaneError(
             "idempotency_conflict",
             "The idempotency key belongs to another handoff",
@@ -1175,9 +1306,7 @@ export class Orchestrator extends EventEmitter {
       );
     }
     const requestFingerprint = idempotencyKey
-      ? createHash("sha256")
-          .update(`${taskId}:${dispatchFingerprint(request, workspace, brief)}:${freshSession}`)
-          .digest("hex")
+      ? continuationFingerprint("handoff", taskId, request, workspace, brief, freshSession)
       : null;
     this.#assertQueueCapacity();
     const policy = resolveProfile(
@@ -1223,12 +1352,16 @@ export class Orchestrator extends EventEmitter {
         },
       );
     }
-    const continuation = buildHandoffPackage(parent);
+    const handoffPackage = buildHandoffPackage(parent);
     if (workspaceRelinked) {
-      continuation.workspace_relinked = true;
-      continuation.previous_path_revision = parent.project_path_revision ?? null;
-      continuation.current_path_revision = project.pathRevision;
+      handoffPackage.workspace_relinked = true;
+      handoffPackage.previous_path_revision = parent.project_path_revision ?? null;
+      handoffPackage.current_path_revision = project.pathRevision;
     }
+    const continuation = fitHandoffPackage(
+      handoffPackage,
+      handoffPromptBudget(brief, policy, this.config.limits.maxBriefCharacters),
+    );
     const sessionChanged = executorChanged || workspaceRelinked;
     const history = structuredClone(parent.executor_history ?? []);
     if (sessionChanged) {
@@ -1409,8 +1542,12 @@ export class Orchestrator extends EventEmitter {
       const project = this.store.getProject(projectKey, task.executor);
       const pathMatches =
         !task.project_id || project?.pathRevision === task.project_path_revision;
+      // The initial handoff may resume the target executor's saved thread.
+      // After infrastructure reroute replaces that continuation, the fallback
+      // executor must start a new session.
       const freshContinuationSession =
-        Boolean(task.continuation) && task.handoff !== true;
+        Boolean(task.continuation) &&
+        (task.handoff !== true || task.reroute_reason != null);
       const reusableProjectThread =
         !freshContinuationSession &&
         task.fresh_session !== true &&
@@ -1729,13 +1866,13 @@ export class Orchestrator extends EventEmitter {
     const stale = this.store.listByStatus(["queued", "running"]);
     for (const task of stale) {
       if (task.status === "queued") {
+        const initialHandoff = task.handoff === true && task.reroute_reason == null;
         this.queue.push({
           taskId: task.id,
-          followUp:
-            task.handoff === true
-              ? false
-              : Boolean(task.parentTaskId || task.continuation),
-          rerouted: task.handoff === true ? false : Boolean(task.continuation),
+          followUp: initialHandoff
+            ? false
+            : Boolean(task.parentTaskId || task.continuation),
+          rerouted: initialHandoff ? false : Boolean(task.continuation),
         });
         continue;
       }

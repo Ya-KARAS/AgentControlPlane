@@ -33,13 +33,17 @@ the task is persisted, so status and audit records always show where work ran.
 Persistent project threads are stored per executor. The same workspace can keep
 an independent Codex thread and an independent OpenCode session. A task resumes
 only the thread owned by its own executor. Project state written before executor
-ownership existed is treated as Codex state.
+ownership existed is treated as Codex state. Relinking a project invalidates
+saved threads from the previous location, so the next run starts a new session
+instead of resuming a thread recorded at the old path.
 
 `idempotency_key` is optional and accepts 8–200 letters, digits, dots,
 underscores, colons, or hyphens. A replay carrying the same key and normalized
 dispatch content returns the original task. Reusing the key with different
-content returns `idempotency_conflict`. The browser companion generates this
-key from the page URL and normalized request.
+content returns `idempotency_conflict`. The key is scoped to one operation:
+reusing it across dispatch, continue, and handoff also returns
+`idempotency_conflict`. The browser companion generates this key from the page
+URL and normalized request.
 
 ## Compact result
 
@@ -79,6 +83,8 @@ Two follow-up tools keep that loop compact:
   source executor thread id. By default the child resumes the target
   executor's own saved project thread. `fresh_session: true` starts a new
   session for an independent review and does not replace that saved thread.
+  Every text field in the package is length-bounded, and the serialized package
+  is capped so the handoff prompt stays within `limits.maxBriefCharacters`.
 
 ## MCP tools
 
@@ -127,7 +133,9 @@ same capability-gated reroute path.
 follows `executor.reroute` and starts a fresh session. A handoff is an
 explicit request to reuse compact terminal evidence. The default resumes only
 the target executor's saved project thread. `fresh_session: true` forces a
-new session and leaves the saved project thread in place for later work.
+new session and leaves the saved project thread in place for later work. If
+infrastructure reroute later moves that handoff, the fallback executor starts
+a fresh session and does not resume its saved project thread.
 
 ## Token budgets
 

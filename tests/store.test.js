@@ -151,3 +151,28 @@ test("project threads stay isolated per executor and legacy records stay on code
   assert.equal(reloaded.getProject("C:\\workspace").threads.codex, "codex-thread");
   assert.equal(reloaded.getProject("C:\\workspace").threads.opencode, "opencode-thread");
 });
+
+test("a path revision change drops executor threads saved at the previous location", () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-store-relink-"));
+  const store = new TaskStore(stateDir, 20);
+  store.setProject(
+    "project:calculator",
+    { threadId: "codex-old", executor: "codex", pathRevision: 1 },
+    "codex",
+  );
+  store.setProject(
+    "project:calculator",
+    { threadId: "opencode-old", executor: "opencode", pathRevision: 1 },
+    "opencode",
+  );
+  store.setProject(
+    "project:calculator",
+    { threadId: "codex-new", executor: "codex", pathRevision: 2 },
+    "codex",
+  );
+  const project = store.getProject("project:calculator");
+  assert.equal(project.pathRevision, 2);
+  assert.equal(project.threads.codex, "codex-new");
+  assert.equal(project.threads.opencode, undefined);
+  assert.equal(store.getProject("project:calculator", "opencode").threadId, null);
+});

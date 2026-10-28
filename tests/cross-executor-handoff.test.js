@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Orchestrator } from "../src/core/orchestrator.js";
+import { ProjectRegistry } from "../src/core/project-registry.js";
 import { TaskStore } from "../src/core/store.js";
 
 class RecordingExecutor extends EventEmitter {
@@ -61,6 +62,12 @@ class RecordingExecutor extends EventEmitter {
 
   async startTurn(params) {
     this.turnStarts.push(params);
+    if (this.failNext) {
+      this.failNext = false;
+      const error = new Error("insufficient balance");
+      error.status = 402;
+      throw error;
+    }
     const turnId = `${this.id}-turn-${this.turnStarts.length}`;
     queueMicrotask(() => {
       this.emit("notification", {
@@ -160,6 +167,17 @@ function cleanup(env) {
 
 function promptText(executor) {
   return executor.turnStarts.at(-1).input[0].text;
+}
+
+function longestString(value) {
+  let max = 0;
+  const walk = (entry) => {
+    if (typeof entry === "string") max = Math.max(max, entry.length);
+    else if (Array.isArray(entry)) entry.forEach(walk);
+    else if (entry && typeof entry === "object") Object.values(entry).forEach(walk);
+  };
+  walk(value);
+  return max;
 }
 
 test("keeps persistent project threads isolated per executor", async () => {
@@ -579,5 +597,235 @@ test("a queued handoff recovers as a fresh brief rather than a same-thread follo
     assert.equal(env.opencode.resumedThreads.includes("codex-thread-9"), false);
   } finally {
     cleanup(env);
+  }
+});
+
+test("handoff prompts stay inside the brief budget when source evidence is huge", async () => {
+  const env = setup();
+  try {
+    await env.orchestrator.start();
+    const source = env.orchestrator.dispatch({
+      workspace: env.workspace,
+      objective: "implement the feature",
+      profile: "economy",
+      executor: "codex",
+    });
+    await waitFor(() => env.store.getTask(source.id)?.status === "completed");
+    const huge = "x".repeat(100000);
+    env.store.updateTask(source.id, {
+      result: {
+        status: "completed",
+        summary: huge,
+        changed_files: [huge],
+        tests: Array.from({ length: 20 }, () => ({
+          command: huge,
+          status: "failed",
+          detail: huge,
+        })),
+        blockers: [huge],
+        next_action: huge,
+        completed_steps: [huge],
+        remaining_steps: [huge],
+        decisions: [huge],
+      },
+      error: { code: "failed", message: huge },
+    });
+    const handoff = env.orchestrator.handoffTask(source.id, {
+      executor: "opencode",
+      objective: "review the change",
+      profile: "economy",
+    });
+    await waitFor(() => env.store.getTask(handoff.id)?.status === "completed");
+    const completed = env.store.getTask(handoff.id);
+    const prompt = promptText(env.opencode);
+    const budget = env.orchestrator.config.limits.maxBriefCharacters;
+    assert.ok(prompt.length <= budget, `prompt length ${prompt.length} exceeds ${budget}`);
+    assert.equal(prompt.includes(huge.slice(0, 4001)), false);
+    assert.equal(completed.continuation.purpose, "handoff");
+    assert.ok(longestString(completed.continuation) <= 4000);
+    const evidence = completed.continuation.test_evidence ?? [];
+    for (const entry of evidence) {
+      assert.ok(entry.command.length <= 4000);
+      if (entry.output) assert.ok(entry.output.length <= 4000);
+    }
+    if (completed.continuation.next_action != null) {
+      assert.ok(String(completed.continuation.next_action).length <= 4000);
+    }
+  } finally {
+    cleanup(env);
+  }
+});
+
+test("an idempotency key cannot be reused across continue and handoff", async () => {
+  const env = setup();
+  try {
+    await env.orchestrator.start();
+    const source = env.orchestrator.dispatch({
+      workspace: env.workspace,
+      objective: "implement the feature",
+      profile: "economy",
+      executor: "codex",
+    });
+    await waitFor(() => env.store.getTask(source.id)?.status === "completed");
+    const continued = env.orchestrator.continueTask(source.id, {
+      objective: "same request text",
+      profile: "economy",
+      idempotency_key: "shared-operation-01",
+    });
+    assert.throws(
+      () => env.orchestrator.handoffTask(source.id, {
+        objective: "same request text",
+        profile: "economy",
+        idempotency_key: "shared-operation-01",
+      }),
+      { code: "idempotency_conflict" },
+    );
+    assert.equal(env.store.getTask(continued.id).handoff, false);
+    const replay = env.orchestrator.continueTask(source.id, {
+      objective: "same request text",
+      profile: "economy",
+      idempotency_key: "shared-operation-01",
+    });
+    assert.equal(replay.id, continued.id);
+
+    const handoff = env.orchestrator.handoffTask(source.id, {
+      objective: "same request text",
+      profile: "economy",
+      idempotency_key: "shared-operation-02",
+    });
+    assert.throws(
+      () => env.orchestrator.continueTask(source.id, {
+        objective: "same request text",
+        profile: "economy",
+        idempotency_key: "shared-operation-02",
+      }),
+      { code: "idempotency_conflict" },
+    );
+    assert.equal(
+      env.orchestrator.handoffTask(source.id, {
+        objective: "same request text",
+        profile: "economy",
+        idempotency_key: "shared-operation-02",
+      }).id,
+      handoff.id,
+    );
+    assert.equal(env.store.getTask(handoff.id).handoff, true);
+    await waitFor(() => env.store.getTask(continued.id)?.status === "completed");
+    await waitFor(() => env.store.getTask(handoff.id)?.status === "completed");
+  } finally {
+    cleanup(env);
+  }
+});
+
+test("infrastructure reroute of a handoff starts a fresh fallback session", async () => {
+  const env = setup();
+  env.orchestrator.config.executor.reroute = {
+    enabled: true,
+    max_reroutes: 2,
+    allowed_reasons: [
+      "quota_exhausted",
+      "rate_limited",
+      "executor_unavailable",
+      "authentication_unavailable",
+      "provider_unavailable",
+    ],
+  };
+  env.opencode.failNext = true;
+  try {
+    await env.orchestrator.start();
+    const source = env.orchestrator.dispatch({
+      workspace: env.workspace,
+      objective: "implement the feature",
+      profile: "economy",
+      executor: "codex",
+    });
+    await waitFor(() => env.store.getTask(source.id)?.status === "completed");
+    const handoff = env.orchestrator.handoffTask(source.id, {
+      executor: "opencode",
+      objective: "review the change",
+      profile: "economy",
+    });
+    await waitFor(() => env.store.getTask(handoff.id)?.status === "completed");
+    const completed = env.store.getTask(handoff.id);
+    assert.equal(completed.handoff, true);
+    assert.equal(completed.executor, "codex");
+    assert.equal(completed.reroute_reason, "quota_exhausted");
+    assert.equal(completed.threadId, "codex-thread-2");
+    assert.deepEqual(env.codex.resumedThreads, []);
+    assert.deepEqual(env.codex.startedThreads, ["codex-thread-1", "codex-thread-2"]);
+    assert.equal(env.codex.resumedThreads.includes("codex-thread-1"), false);
+  } finally {
+    cleanup(env);
+  }
+});
+
+test("a relinked project does not resume executor threads from the old location", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "acp-handoff-relink-"));
+  const rootA = path.join(temp, "root-a");
+  const rootB = path.join(temp, "root-b");
+  const original = path.join(rootA, "calculator");
+  fs.mkdirSync(path.join(original, ".git"), { recursive: true });
+  fs.writeFileSync(path.join(original, ".git", "config"), "[core]\n\trepositoryformatversion = 0\n");
+  fs.mkdirSync(rootB, { recursive: true });
+  const stateDir = path.join(temp, "state");
+  const store = new TaskStore(stateDir, 50);
+  const registry = new ProjectRegistry({
+    stateDir,
+    discoveryRoots: [rootA, rootB],
+    hasActiveTasks: (projectId) =>
+      store.listByStatus(["queued", "running"]).some((task) => task.project_id === projectId),
+  });
+  const projectId = registry.publicProjects()[0].id;
+  const codex = new RecordingExecutor("codex");
+  const opencode = new RecordingExecutor("opencode");
+  const config = configFor(original);
+  config.workspaceRoots = [rootA, rootB];
+  const orchestrator = new Orchestrator({
+    config,
+    store,
+    executors: new Map([["codex", codex], ["opencode", opencode]]),
+    defaultProvider: "codex",
+    projectRegistry: registry,
+  });
+  try {
+    await orchestrator.start();
+    const first = orchestrator.dispatch({
+      workspace: projectId,
+      executor: "codex",
+      objective: "codex at the original location",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(first.id)?.status === "completed");
+    const second = orchestrator.dispatch({
+      workspace: projectId,
+      executor: "opencode",
+      objective: "opencode at the original location",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(second.id)?.status === "completed");
+    const moved = path.join(rootB, "calculator");
+    fs.renameSync(original, moved);
+    registry.refresh();
+    registry.relink(projectId, moved);
+    const nextCodex = orchestrator.dispatch({
+      workspace: projectId,
+      executor: "codex",
+      objective: "codex after the move",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(nextCodex.id)?.status === "completed");
+    assert.equal(store.getProject(projectId, "opencode").threadId, null);
+    const nextOpenCode = orchestrator.dispatch({
+      workspace: projectId,
+      executor: "opencode",
+      objective: "opencode after the move",
+      profile: "economy",
+    });
+    await waitFor(() => store.getTask(nextOpenCode.id)?.status === "completed");
+    assert.deepEqual(opencode.resumedThreads, []);
+    assert.deepEqual(opencode.startedThreads, ["opencode-thread-1", "opencode-thread-2"]);
+    assert.equal(store.getTask(nextOpenCode.id).threadId, "opencode-thread-2");
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
   }
 });

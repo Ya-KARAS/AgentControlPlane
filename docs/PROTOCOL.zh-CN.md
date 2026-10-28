@@ -30,11 +30,14 @@
 
 持久项目线程按执行器分开保存。同一个工作区可以同时保留 Codex 线程和
 OpenCode 会话。任务只会恢复属于自己执行器的线程。没有执行器归属的旧项目
-状态按 Codex 状态读取。
+状态按 Codex 状态读取。项目重新链接后，旧位置保存的线程全部失效，下一次
+运行会开启新会话，而不会恢复记录在旧路径上的线程。
 
 `idempotency_key` 是可选字段，可包含 8–200 个字母、数字、点、下划线、冒号或
 连字符。相同 key 和相同规范化派发内容会返回原任务；相同 key 携带不同内容时
-返回 `idempotency_conflict`。浏览器伴侣根据页面 URL 和规范化请求生成该 key。
+返回 `idempotency_conflict`。该 key 只属于一种操作：在 dispatch、continue
+和 handoff 之间复用也会返回 `idempotency_conflict`。浏览器伴侣根据页面 URL
+和规范化请求生成该 key。
 
 ## 紧凑结果
 
@@ -68,6 +71,8 @@ Web 控制器应轮询直到出现终态。当结果为 `blocked`、`partial` �
   测试证据、阻塞项和错误文本。package 不包含网页对话，也不包含源执行器线程
   id。默认情况下，子任务恢复目标执行器自己已保存的项目线程。
   `fresh_session: true` 会为独立复查开启新会话，并且不替换已保存的项目线程。
+  package 中的每个文本字段都有长度上限，序列化后的 package 也会被限制，
+  使 handoff 提示不超过 `limits.maxBriefCharacters`。
 
 ## MCP 工具
 
@@ -109,7 +114,8 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 `handoff_project` 不是自动 reroute。基础设施 reroute 仍遵循
 `executor.reroute`，并开启新会话。handoff 是显式请求，只复用紧凑的终态证据。
 默认只会恢复目标执行器已经保存的项目线程。`fresh_session: true` 强制开启新
-会话，并保留已保存的项目线程给后续任务使用。
+会话，并保留已保存的项目线程给后续任务使用。如果基础设施 reroute 之后又
+移动了这次 handoff，回退执行器会开启新会话，不会恢复它已保存的项目线程。
 
 ## Token 预算
 

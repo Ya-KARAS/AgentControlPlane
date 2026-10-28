@@ -690,7 +690,12 @@ export class TaskStore {
       createdAt: now(),
     };
     const resolvedExecutor = executor ?? patch.executor ?? null;
-    const threads = executorThreads(current);
+    // A new path revision means the workspace moved. Threads recorded at the
+    // previous location must not be resumed.
+    const revisionChanged = patch.pathRevision != null
+      && current.pathRevision != null
+      && patch.pathRevision !== current.pathRevision;
+    const threads = revisionChanged ? {} : executorThreads(current);
     if (resolvedExecutor && patch.threadId) {
       threads[resolvedExecutor] = patch.threadId;
     }
@@ -698,6 +703,9 @@ export class TaskStore {
       ...current,
       ...patch,
       threads,
+      threadId: revisionChanged && !(resolvedExecutor && patch.threadId)
+        ? null
+        : (patch.threadId ?? current.threadId ?? null),
       updatedAt: now(),
     };
     this.persist();
