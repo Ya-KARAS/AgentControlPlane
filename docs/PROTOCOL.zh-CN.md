@@ -66,7 +66,8 @@ Web 控制器应轮询直到出现终态。当结果为 `blocked`、`partial` �
 - `handoff_project` 要求源任务已经进入终态。它在同一逻辑链路上为所选执行器
   创建子任务，并且只传递紧凑 continuation package：源状态、摘要、变更文件、
   测试证据、阻塞项和错误文本。package 不包含网页对话，也不包含源执行器线程
-  id。子任务可以恢复目标执行器自己的项目线程。
+  id。默认情况下，子任务恢复目标执行器自己已保存的项目线程。
+  `fresh_session: true` 会为独立复查开启新会话，并且不替换已保存的项目线程。
 
 ## MCP 工具
 
@@ -77,7 +78,9 @@ Web 控制器应轮询直到出现终态。当结果为 `blocked`、`partial` �
 - `continue_project` — 向同一项目发送更正或后续消息。可选的 `executor`
   会在能力门禁通过后使用另一个执行器继续；省略时保留原执行器和持久会话。
 - `handoff_project` — 源任务进入终态后，把紧凑源证据交给所选执行器做复查或
-  续接。HTTP 对应入口是 `POST /v1/tasks/:id/handoff`。
+  续接。可选的 `fresh_session: true` 会开启新的目标会话，而不是恢复该执行器
+  已保存的项目线程。`POST /v1/tasks/:id/handoff` 接受同一请求体，包括
+  `fresh_session`。
 - `cancel_task` — 中断排队或进行中的工作。
 - `list_tasks` — 列出最近的任务。
 - `list_executors` — 检查发现结果、能力和当前默认值。
@@ -104,8 +107,9 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 门禁 reroute 流程。
 
 `handoff_project` 不是自动 reroute。基础设施 reroute 仍遵循
-`executor.reroute`，并开启新会话。handoff 是显式请求，只复用紧凑的终态证据，
-并且只会恢复目标执行器已经保存的项目线程。
+`executor.reroute`，并开启新会话。handoff 是显式请求，只复用紧凑的终态证据。
+默认只会恢复目标执行器已经保存的项目线程。`fresh_session: true` 强制开启新
+会话，并保留已保存的项目线程给后续任务使用。
 
 ## Token 预算
 

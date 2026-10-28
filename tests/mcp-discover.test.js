@@ -130,7 +130,9 @@ test("server/discover is served statelessly without an MCP session", async () =>
     assert.equal(handoff.inputSchema.properties.source_task_id.type, "string");
     assert.equal(handoff.inputSchema.properties.executor.type, "string");
     assert.equal(handoff.inputSchema.properties.idempotency_key.type, "string");
+    assert.equal(handoff.inputSchema.properties.fresh_session.type, "boolean");
     assert.equal(handoff.inputSchema.required.includes("objective"), true);
+    assert.equal(handoff.inputSchema.required.includes("fresh_session"), false);
   } finally {
     await app.close();
   }

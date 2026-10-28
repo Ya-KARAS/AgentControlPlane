@@ -117,7 +117,9 @@ default. `continue_project` without `executor` preserves the original
 executor/session; an explicit `executor` is capability-gated and starts a new
 session in the same logical lineage. `handoff_project` is the explicit
 terminal review path: the child stays in the lineage, receives only the compact
-package, and may resume the target executor's own project thread. Task `kind`
+package, and by default resumes the target executor's own project thread.
+`fresh_session: true` starts a new target session and leaves that saved thread
+in place. Task `kind`
 remains the usage classification (`production`, `certification`, `benchmark`,
 `maintenance`) and does not encode dispatch, continue, or handoff.
 

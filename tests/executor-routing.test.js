@@ -375,7 +375,8 @@ for (const strict of [true, false]) {
     let started = 0;
     executor.startThread = async () => { started++; return { thread: { id: "new-thread" } }; };
     const s = isolatedRoute(t, executor);
-    s.store.setProject(s.workspace, { threadId: "lost-native-thread", executor: executor.id });
+    const canonical = fs.realpathSync.native(s.workspace);
+    s.store.setProject(canonical, { threadId: "lost-native-thread", executor: executor.id });
     await s.orchestrator.start();
     const task = s.orchestrator.dispatch({ workspace: s.workspace, objective: "resume fixture", profile: "economy", executor: executor.id });
     await waitFor(() => ["failed", "completed"].includes(s.store.getTask(task.id)?.status));

@@ -83,6 +83,7 @@ function normalizeTaskRecord(task) {
     project_path_revision: task.project_path_revision ?? null,
     workspace_relinked: task.workspace_relinked === true,
     handoff: task.handoff === true,
+    fresh_session: task.fresh_session === true,
   };
 }
 
@@ -475,6 +476,7 @@ export class TaskStore {
     projectPathRevision = null,
     workspaceRelinked = false,
     handoff = false,
+    freshSession = false,
   }) {
     this.#pruneTasks();
     const id = crypto.randomUUID();
@@ -491,6 +493,7 @@ export class TaskStore {
       project_path_revision: projectPathRevision,
       workspace_relinked: workspaceRelinked === true,
       handoff: handoff === true,
+      fresh_session: freshSession === true,
       brief,
       policy,
       executor,

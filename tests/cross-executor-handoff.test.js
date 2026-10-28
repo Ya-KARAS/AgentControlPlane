@@ -269,6 +269,7 @@ test("hands completed evidence to another executor without its thread or the web
     const completed = env.store.getTask(handoff.id, true);
     assert.equal(completed.kind, "production");
     assert.equal(completed.handoff, true);
+    assert.equal(completed.fresh_session, false);
     assert.equal(completed.parentTaskId, source.id);
     assert.equal(completed.logical_task_id, sourceTask.logical_task_id);
     assert.equal(completed.executor, "opencode");
@@ -318,6 +319,7 @@ test("a handoff resumes the target executor thread and leaves the source thread 
       executor: "opencode",
       objective: "review the codex change",
       profile: "economy",
+      fresh_session: false,
     });
     await waitFor(() => env.store.getTask(handoff.id)?.status === "completed");
 
@@ -326,6 +328,88 @@ test("a handoff resumes the target executor thread and leaves the source thread 
     assert.equal(env.codex.resumedThreads.length, 0);
     assert.equal(env.store.getTask(handoff.id).threadId, "opencode-thread-1");
     assert.equal(env.store.getTask(source.id).threadId, "codex-thread-1");
+  } finally {
+    cleanup(env);
+  }
+});
+
+test("fresh_session starts an independent review without replacing the saved project thread", async () => {
+  const env = setup();
+  try {
+    await env.orchestrator.start();
+    const openCode = env.orchestrator.dispatch({
+      workspace: env.workspace,
+      objective: "opencode already knows this workspace",
+      profile: "economy",
+      executor: "opencode",
+    });
+    await waitFor(() => env.store.getTask(openCode.id)?.status === "completed");
+    const source = env.orchestrator.dispatch({
+      workspace: env.workspace,
+      objective: "codex implements the change",
+      profile: "economy",
+      executor: "codex",
+    });
+    await waitFor(() => env.store.getTask(source.id)?.status === "completed");
+    const canonical = env.store.getTask(openCode.id).workspace;
+
+    const handoff = env.orchestrator.handoffTask(source.id, {
+      executor: "opencode",
+      objective: "independent review",
+      profile: "economy",
+      fresh_session: true,
+      idempotency_key: "fresh-review-01",
+    });
+    assert.throws(
+      () => env.orchestrator.handoffTask(source.id, {
+        executor: "opencode",
+        objective: "independent review",
+        profile: "economy",
+        fresh_session: false,
+        idempotency_key: "fresh-review-01",
+      }),
+      { code: "idempotency_conflict" },
+    );
+    await waitFor(() => env.store.getTask(handoff.id)?.status === "completed");
+
+    const completed = env.store.getTask(handoff.id);
+    assert.equal(completed.fresh_session, true);
+    assert.equal(completed.threadId, "opencode-thread-2");
+    assert.equal(completed.logical_task_id, env.store.getTask(source.id).logical_task_id);
+    assert.deepEqual(env.opencode.resumedThreads, []);
+    assert.deepEqual(env.opencode.startedThreads, ["opencode-thread-1", "opencode-thread-2"]);
+    assert.equal(env.store.getProject(canonical, "opencode").threadId, "opencode-thread-1");
+    assert.equal(env.store.getTask(source.id).threadId, "codex-thread-1");
+    const prompt = promptText(env.opencode);
+    assert.match(prompt, /Execute the following compact engineering brief/);
+    assert.match(prompt, /"previous_executor":"codex"/);
+    assert.equal(prompt.includes(env.store.getTask(source.id).threadId), false);
+  } finally {
+    cleanup(env);
+  }
+});
+
+test("rejects a non-boolean fresh_session", async () => {
+  const env = setup();
+  try {
+    await env.orchestrator.start();
+    const source = env.orchestrator.dispatch({
+      workspace: env.workspace,
+      objective: "implement the feature",
+      profile: "economy",
+      executor: "codex",
+    });
+    await waitFor(() => env.store.getTask(source.id)?.status === "completed");
+    assert.throws(
+      () => env.orchestrator.handoffTask(source.id, {
+        executor: "opencode",
+        objective: "review the change",
+        profile: "economy",
+        fresh_session: "true",
+      }),
+      { code: "invalid_fresh_session" },
+    );
+    assert.equal(env.opencode.startedThreads.length, 0);
   } finally {
     cleanup(env);
   }

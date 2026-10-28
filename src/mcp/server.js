@@ -271,6 +271,10 @@ function buildToolSpecs({ orchestrator, store, config }) {
         max_subagents: z.number().int().min(0).max(8).nullable().optional(),
         token_budget: z.number().int().min(1000).max(250000).nullable().optional(),
         time_limit_minutes: z.number().int().min(1).max(240).nullable().optional(),
+        fresh_session: z
+          .boolean()
+          .optional()
+          .describe("Start a new target session instead of resuming that executor's saved project thread"),
       },
       annotations: {
         readOnlyHint: false,

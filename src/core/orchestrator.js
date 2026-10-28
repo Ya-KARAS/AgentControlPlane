@@ -192,6 +192,15 @@ function boundedText(value, limit = HANDOFF_TEXT_LIMIT) {
   return String(value ?? "").slice(0, limit);
 }
 
+function normalizeFreshSession(value) {
+  if (value == null || value === false) return false;
+  if (value === true) return true;
+  throw new ControlPlaneError(
+    "invalid_fresh_session",
+    "fresh_session must be a boolean",
+  );
+}
+
 function buildHandoffPackage(parent) {
   const pack = buildContinuationPackage(parent, null, parent.error);
   const blockers = (Array.isArray(parent.result?.blockers) ? parent.result.blockers : [])
@@ -1094,13 +1103,14 @@ export class Orchestrator extends EventEmitter {
   }
 
   handoffTask(taskId, request) {
+    const freshSession = normalizeFreshSession(request.fresh_session);
     const idempotencyKey = normalizeIdempotencyKey(request.idempotency_key);
     if (idempotencyKey) {
       const existing = this.store.findByIdempotencyKey(idempotencyKey);
       if (existing) {
         const brief = normalizeBrief(request, this.config.limits.maxBriefCharacters);
         const fingerprint = createHash("sha256")
-          .update(`${taskId}:${dispatchFingerprint(request, existing.workspace, brief)}`)
+          .update(`${taskId}:${dispatchFingerprint(request, existing.workspace, brief)}:${freshSession}`)
           .digest("hex");
         if (existing.request_fingerprint !== fingerprint) {
           throw new ControlPlaneError(
@@ -1166,7 +1176,7 @@ export class Orchestrator extends EventEmitter {
     }
     const requestFingerprint = idempotencyKey
       ? createHash("sha256")
-          .update(`${taskId}:${dispatchFingerprint(request, workspace, brief)}`)
+          .update(`${taskId}:${dispatchFingerprint(request, workspace, brief)}:${freshSession}`)
           .digest("hex")
       : null;
     this.#assertQueueCapacity();
@@ -1263,8 +1273,9 @@ export class Orchestrator extends EventEmitter {
       idempotencyKey,
       requestFingerprint,
       handoff: true,
+      freshSession,
     });
-    if (!sessionChanged && parent.threadId) {
+    if (!freshSession && !sessionChanged && parent.threadId) {
       this.store.updateTask(task.id, { threadId: parent.threadId });
     }
     this.store.addEvent(task.id, {
@@ -1402,6 +1413,7 @@ export class Orchestrator extends EventEmitter {
         Boolean(task.continuation) && task.handoff !== true;
       const reusableProjectThread =
         !freshContinuationSession &&
+        task.fresh_session !== true &&
         pathMatches &&
         task.workspace_relinked !== true
           ? project?.threadId ?? null
@@ -1447,15 +1459,17 @@ export class Orchestrator extends EventEmitter {
           },
         });
         threadId = started.thread.id;
-        this.store.setProject(
-          projectKey,
-          {
-            threadId,
-            executor: task.executor,
-            pathRevision: task.project_path_revision ?? null,
-          },
-          task.executor,
-        );
+        if (task.fresh_session !== true) {
+          this.store.setProject(
+            projectKey,
+            {
+              threadId,
+              executor: task.executor,
+              pathRevision: task.project_path_revision ?? null,
+            },
+            task.executor,
+          );
+        }
       }
 
       this.store.updateTask(taskId, { threadId });

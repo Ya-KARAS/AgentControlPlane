@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { ControlPlaneError } from "../core/errors.js";
 import { resolveWorkspace } from "../core/workspace.js";
@@ -9,8 +10,24 @@ import { spawnDshOwnedProcess } from "./dsh-process-owner.js";
 
 const denied = (code, message = "DSH client contract does not permit this operation") =>
   new ControlPlaneError(code, message, { safeToReroute: false });
-const samePath = (a, b) => process.platform === "win32"
-  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b);
+function canonicalPath(value) {
+  const resolved = path.resolve(String(value ?? ""));
+  try {
+    return fs.realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+// Windows temp paths can be either the 8.3 short name or the long name of the
+// same directory. Compare the real directory when it exists.
+const samePath = (a, b) => {
+  const left = canonicalPath(a);
+  const right = canonicalPath(b);
+  return process.platform === "win32"
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+};
 
 // Native DSH transport, not an OpenAI-compatible endpoint. Enabling the adapter
 // does not establish authentication or change any installed client configuration.

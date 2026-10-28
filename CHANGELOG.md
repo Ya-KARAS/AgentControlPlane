@@ -6,9 +6,11 @@
 
 - `handoff_project` queues a terminal task's compact evidence onto another
   executor in the same logical lineage. Project threads are stored per
-  executor, so a handoff never resumes a foreign thread. `continue_project`
-  without `executor` still keeps the original session. CI runs the suite on
-  Ubuntu and Windows.
+  executor, so a handoff never resumes a foreign thread. The default resumes
+  the target executor's saved project thread. `fresh_session: true` starts an
+  independent session and leaves that saved thread in place.
+  `continue_project` without `executor` still keeps the original session. CI
+  runs the suite on Ubuntu and Windows.
 - Web Bridge 0.8.1 records result delivery by conversation and task id. A
   terminal `<ACP_RESULT>` is inserted only once, survives DeepSeek/ChatGPT DOM
   rerenders without duplication, and never overwrites user-authored composer

@@ -125,6 +125,7 @@ test("old task records receive read-time continuation defaults", () => {
   assert.equal(task.executor_history[0].thread_id, "thread-legacy");
   assert.equal(task.executor_history[0].usage.total_tokens, 3);
   assert.equal(task.handoff, false);
+  assert.equal(task.fresh_session, false);
 });
 
 test("project threads stay isolated per executor and legacy records stay on codex", () => {

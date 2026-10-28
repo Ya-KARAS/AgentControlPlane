@@ -192,7 +192,7 @@ test("natural-language workspace paths and route choices stay inside local capab
       reasoning_effort: "high",
     }),
     {
-      workspace,
+      workspace: fs.realpathSync.native(workspace),
       executor: "opencode",
       profile: "economy",
       model: "provider/model-a",

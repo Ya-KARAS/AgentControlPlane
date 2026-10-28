@@ -76,8 +76,9 @@ Two follow-up tools keep that loop compact:
   same logical lineage on the selected executor and passes only a compact
   continuation package: source status, summary, changed files, test evidence,
   blockers, and error text. The package omits the web conversation and the
-  source executor thread id. The child may resume the target executor's own
-  project thread.
+  source executor thread id. By default the child resumes the target
+  executor's own saved project thread. `fresh_session: true` starts a new
+  session for an independent review and does not replace that saved thread.
 
 ## MCP tools
 
@@ -89,8 +90,10 @@ Two follow-up tools keep that loop compact:
   Optional `executor` starts a capability-gated continuation on that executor;
   omitting it preserves the existing executor and persistent session.
 - `handoff_project` — after the source task is terminal, send compact source
-  evidence to a selected executor for review or continuation. `POST
-  /v1/tasks/:id/handoff` is the HTTP equivalent.
+  evidence to a selected executor for review or continuation. Optional
+  `fresh_session: true` starts a new target session instead of resuming that
+  executor's saved project thread. `POST /v1/tasks/:id/handoff` accepts the
+  same body, including `fresh_session`.
 - `cancel_task` — interrupt queued or active work.
 - `list_tasks` — list recent tasks.
 - `list_executors` — inspect discovery, capabilities, and current default.
@@ -122,8 +125,9 @@ same capability-gated reroute path.
 
 `handoff_project` is not automatic reroute. Infrastructure reroute still
 follows `executor.reroute` and starts a fresh session. A handoff is an
-explicit request to reuse compact terminal evidence, and it may resume only
-the target executor's saved project thread.
+explicit request to reuse compact terminal evidence. The default resumes only
+the target executor's saved project thread. `fresh_session: true` forces a
+new session and leaves the saved project thread in place for later work.
 
 ## Token budgets
 
