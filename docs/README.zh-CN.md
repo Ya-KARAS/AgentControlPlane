@@ -24,6 +24,7 @@
 
 - [开发流程](DEVELOPMENT.md)
 - [维护脚本](../scripts/README.md)
+- [离线 handoff 验收](HANDOFF-ACCEPTANCE.zh-CN.md) · [English](HANDOFF-ACCEPTANCE.md)
 - [基准测试](BENCHMARKING.zh-CN.md) · [English](BENCHMARKING.md)
 - [网页 AI 端到端验证模板](WEB-AI-E2E-VALIDATION-TEMPLATE.md)
 - [安全审查](SECURITY-REVIEW.zh-CN.md) · [English](SECURITY-REVIEW.md)

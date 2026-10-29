@@ -34,6 +34,7 @@ script execution is useful when a command needs additional arguments.
 | `npm run smoke:companion` | `smoke-companion.js` | Run the browser companion smoke flow. |
 | `npm run smoke:budget` | `smoke-budget.js` | Check budget accounting behavior. |
 | `npm run accept:reroute` | `accept-reroute.js` | Verify an explicit cross-executor continuation. |
+| `npm run accept:handoff` | `accept-handoff.js` | Run eight offline handoff acceptance scenarios with recording fixtures; no keys, executor CLIs, or network. See the [guide](../docs/HANDOFF-ACCEPTANCE.md) · [中文](../docs/HANDOFF-ACCEPTANCE.zh-CN.md). |
 | direct | `create-demo-video.ps1` | Render the verified demo walkthrough. |
 
 ## Benchmark, release, and relay

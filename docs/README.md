@@ -26,6 +26,7 @@ its original path so release notes and development handoffs keep stable links.
 
 - [Development workflow](DEVELOPMENT.md)
 - [Maintenance scripts](../scripts/README.md)
+- [Offline handoff acceptance](HANDOFF-ACCEPTANCE.md) · [中文](HANDOFF-ACCEPTANCE.zh-CN.md)
 - [Benchmarking](BENCHMARKING.md) · [中文](BENCHMARKING.zh-CN.md)
 - [Web AI end-to-end validation template](WEB-AI-E2E-VALIDATION-TEMPLATE.md)
 - [Security review](SECURITY-REVIEW.md) · [中文](SECURITY-REVIEW.zh-CN.md)

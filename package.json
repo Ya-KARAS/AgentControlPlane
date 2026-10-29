@@ -33,6 +33,7 @@
     "sandbox:setup": "node scripts/setup-windows-sandbox.js",
     "check:relay": "node scripts/check-relay.js",
     "accept:reroute": "node scripts/accept-reroute.js",
+    "accept:handoff": "node scripts/accept-handoff.js",
     "key:fingerprint": "node scripts/key-fingerprint.js"
   },
   "dependencies": {

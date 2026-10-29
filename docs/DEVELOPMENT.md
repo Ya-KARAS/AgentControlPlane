@@ -121,7 +121,9 @@ package, and by default resumes the target executor's own project thread.
 `fresh_session: true` starts a new target session and leaves that saved thread
 in place. An infrastructure reroute of a handoff starts a fresh session on the
 fallback executor. A project relink invalidates saved threads from the previous
-location. The handoff package bounds every text field and stays within
+location. If a handoff target fails before producing a new checkpoint, reroute
+preserves the incoming compact source checkpoint and adds the failure reason.
+The handoff package bounds every text field and stays within
 `limits.maxBriefCharacters`. Task `kind`
 remains the usage classification (`production`, `certification`, `benchmark`,
 `maintenance`) and does not encode dispatch, continue, or handoff.

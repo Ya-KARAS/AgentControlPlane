@@ -263,8 +263,8 @@ function handoffTestEvidence(tests = []) {
   });
 }
 
-function handoffPromptBudget(brief, policy, maxCharacters) {
-  const prefix = buildEngineeringPrompt(brief, policy, false);
+function handoffPromptBudget(brief, policy, maxCharacters, followUp = false) {
+  const prefix = buildEngineeringPrompt(brief, policy, followUp);
   const limit = Number(maxCharacters);
   const budget = (Number.isFinite(limit) ? limit : 24000) - prefix.length - HANDOFF_PACKAGE_SEPARATOR.length;
   return budget;
@@ -327,13 +327,16 @@ function buildHandoffPackage(parent) {
   return pack;
 }
 
-function extractReport(turn, cachedFinalMessage = null) {
+function extractFinalMessage(turn, cachedFinalMessage = null) {
   const messages = (turn?.items ?? []).filter(
     (item) => item.type === "agentMessage" && typeof item.text === "string",
   );
   const preferred =
     messages.findLast((item) => item.phase === "final_answer") ?? messages.at(-1);
-  const finalText = preferred?.text ?? cachedFinalMessage;
+  return preferred?.text ?? cachedFinalMessage;
+}
+
+function extractReport(turn, finalText) {
   if (!finalText) {
     const turnError =
       turn?.error?.message ??
@@ -800,7 +803,22 @@ export class Orchestrator extends EventEmitter {
 
     const history = structuredClone(task.executor_history ?? []);
     const reroutesUsed = Math.max(0, history.length - 1);
-    const continuation = buildContinuationPackage(task, reason, error);
+    let continuation = buildContinuationPackage(task, reason, error);
+    // A handoff target can fail before producing any new checkpoint. Keep
+    // the compact source evidence instead of replacing it with empty fields,
+    // including when turn/completed only yielded a synthesized failure report.
+    if (task.handoff === true && task.result == null &&
+        (context.result == null || context.resultIsSynthetic === true) && task.continuation) {
+      Object.assign(continuation, structuredClone(task.continuation), {
+        current_state: continuation.current_state,
+        previous_executor: task.executor,
+        reroute_reason: reason,
+        known_failures: [...new Set([
+          ...(task.continuation.known_failures ?? []),
+          ...continuation.known_failures,
+        ])],
+      });
+    }
     if (reroutesUsed >= Number(reroute.max_reroutes ?? 2)) {
       this.store.updateTask(taskId, {
         status: "blocked",
@@ -849,6 +867,13 @@ export class Orchestrator extends EventEmitter {
       });
       this.#finishActiveTask(taskId);
       return true;
+    }
+
+    if (task.handoff === true) {
+      continuation = fitHandoffPackage(
+        continuation,
+        handoffPromptBudget(task.brief, candidate.policy, this.config.limits.maxBriefCharacters, true),
+      );
     }
 
     const changedAt = new Date().toISOString();
@@ -2156,10 +2181,11 @@ export class Orchestrator extends EventEmitter {
     await this.#refreshGoalUsage(taskId, { enforceBudget: false }).catch(
       () => null,
     );
-    const report = extractReport(
+    const finalMessage = extractFinalMessage(
       params.turn,
       active?.finalMessage ?? null,
     );
+    const report = extractReport(params.turn, finalMessage);
     const evidenceMode = this.executors.get(current.executor)?.usageEvidenceMode === true;
     const evidence = evidenceMode ? executorUsageEvidence(params.turn.usageEvidence) : null;
     if (evidenceMode) {
@@ -2190,7 +2216,11 @@ export class Orchestrator extends EventEmitter {
         : params.turn.error ?? null;
     if (
       ["failed", "blocked"].includes(finalStatus) &&
-      this.#attemptReroute(taskId, error ?? report, { result: report, safeToReroute: params.turn.safeToReroute })
+      this.#attemptReroute(taskId, error ?? report, {
+        result: report,
+        resultIsSynthetic: !finalMessage,
+        safeToReroute: params.turn.safeToReroute,
+      })
     ) {
       return;
     }
