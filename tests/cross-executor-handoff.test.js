@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
+import { RecordingExecutor } from "./fixtures/recording-executor.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,97 +7,6 @@ import test from "node:test";
 import { Orchestrator } from "../src/core/orchestrator.js";
 import { ProjectRegistry } from "../src/core/project-registry.js";
 import { TaskStore } from "../src/core/store.js";
-
-class RecordingExecutor extends EventEmitter {
-  constructor(id) {
-    super();
-    this.id = id;
-    this.kind = "cli";
-    this.ready = false;
-    this.capabilities = { persistentThreads: true, tokenUsage: true };
-    this.discovery = { available: null, status: "unknown" };
-    this.startedThreads = [];
-    this.resumedThreads = [];
-    this.turnStarts = [];
-    this.threadCounter = 0;
-  }
-
-  async probe() {
-    return { available: true, status: "available", reason: null };
-  }
-
-  setDiscovery(result) {
-    this.discovery = result;
-    return result;
-  }
-
-  async start() {
-    this.ready = true;
-  }
-
-  async stop() {}
-  respond() {}
-  async listModels() { return { data: [] }; }
-  async getSandboxReadiness() { return { status: "ready" }; }
-
-  async startThread() {
-    this.threadCounter += 1;
-    const id = `${this.id}-thread-${this.threadCounter}`;
-    this.startedThreads.push(id);
-    return { thread: { id } };
-  }
-
-  async resumeThread({ threadId }) {
-    this.resumedThreads.push(threadId);
-    const ownThread = String(threadId).startsWith(`${this.id}-thread-`)
-      || (this.id === "codex" && threadId === "legacy-codex-thread");
-    if (!ownThread) {
-      throw new Error(`${this.id} cannot resume foreign thread ${threadId}`);
-    }
-    return { thread: { id: threadId, turns: [] } };
-  }
-
-  async setGoal() { return {}; }
-  async getGoal() { return { goal: null }; }
-
-  async startTurn(params) {
-    this.turnStarts.push(params);
-    if (this.failNext) {
-      this.failNext = false;
-      const error = new Error("insufficient balance");
-      error.status = 402;
-      throw error;
-    }
-    const turnId = `${this.id}-turn-${this.turnStarts.length}`;
-    queueMicrotask(() => {
-      this.emit("notification", {
-        method: "turn/completed",
-        params: {
-          threadId: params.threadId,
-          turn: {
-            id: turnId,
-            status: "completed",
-            items: [{
-              type: "agentMessage",
-              phase: "final_answer",
-              text: JSON.stringify({
-                status: "completed",
-                summary: `${this.id} completed ${this.turnStarts.length}`,
-                changed_files: [`${this.id}.txt`],
-                tests: [{ command: `${this.id} test`, status: "passed", detail: null }],
-                blockers: [],
-                next_action: null,
-              }),
-            }],
-          },
-        },
-      });
-    });
-    return { turn: { id: turnId } };
-  }
-
-  async interruptTurn() { return {}; }
-}
 
 function waitFor(predicate, timeoutMs = 2000) {
   const started = Date.now();
