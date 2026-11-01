@@ -3,8 +3,8 @@ import test from 'node:test';
 import http from 'node:http';
 import { createReadOnlyTestEntry } from '../src/readonly-test-entry.js';
 
-async function run(fn) {
- const app=createReadOnlyTestEntry();await app.listen(0);const url=`http://127.0.0.1:${app.address().port}`;
+async function run(fn,options={}) {
+ const app=createReadOnlyTestEntry(options);await app.listen(0);const url=`http://127.0.0.1:${app.address().port}`;
  const post=async(method,params={})=>{const r=await fetch(url+'/mcp',{method:'POST',headers:{'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});return {status:r.status,body:await r.json()};};
  try{await fn({app,url,post});}finally{await app.close();}
 }
@@ -77,3 +77,30 @@ test('unfinished requests are bounded without a session or polling registry',asy
   assert.equal((await fetch(url+'/health')).status,503);
  }finally{for(const request of pending)request.destroy();}
 }));
+
+
+test('known tool params and arguments fail generically before SDK validation',async()=>run(async({post})=>{
+ for(const name of ['get_requirements','read_capabilities']){
+  for(const params of [
+   {name,arguments:{'secret-marker-controlled-repro':'fixture-secret'}},
+   {name,arguments:[],extra:'fixture-secret'}, {name,arguments:'fixture-secret'},
+   {name,arguments:null}, {name,arguments:{},'secret-marker-controlled-repro':true},
+  ]){
+   const response=await post('tools/call',params);
+   assert.ok(response.body.error||response.body.result?.isError);
+   assert.equal(JSON.stringify(response.body).includes('secret-marker-controlled-repro'),false);
+   assert.equal(JSON.stringify(response.body).includes('fixture-secret'),false);
+  }
+ }
+}));
+test('absolute HTTP deadline releases all stalled request capacity',async()=>run(async({url})=>{
+ const requests=[];
+ try{
+  for(let index=0;index<8;index++){
+   const request=http.request(url+'/mcp',{method:'POST',headers:{'content-type':'application/json','transfer-encoding':'chunked'}});
+   request.on('error',()=>{});request.write('{');requests.push(request);
+  }
+  await new Promise(r=>setTimeout(r,30));assert.equal((await fetch(url+'/health')).status,503);
+  await new Promise(r=>setTimeout(r,250));assert.equal((await fetch(url+'/health')).status,200);
+ }finally{for(const request of requests)request.destroy();}
+},{deadlineMs:100}));

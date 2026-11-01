@@ -40,7 +40,9 @@ or custom dispatch framework is used. Only two tools exist:
 | `get_requirements` | Built-in bounded synthetic fixture, clearly labeled synthetic |
 | `read_capabilities` | This entry's fixed read-only limits, not discovered executors |
 
-They accept empty argument objects. Unknown fields are rejected; no file path,
+They accept empty argument objects. Tool-call params and arguments are strictly
+validated before SDK invocation so validation errors cannot echo arbitrary keys
+or values. Unknown fields and argument types are rejected generically; no file path,
 production task ID or remote URL can be read. Dispatch, approve, merge, import
 and file-writing tools are absent and direct calls are rejected. There is no
 `/v1/tasks` write route, browser automation, queue recovery, executor construction,
@@ -66,9 +68,16 @@ authenticate their author or prove review. The entry never searches for, loads
 or imports a handoff package. It does not duplicate or depend on PR24's offline
 handoff validator; any later integration must declare that dependency separately.
 
-Requests are capped32KiB, concurrent requests at8; overflow is refused. No session
-registry is retained between requests. Connection/header timeouts are5s with1s
-keepalive; HTTP implementation timeout scheduling is not a model or relay poll.
+Requests are capped32KiB, concurrent requests at8 and sockets at16; overflow is
+refused. No session registry is retained between requests. Absolute connection
+and active-request deadlines are5s, with1s keepalive. A stalled header/body/socket
+is destroyed when its deadline fires, aborting pending reads and releasing
+request capacity once. This does not rely on Node's slower timeout sweep. Each
+active connection/request has only its own cleared-on-close deadline timer;
+there is no idle polling registry, model/relay timer or scheduled ACP work.
+Trusted in-process tests may shorten `deadlineMs` to50–5000ms; neither CLI nor
+remote input can change it. Even successful keepalive sockets close by the
+absolute connection deadline; clients reconnect for later stateless requests.
 Responses contain only fixed capability fields or the bounded fixture (MCP text
 and structured representations both remain bounded). Parser/unknown-tool errors
 are generic and do not reflect arbitrary submitted payloads. This is a controlled

@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 
 const fixtureSchema=z.object({id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),summary:z.string().min(1).max(512),body:z.string().min(1).refine(s=>Buffer.byteLength(s,'utf8')<=16384)}).strict();
+const toolCallSchema=z.object({name:z.enum(['get_requirements','read_capabilities']),arguments:z.object({}).strict().optional()}).strict();
 const defaultFixture={id:'synthetic-requirements',summary:'Synthetic read-only protocol test',body:'Prepare an engineering document for a synthetic example. No execution is requested.'};
 const capabilities=Object.freeze({mode:'read-only',executors_started:false,ordinary_chat_connected:false,production_state_loaded:false,tools:['get_requirements','read_capabilities'],fixture_only:true});
 function json(response,status,body){response.writeHead(status,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'});response.end(JSON.stringify(body));}
@@ -16,7 +17,8 @@ function readBody(request){return new Promise((resolve,reject)=>{
 
 // Deliberately separate composition root. Do not import production config,
 // store, application, executors, pairing, relay or environment loaders here.
-export function createReadOnlyTestEntry({fixture=defaultFixture}={}) {
+export function createReadOnlyTestEntry({fixture=defaultFixture,deadlineMs=5000}={}) {
+ if(!Number.isInteger(deadlineMs)||deadlineMs<50||deadlineMs>5000)throw new Error('Invalid bounded HTTP deadline');
  const data=Object.freeze({...fixtureSchema.parse(fixture),synthetic:fixture===defaultFixture,source:fixture===defaultFixture?'synthetic_fixture':'host_supplied_fixture'});
  let active=0;
  const mcpServers=new Set();
@@ -26,7 +28,8 @@ export function createReadOnlyTestEntry({fixture=defaultFixture}={}) {
    json(response,403,{error:'Loopback origin and host required'});return;
   }
   if(active>=8){json(response,503,{error:'Read-only request limit reached'});return;}
-  active++;let finished=false;const finish=()=>{if(!finished){finished=true;active--;}};response.once('finish',finish);response.once('close',finish);
+  const requestDeadline=setTimeout(()=>request.socket.destroy(),deadlineMs);requestDeadline.unref();
+  active++;let finished=false;const finish=()=>{if(!finished){finished=true;clearTimeout(requestDeadline);active--;}};response.once('finish',finish);response.once('close',finish);
   if(request.method==='GET'&&request.url==='/health'){json(response,200,{status:'ok',...capabilities,scope:'isolated test entry liveness only'});return;}
   if(request.method!=='POST'||request.url!=='/mcp'){json(response,404,{error:'Read-only test route not found'});return;}
   let mcp;
@@ -34,7 +37,7 @@ export function createReadOnlyTestEntry({fixture=defaultFixture}={}) {
    if(!/^application\/json(?:;|$)/i.test(request.headers['content-type']??'')){json(response,415,{error:'JSON required'});return;}
    const body=await readBody(request);
    if(!body||Array.isArray(body)||typeof body!=='object'||body.jsonrpc!=='2.0'||typeof body.method!=='string'){json(response,400,{error:'Invalid JSON-RPC request'});return;}
-   if(body.method==='tools/call'&&!['get_requirements','read_capabilities'].includes(body.params?.name)){
+   if(body.method==='tools/call'&&!toolCallSchema.safeParse(body.params).success){
     json(response,200,{jsonrpc:'2.0',id:typeof body.id==='string'||typeof body.id==='number'?body.id:null,error:{code:-32602,message:'Only read-only test tools are available'}});return;
    }
    mcp=new McpServer({name:'acp-readonly-test',version:'1.0.0'},{maxToolInputElements:256});
@@ -49,7 +52,15 @@ export function createReadOnlyTestEntry({fixture=defaultFixture}={}) {
   }catch(error){if(!response.headersSent&&!response.destroyed)json(response,typeof error==='number'?error:400,{error:'Read-only request rejected'});}
   finally{if(mcp){mcpServers.delete(mcp);await mcp.close().catch(()=>{});}}
  });
- server.requestTimeout=5000;server.headersTimeout=5000;server.keepAliveTimeout=1000;
+ // Deadlines are tied only to active HTTP connections/requests, not a polling
+ // registry. The socket deadline also covers clients that never finish headers;
+ // Node's requestTimeout sweep alone does not enforce a five-second wall clock.
+ server.on('connection',socket=>{
+  const deadline=setTimeout(()=>socket.destroy(),deadlineMs);deadline.unref();
+  socket.once('close',()=>clearTimeout(deadline));
+ });
+ server.maxConnections=16;
+ server.requestTimeout=deadlineMs;server.headersTimeout=deadlineMs;server.keepAliveTimeout=1000;
  return Object.freeze({
   listen(port=4328,host='127.0.0.1'){
    if(host!=='127.0.0.1'||!Number.isInteger(port)||port<0||port>65535)return Promise.reject(new Error('Explicit loopback and valid port required'));

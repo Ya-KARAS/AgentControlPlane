@@ -21,3 +21,10 @@ requests, HTTP request timeout5s. Stateless requests keep no session registry.
 Reject non-loopback host/origin; no CORS. Capability and health describe only this
 entry, not normal ACP readiness. Public tunneling/account configuration is out of
 scope. No storage or fixture path is accepted through tools or CLI.
+
+
+Review corrections: strict prevalidation of params plus empty arguments prevents
+SDK error reflection. HTTP connection/request lifecycle deadlines (not ACP
+background timers) explicitly destroy stalled sockets and free capacity, instead
+of relying on Node's delayed timeout sweep. Connection count is also bounded16.
+Both defects reproduced as RED before the minimal corrections; no scope expansion.
