@@ -333,7 +333,9 @@ Checks default to unknown. To observe a specific checks policy, the host supplie
 `requiredChecks: [{name: "verify", app_id: 123}]` with explicitly approved issuer
 IDs; no default issuer or required branch rule is inferred. All pages are read
 under page/record/byte/time bounds, and incomplete or head-mismatched data fails
-closed. Same-name checks from another app cannot satisfy the policy. A passed
+closed. Same-name checks from another app cannot satisfy the policy. Multiple matching
+runs for the same name/app are ambiguous and return unknown even if all passed;
+numeric run IDs are never used to infer an authoritative suite. A passed
 projection means only this explicit context policy passed, not that every GitHub
 branch rule or permission permits merge. Legacy statuses and workflow-run shortcut
 aggregation are deliberately not implemented; do not use this adapter to certify

@@ -84,3 +84,15 @@ test('merge timestamp must be a canonical provider ISO time, not Date.parse shor
  const {adapter}=setup({respond:()=>({body:JSON.stringify({...pr(),merged:true,merged_at:'2026-11-01',merge_commit_sha:'c'.repeat(40)})})});
  await assert.rejects(adapter.readObservation(target));
 });
+
+for (const firstConclusion of ['failure','success']) {
+ test(`multiple matching suites remain ambiguous even if newest run passed: ${firstConclusion}`,async()=>{
+  const {adapter}=setup({requiredChecks:[{name:'verify',app_id:17}],respond:url=>url.includes('check-runs')?{
+   body:JSON.stringify({total_count:2,check_runs:[
+    {...run(1),check_suite:{id:101},conclusion:firstConclusion},
+    {...run(2),check_suite:{id:102}},
+   ]}),
+  }:undefined});
+  assert.equal((await adapter.readObservation(target)).checks,'unknown');
+ });
+}

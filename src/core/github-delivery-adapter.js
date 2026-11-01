@@ -102,8 +102,11 @@ export function createGitHubDeliveryAdapter({ request, repository, requiredCheck
       url=nextPage(headers,path,page);
     } while (url);
     if (seen.size !== count) throw unavailable();
-    const selected=requiredChecks.map(check => [...seen.values()].filter(run => run.name === check.name && run.app.id === check.app_id).sort((a,b) => b.id-a.id)[0]);
-    if (selected.some(run => !run)) return 'unknown';
+    const matches=requiredChecks.map(check => [...seen.values()].filter(run => run.name === check.name && run.app.id === check.app_id));
+    // Numeric run ID does not establish which suite is authoritative. Without
+    // an explicit suite policy, multiple matches (even successes) are unknown.
+    if (matches.some(runs => runs.length !== 1)) return 'unknown';
+    const selected=matches.map(runs => runs[0]);
     if (selected.some(run => run.status === 'completed' && ['failure','cancelled','timed_out','action_required','stale','startup_failure'].includes(run.conclusion))) return 'failed';
     if (selected.some(run => run.status !== 'completed')) return 'pending';
     return selected.every(run => run.conclusion === 'success') ? 'passed' : 'unknown';
