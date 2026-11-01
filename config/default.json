@@ -7,6 +7,12 @@
     "mcpSessionIdleMinutes": 30
   },
   "workspaceRoots": [],
+  "controllers": {
+    "enabled": false,
+    "mode": "single",
+    "leaseTtlSeconds": 120,
+    "agents": []
+  },
   "companion": {
     "enabled": true,
     "pairingTtlMinutes": 10,
