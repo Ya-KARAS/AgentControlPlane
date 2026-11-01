@@ -382,3 +382,75 @@ it is a specific approval/design decision, not performed here. Actual browser UV
 credential enrollment, RP/origin trust, principal binding and real user acceptance
 remain unconfigured. A virtual authenticator test would not prove live human
 acceptance. The standard entry point stays unwired/fail-closed.
+
+### Standard WebAuthn ceremony verifier (code only, not enrollment)
+
+`src/core/delivery-webauthn.js` now delegates registration/authentication option
+creation and response verification to exact `@simplewebauthn/server` **14.0.3**.
+Official registry metadata was checked on2026-11-01: stable latest14.0.3,
+MIT, engine Node>=20; this repository requires>=22 and tests ran on24.19.0.
+The [official14.0.x documentation](https://simplewebauthn.dev/docs/packages/server)
+describes Node22+ and the four ceremony functions used here. No custom signature,
+COSE, CBOR, attestation or JWT substitute is implemented.
+
+The lockfile pins all resolved artifacts/integrities from registry.npmjs.org.
+Installation used `--ignore-scripts`; the25 added packages have no install lifecycle
+scripts. Metadata licenses are21 MIT,1 BSD-3-Clause,1 Apache-2.0 and2 0BSD, with
+upstream license notices retained by their distributions. npm audit introduced
+**zero** new advisories. It reports one pre-existing high Zod advisory
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5); no unrelated
+major Zod upgrade or automatic audit fix was performed. This is a bounded
+provenance/known-advisory check, not a dependency security certification.
+
+`createDeliveryWebAuthnVerifier({rpID,expectedOrigin,rpName,authorize,storage,...})`
+is an isolated trusted-host component. No defaults select RP, origin, principal,
+credentials or policy. Missing/invalid config stays disabled. No server, HTTP,
+MCP, CLI, enrollment page, public listener or production enablement was added.
+`authorize({principalId,purpose,target})` is a host callback, not a client field;
+enrollment and authentication purposes must be authorized separately. Host code
+that can replace the library/policy is already privileged, not a remote identity.
+
+A host can call beginRegistration/beginAuthentication with an exact
+repo/PR/head/decision target, then finish with its challengeId, response and that
+same target. Options and verification require user verification; registration
+also requires user presence. Only standard ES256/RS256 algorithms are offered,
+with the same library-supported allowlist passed to registration verification.
+Challenges are single-use before async work,30–300 seconds(default120), at most
+32 pending by default(max128), and never restored across restart. A failed,
+expired, mismatched or replayed challenge cannot yield a verified result. No
+request can pick a principal at finish; it is bound at begin and reauthorized.
+
+Storage is an explicit trusted-host persistence contract, not a new identity DB:
+`readCredentials(principalId)` returns bounded credential public keys/counters;
+`insertCredential({principalId,credential,expectedAbsent:true})` must atomically
+reject an existing credential; `compareAndSwapCounter({principalId,credentialId,
+expectedCounter,newCounter})` must durably commit the expected counter or return
+false. A credential ID must have unique principal ownership in that host store.
+Unknown credentials never reach the authentication verifier. Do not implement
+these callbacks by returning true without a durable write. Failure or exception
+cannot return success; policy and clock are checked again after commit. A commit
+may have succeeded before a later policy/clock failure, so inspect host storage
+rather than rolling back counters or assuming no enrollment occurred.
+
+Registration returns registration_only; authentication returns ceremony_only.
+Neither result is accepted by manual delivery import nor directly writes approved.
+A future trusted user-decision adapter must combine a genuine verified ceremony
+with the actual selected user policy and current-head validation. Existing host
+projection remains the only checked approval path. Credentials, signatures,
+responses and public keys are not placed in task summaries or audit output by
+this component. No private keys are generated or stored by ACP.
+
+Tests exercise strict host-policy/storage mocks and real standard-library option
+generation plus malformed response rejection. Mock-success tests are **not**
+positive cryptographic or human-presence acceptance; no actual credential was
+registered and no virtual authenticator was used to simulate the user. Cloud
+DNS and Chromium sandbox limitations described above remain real acceptance
+blockers; no system permission or browser sandbox bypass was attempted.
+
+The minimal personal steps remaining are: establish the actual approved cloud
+origin/RP and trusted access path, authorize the enrollment principal, personally
+register an authenticator requiring user verification, then inspect an exact
+PR/head and complete a fresh verification to accept/reject it. No cloud hostname,
+localhost mapping to the user's computer, RP or principal is invented here.
+Credential/RP registration and host connection are separate actions from this
+ordinary library installation and still have not been performed.

@@ -119,3 +119,18 @@ local-node test proposal; no Windows/local fallback is authorized.
 - [x] GREEN targeted and full verify; document contract, cloud-only configuration,
   precise WebAuthn dependency blocker. No hand-written ceremony crypto or new deps.
 - [x] Commit immutable head for parent independent review, no push by implementer.
+
+## Standard WebAuthn verifier component (host-only, no enrollment)
+
+- [x] Inspect official exact stable version, Node/license/integrity and dependency
+  audit; pin @simplewebauthn/server14.0.3 and lockfile with install scripts disabled.
+  Ordinary dependency selection is authorized; actual credential/RP setup is not.
+- [x] RED tests for absent configuration, explicit RP/origin/user binding, required
+  user verification, single-use expiring target-bound challenges, trusted credential
+  lookup, counter CAS failure/replay, and malformed real-library verification.
+- [x] Implement isolated createDeliveryWebAuthnVerifier host component using the
+  standard library ceremony generation/verification only. No crypto/CBOR/COSE
+  implementation, HTTP/MCP/CLI route, default RP/principal, enrollment or live calls.
+- [x] GREEN targeted and full verify; document that test mocks exercise policy
+  plumbing, not human presence, and record remaining actual origin/enrollment steps.
+- [x] Commit immutable head for independent review; parent handles ordinary push.
