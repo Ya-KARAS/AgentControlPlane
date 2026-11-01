@@ -253,10 +253,16 @@ export function subscriptionPanelHtml(status, lang) {
     const remaining = fresh && row.remaining_percent !== null ? esc(row.remaining_percent) + "%" : "unknown";
     return "<div class=card>" + [row.provider, row.surface, row.account_alias, row.plan, row.model_family, row.quota_window].map(esc).join(" · ") +
       "<br>" + esc(availability) + " · " + remaining + " · reset: " + esc(fresh ? row.reset_at : null) +
-      "<br>" + esc(row.source) + " / " + esc(row.confidence) + " · " + esc(row.freshness) +
+      "<br>" + esc(row.source) + " / " + esc(row.confidence) + " · " + esc(fresh ? "fresh" : "expired") +
       "<br>observed: " + esc(row.observed_at) + " · valid until: " + esc(row.valid_until) + " · overage: " + esc(fresh ? row.overage_status : null) + "</div>";
   }).join("") : "<div class=card>unknown — " + (lang === "zh" ? "暂无可用观测；不代表额度为零。" : "No current observation; this does not mean zero quota.") + "</div>";
-  body += (status?.advisory ?? []).map(row => "<div class=card>" + [row.executor, row.availability, row.action, row.reason].map(esc).join(" · ") + "</div>").join("");
+  body += (status?.advisory ?? []).map(row => {
+    const fresh = Date.parse(row.valid_until) > Date.now();
+    const blocked = row.action === "blocked";
+    return "<div class=card>" + [row.executor, fresh ? row.availability : "unknown",
+      fresh || blocked ? row.action : "approval_required",
+      fresh || blocked ? row.reason : "availability_unknown"].map(esc).join(" · ") + "</div>";
+  }).join("");
   return "<h2>" + title + "</h2>" + body;
 }
 

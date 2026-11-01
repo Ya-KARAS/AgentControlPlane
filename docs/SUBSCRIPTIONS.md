@@ -92,7 +92,9 @@ GET `/v1/subscriptions` and MCP `subscription_status` return
 `{ snapshots, advisory, advisory_only: true }`. The normal bearer/loopback access
 rules still apply. There is no mutation endpoint or import MCP tool. Dashboard
 shows a separate bilingual section and escapes every observation field; failed
-refresh first clears the previous report to unknown. Polling only reads local
+refresh first clears the previous report to unknown. Advisory rows carry the
+matched observation validity deadline; the browser rechecks it at render time,
+so a delayed response cannot retain available/exhausted advice after expiry. Polling only reads local
 records and never issues a model request.
 
 Optional operator-owned config maps an exact scope to a route:

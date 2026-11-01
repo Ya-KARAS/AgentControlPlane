@@ -47,7 +47,7 @@ export function subscriptionAdvisory(routes,snapshots,nowMs=Date.now()) {
   else if(availability==='exhausted') {action='skip';reason='subscription_exhausted';}
   else if(!route.previously_verified) {action='blocked';reason='route_not_verified';}
   else {action='approval_required';reason=snapshot?.overage_status!=='disabled'?'overage_confirmation_required':availability==='unknown'?'availability_unknown':'manual_confirmation_required';}
-  return {executor:route.executor,availability,action,reason};
+  return {executor:route.executor,availability,action,reason,valid_until:snapshot?.valid_until??null};
  }).sort((a,b)=>({available:0,warning:1,unknown:2,exhausted:3}[a.availability]-{available:0,warning:1,unknown:2,exhausted:3}[b.availability]));
 }
 export function subscriptionStatus(store,config,nowMs=Date.now()) {

@@ -31,3 +31,16 @@ test('operator CLI imports only local manual file into configured state and hide
  const imported=run();assert.equal(imported.status,0,imported.stderr);assert.equal(new TaskStore(state).listSubscriptionSnapshots().length,1);
  fs.writeFileSync(input,JSON.stringify({...sample,apiKey:'PRIVATE-SENTINEL'}));const invalid=run();assert.equal(invalid.status,1);assert.equal((invalid.stdout+invalid.stderr).includes('PRIVATE-SENTINEL'),false);
 });
+
+test('manual import omits malformed persisted observations without bypassing valid newer conflicts',t=>{
+ const {store}=setup(t);
+ store.state.subscription_snapshots=[null,{...sample,observed_at:'broken'},sample,{apiKey:'corrupt-entry'}];store.persist();
+ assert.equal(store.listSubscriptionSnapshots().length,1);
+ const restarted=new TaskStore(store.stateDir);
+ assert.throws(()=>restarted.recordManualSubscription({...sample,observed_at:'2026-11-01T11:58:00.000Z'}),e=>e.code==='subscription_conflict');
+ assert.equal(restarted.recordManualSubscription({...sample,account_alias:'second'}).account_alias,'second');
+ const restored=new TaskStore(store.stateDir);
+ assert.deepEqual(restored.listSubscriptionSnapshots().map(x=>x.account_alias),['personal','second']);
+ assert.equal(restored.state.subscription_snapshots.includes(null),false);
+ assert.equal(JSON.stringify(restored.state.subscription_snapshots).includes('corrupt-entry'),false);
+});

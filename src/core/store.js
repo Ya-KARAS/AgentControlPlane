@@ -279,7 +279,19 @@ export class TaskStore {
       throw new ControlPlaneError("invalid_subscription", "Manual imports require manual/user_reported provenance");
     }
     const previous = this.state.subscription_snapshots;
-    const entries = Array.isArray(previous) ? previous : [];
+    // Use the same normalization as reads; corrupted optional evidence must
+    // not prevent a valid operator import. Keep the newest valid scope if a
+    // damaged file contains duplicates, so sanitation cannot revive old data.
+    const validByScope = new Map();
+    for (const input of Array.isArray(previous) ? previous : []) {
+      try {
+        const item = normalizeSubscriptionSnapshot(input);
+        const key = subscriptionScope(item);
+        const current = validByScope.get(key);
+        if (!current || Date.parse(item.observed_at) > Date.parse(current.observed_at)) validByScope.set(key, item);
+      } catch { /* Match read-side omission of malformed evidence. */ }
+    }
+    const entries = [...validByScope.values()];
     const index = entries.findIndex(item => subscriptionScope(item) === subscriptionScope(snapshot));
     if (index >= 0) {
       if (JSON.stringify(entries[index]) === JSON.stringify(snapshot)) return structuredClone(snapshot);

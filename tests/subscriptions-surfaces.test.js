@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'; import test from 'node:test';
 import {EventEmitter} from 'node:events'; import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import vm from 'node:vm';
 import {createApplication} from '../src/server.js';import {TaskStore} from '../src/core/store.js';import * as dashboard from '../src/dashboard.js';
+import {subscriptionAdvisory} from '../src/core/subscriptions.js';
 class Passive extends EventEmitter {ready=true;stop(){}}
 async function setup(t){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'acp-subscription-http-'));const store=new TaskStore(dir);const config={server:{host:'127.0.0.1',port:0,authToken:'test-secret',allowedOrigins:[],maxMcpSessions:2,mcpSessionIdleMinutes:1},stateDir:dir,limits:{maxStoredEventsPerTask:20},profiles:{},codex:{networkAccess:false}};const app=await createApplication({config,store,codex:new Passive(),orchestrator:{},startCodex:false});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));t.after(async()=>{await app.close();fs.rmSync(dir,{recursive:true,force:true});});return {base:`http://127.0.0.1:${app.server.address().port}`,store,config};}
 test('subscription GET uses existing auth, is read-only and has no write route',async t=>{
@@ -31,4 +32,16 @@ test('failed panel refresh clears previously green information before awaiting o
  const target={innerHTML:'available 90%'};
  await dashboard.refreshSubscriptionPanel(async()=>{assert.ok(!target.innerHTML.includes('90%'));throw new Error('offline');},target,'en');
  assert.ok(target.innerHTML.includes('unknown'));assert.ok(!target.innerHTML.includes('available'));
+});
+
+
+test('client display expiry degrades server-fresh snapshot and advisory together',()=>{
+ const observed=Date.parse('2026-11-01T12:00:00Z'),expiry=observed+600000;
+ const render=vm.runInNewContext('('+dashboard.subscriptionPanelHtml.toString()+')',{Date:class extends Date {static now(){return expiry;}}});
+ for(const availability of ['available','exhausted']) {
+  const snapshot={schema_version:1,provider:'anthropic',surface:'claude_code',account_alias:'personal',plan:null,availability,remaining_percent:50,reset_at:null,observed_at:new Date(observed).toISOString(),valid_until:new Date(expiry).toISOString(),source:'manual',confidence:'user_reported',overage_status:'disabled'};
+  const advisory=subscriptionAdvisory([{executor:'claude',provider:'anthropic',surface:'claude_code',account_alias:'personal',compatible:true,previously_verified:true}],[snapshot],observed);
+  const html=render({snapshots:[{...snapshot,freshness:'fresh'}],advisory},'en');
+  assert.ok(!html.includes(availability),html);assert.ok(!html.includes('50%'));assert.ok(html.includes('availability_unknown'));assert.ok(html.includes('approval_required'));
+ }
 });
