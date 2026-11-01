@@ -101,3 +101,14 @@ adapters execute with the host user's privileges and are therefore restricted
 to allowlisted, trusted workspaces. A hosted relay requires a separate
 multi-tenant authentication and device-trust design; the local server must not
 be exposed directly to the public Internet.
+
+## Passive subscription observations (PR2)
+
+The optional subscription ledger reuses TaskStore state and audit without mixing
+plan availability with task tokens or cash. Only an offline operator command
+imports manual/user_reported snapshots; no model, CLI or browser polling occurs.
+GET `/v1/subscriptions`, read-only MCP `subscription_status` and the local dashboard
+show bounded exact-scope observations; expiry becomes unknown, null never means0.
+Operator-configured capability-gated advice always requires approval for manual
+input and never changes dispatch or disabled-by-default reroute. No import/takeover
+network mutation is added. See [contract and rollback](SUBSCRIPTIONS.md).

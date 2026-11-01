@@ -74,3 +74,12 @@ Profile 是策略默认值；任务可以在配置的限制范围内覆盖模型
 任务状态和项目关联存储在 workspace 之外。审计条目构成一条 append-only 的完整性链条。本地 HTTP 服务仅绑定到 loopback。
 
 Codex 具有显式的 workspace-write 沙箱路径。CLI 和兼容端点适配器以宿主用户的权限执行，因此仅限于 allowlist 中的可信工作区。托管中继需要单独的多租户身份验证和设备信任设计；本地服务器不得直接暴露到公共互联网。
+
+## 被动订阅观测（PR2）
+
+可选订阅记录复用 TaskStore 状态和审计，不与任务 token 或现金支出混合。仅离线
+operator 命令导入 manual/user_reported 快照，不调用模型、CLI 或浏览器探测额度。
+GET `/v1/subscriptions`、只读 MCP `subscription_status` 和本地面板展示有界、精确
+范围的观测；到期降为 unknown，null 不代表0。由 operator 配置兼容能力的路由建议
+始终需要手工批准，不改变实际派发或默认关闭的自动 reroute；没有新增网络修改
+入口。详见 [契约、操作及回滚](SUBSCRIPTIONS.md)。

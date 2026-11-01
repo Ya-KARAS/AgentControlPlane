@@ -1,4 +1,5 @@
 import http from "node:http";
+import { subscriptionStatus } from "./core/subscriptions.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -488,6 +489,11 @@ export async function createApplication(overrides = {}) {
           executors: orchestrator.getExecutors?.() ?? [],
           runtime: orchestrator.getRuntimeHealth(),
         });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/subscriptions") {
+        sendJson(response, 200, subscriptionStatus(store, config));
         return;
       }
 

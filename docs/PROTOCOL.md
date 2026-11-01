@@ -144,3 +144,14 @@ Codex exposes a live thread goal and can be polled while running. CLI adapters
 may report cumulative usage only in their final event, so their budget is also
 sent as policy guidance but cannot always be enforced at the same granularity.
 Providers can consume additional tokens between measurements.
+
+## Passive subscription observations (PR2)
+
+The optional subscription ledger reuses TaskStore state and audit without mixing
+plan availability with task tokens or cash. Only an offline operator command
+imports manual/user_reported snapshots; no model, CLI or browser polling occurs.
+GET `/v1/subscriptions`, read-only MCP `subscription_status` and the local dashboard
+show bounded exact-scope observations; expiry becomes unknown, null never means0.
+Operator-configured capability-gated advice always requires approval for manual
+input and never changes dispatch or disabled-by-default reroute. No import/takeover
+network mutation is added. See [contract and rollback](SUBSCRIPTIONS.md).
