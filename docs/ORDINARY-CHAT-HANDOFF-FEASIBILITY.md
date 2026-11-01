@@ -4,13 +4,23 @@ Checked 2026-11-01 against `main@638e6d7ba89f621c7163ce97c14071a43bcc1004`.
 This independent branch preserves the unmerged PR0–PR3 branches and changes no
 runtime dispatch, companion, userscript, identity, queue or credential behavior.
 The earlier PR5 preparation is on PR23 at `docs/plans/PR5-CHAT-FEASIBILITY.md`;
-this document carries forward its manual-path boundary without copying PR23 commits.
+this document carries forward its feasibility boundaries without copying PR23 commits.
 
-## 最终工作流 / agreed workflow
+## 目标工作流 / target workflow
 
-私人 Agent 整理需求 → 用户确认交接包并在普通 ChatGPT Chat 发送 → 普通 Chat
-编写工程文档 → 用户人工导回文档 → 私人 Agent 审阅并调度实际可用执行器 →
-代码、测试、审核及 draft PR → 私人 Agent 与用户验收。
+私人 Agent 整理需求 → 普通 ChatGPT Chat 编写工程文档 → 私人 Agent 接收并审阅
+文档、调度实际可用执行器 → 代码、测试、审核及 draft PR → 私人 Agent 与用户验收。
+
+目标是尽量自动完成双向交接，但每个通道都须先验证厂商支持、权限、内容完整性
+及恢复能力。自动化目标不等于当前已联通，也不授权自动抓取、隐藏发送或绕过限制。
+用户最终 main 合并确认仍是独立硬门槛，不因自动交接而取消。
+
+### 当前可用备用流程 / current fallback
+
+在自动双向通道尚未验证时：私人 Agent 准备交接包 → 用户检查并在普通 Chat
+确认发送 → 普通 Chat 编写文档 → 用户人工导回 → 私人 Agent 审阅并继续调度。
+这是当前能力限制下的降级备用路径，不替换目标工作流，也不将永久人工搬运
+视为最终自动交接目标已经完成。具体步骤见下文 Manual fallback。
 
 验收不通过：回到同一逻辑任务的文档修订，保留旧版本、原因、执行与 PR 证据；
 不得复制成一个无关联的新任务。验收通过：仍必须由用户明确确认 main 合并，
