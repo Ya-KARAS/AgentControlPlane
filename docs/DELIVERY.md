@@ -208,3 +208,83 @@ repo/PR/head/event binding, missing pages, freshness, head race,403, replay,
 revocation/new head, concurrent revocation and invalid final clock. All fixtures
 are offline and the production import rejection remains tested. No new token,
 permission, network call, deployment or official approval capability is added.
+
+## Host-only durable integration (pure code implemented, default off)
+
+The earlier preview boundary remains: `createDeliveryEvidenceEvaluator` itself
+never grants effective approval. The host integration now adds the missing
+persistence and fresh projection contract, without supplying an authenticated
+adapter or choosing any real approver.
+
+An embedding host may explicitly supply `createApplication({ deliveryEvidence:
+{ adapter, authorizeUser, clock } })`. This is a JavaScript composition override,
+**not** `config.deliveryEvidence`, an environment variable, CLI option, HTTP body
+or MCP argument. It returns `app.deliveryHost` with `refresh(taskId)` and
+`status(taskId)`. Only trusted host code can invoke refresh; there is no network
+refresh/approval route and no automatic polling. The standard executable passes
+no override. It therefore remains unsupported/unknown without new configuration.
+
+The adapter must authenticate its source, verify complete pagination and real
+current head, and obtain user-originated immutable decisions. `authorizeUser`
+must implement the explicitly accepted user policy; it has no default. An
+account's `User` type, bearer token, terminal or JSON assertion is not that
+policy. Injecting a test callback merely simulates the trusted host boundary;
+no test policy is installed in production. Code with the host user's ability to
+replace JavaScript/files is outside this boundary, as with the existing executor
+and local store trust model.
+
+`TaskStore.createDeliveryHost(options)` constructs the same host service. The
+private commit callback cannot be called with request JSON or a public
+`trusted:true` token. It persists bounded evaluator history as private per-task
+`_delivery_evidence` bookkeeping, using the existing writer lock/drift checks,
+synchronous persist and safe audit chain. Generic task patches cannot alter that
+field. Normal task/HTTP/MCP views never expose the journal or user/event IDs.
+The journal contains event fingerprints, observation high-water marks and latest
+per-revision/user events. Limits remain256 events and128 PR scopes with fail-closed
+capacity handling; no silent eviction. Changed event content, omitted known
+revocation and old observation replay remain rejected after cold restart.
+
+Persisted history is **not approval authority**. Restart, host replacement,
+refresh failure, expired evidence or a changed manual delivery binding yields
+unknown until the currently injected adapter/policy freshly validates the exact
+repo/PR/head and commits its updated replay history. Failed persist/audit clears
+prior process approval, quarantines further writes and retains existing lock
+recovery rules. There is no cross-file state/audit transaction or automatic lock
+stealing; uncertain disk evidence requires operator inspection. Stale instances
+cannot overwrite another writer. A refresh must never start another executor.
+
+A valid fresh host projection can return `source: verified_host`,
+`verification: verified`, `approval_supported:true`, effective checks and
+`review_state:approved|changes_requested|pending_review|unknown`, plus
+`verified_until`. It is held in process, not restored from a disk approval flag.
+Read-only HTTP/MCP and task views reflect it; dashboard display rechecks its
+expiry. Manual imports remain manual/unverified and still reject approved/merged.
+Neither host path nor projection performs or authorizes approve/merge/deploy.
+Merged-state ingestion is still not implemented.
+
+### Remaining external connection and acceptance
+
+All above pure-code interfaces, persistence and default-off wiring are implemented
+and tested with injected fixtures. **No real authenticated adapter, real user
+policy, credentials, network access, deployment or user identity was configured.**
+PR3's design§8 user-originated decision acceptance is therefore still incomplete
+in the running default product; passing simulated tests is not live acceptance.
+
+The smallest next connection is an authenticated host adapter using an already
+owned read authorization if it can provide stable user/event IDs, complete
+reviews/checks and exact current head, together with an explicitly user-approved
+principal policy. The existing conversation connector is not automatically a
+credential or trusted transport available inside ACP. A copied JSON or model
+message cannot substitute for that missing authenticated handoff. First establish
+whether the existing host/platform can supply that channel without new scopes.
+If it cannot, propose the exact enrollment/credential, principal binding and
+runtime origin/transport needed for the user's on-site authorization; do not
+create them under general development permission. No new permissions were needed
+for the pure code shipped here. Live source validation and explicit user policy
+acceptance remain the concrete external blockers, not an undefined redesign goal.
+
+Rollback stops the service safely, retains state/audit, and reverts code through
+review. Removing the host override immediately disables effective approval;
+retained journals must not be interpreted as grants by an older binary. Old task
+records require no migration, and model/executor updates remain compatible while
+ownership/approval fields are protected.

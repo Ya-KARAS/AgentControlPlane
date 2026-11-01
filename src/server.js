@@ -194,6 +194,9 @@ export async function createApplication(overrides = {}) {
       config.limits.maxAuditBytes,
       config.audit?.integrityKey,
     );
+  // Only the embedding host may supply authenticated adapter/policy callbacks.
+  // JSON config, CLI and requests never choose this capability.
+  const deliveryHost = store.createDeliveryHost(overrides.deliveryEvidence ?? {});
   const rateLimiter = config.limits?.rateLimit?.enabled
     ? new RateLimiter({
         windowMs: config.limits.rateLimit.windowMs,
@@ -590,7 +593,8 @@ export async function createApplication(overrides = {}) {
 
       if (request.method === "GET" && parts.length === 4 && parts[0] === "v1" && parts[1] === "tasks" && parts[3] === "delivery") {
         if (!store.getTask(parts[2])) throw new ControlPlaneError("task_not_found", "Task not found");
-        sendJson(response, 200, { delivery: store.getDelivery(parts[2]), approval_supported: false });
+        const delivery = store.getDelivery(parts[2]);
+        sendJson(response, 200, { delivery, approval_supported: delivery?.approval_supported === true });
         return;
       }
 
@@ -720,6 +724,7 @@ export async function createApplication(overrides = {}) {
     candidateReview,
     projectRegistry,
     remoteRelayWorker,
+    deliveryHost,
     server,
     async close() {
       remoteRelayWorker.stop();

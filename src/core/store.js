@@ -1,3 +1,4 @@
+import { createDeliveryHostService } from "./delivery-host.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -70,7 +71,7 @@ function executorThreads(project) {
 function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
-    ...structuredClone(task),
+    ...structuredClone(Object.fromEntries(Object.entries(task).filter(([key]) => key !== "_delivery_evidence"))),
     delivery: safeDelivery(task.delivery),
     logical_task_id: task.logical_task_id ?? task.id,
     executor_history: Array.isArray(task.executor_history)
@@ -91,6 +92,8 @@ function normalizeTaskRecord(task) {
 }
 
 export class TaskStore {
+  #deliveryHost = null;
+  #deliveryHostEpoch = 0;
   constructor(
     stateDir,
     maxEvents = 500,
@@ -270,7 +273,7 @@ export class TaskStore {
     task.updatedAt = now();
     this.persist();
     this.audit("task.kind", { taskId, kind: task.kind });
-    return structuredClone(task);
+    return normalizeTaskRecord(task);
   }
 
   persist() {
@@ -395,7 +398,7 @@ export class TaskStore {
         c.resultHash !== checkpointResultHash(task) || task.policy.model !== c.model || task.policy.effort !== c.effort ||
         ["executor", "runtimeFingerprint", "profileProofHash", "canonicalWorkspace", "clientHomeReference", "model", "effort"].some((key) => c[key] !== binding[key]))
       throw checkpointError("checkpoint_not_adoptable");
-    return structuredClone({ task, checkpoint: c });
+    return structuredClone({ task: normalizeTaskRecord(task), checkpoint: c });
   }
 
   audit(type, payload) {
@@ -557,8 +560,37 @@ export class TaskStore {
     return normalizeTaskRecord(task);
   }
 
+  createDeliveryHost({adapter, authorizeUser, clock} = {}) {
+    const epoch=++this.#deliveryHostEpoch;
+    this.#deliveryHost=createDeliveryHostService({adapter,authorizeUser,clock,
+      healthy:()=>epoch === this.#deliveryHostEpoch && !this.checkpointFaulted,
+      read:(id)=>Object.hasOwn(this.state.tasks,id) ? {delivery:safeDelivery(this.state.tasks[id].delivery),journal:this.state.tasks[id]._delivery_evidence} : null,
+      commit:(id,journal,expected)=>this.#persistDeliveryEvidence(id,journal,expected,epoch),
+    });
+    return this.#deliveryHost;
+  }
+
+  #persistDeliveryEvidence(id,journal,expected,epoch) {
+    const task=this.state.tasks[id];
+    if (epoch !== this.#deliveryHostEpoch || !task || JSON.stringify(safeDelivery(task.delivery)) !== expected) throw new ControlPlaneError("delivery_conflict", "Delivery binding changed");
+    const wasLocked=Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease();
+    let persisted=false;
+    try {
+      if (isDeepStrictEqual(task._delivery_evidence,journal)) return;
+      this.state.tasks[id]={...task,_delivery_evidence:structuredClone(journal)};
+      this.persist(); persisted=true;
+      this.audit("task.delivery_evidence",{taskId:id,repository:task.delivery.repository,pull_request_number:task.delivery.pull_request_number,head_sha:task.delivery.head_sha});
+    } catch(error) {
+      if (!persisted) this.state.tasks[id]=task;
+      this.checkpointFaulted=true;
+      throw error;
+    } finally { if (!wasLocked && !this.checkpointFaulted) this.releaseExecutorLease(); }
+  }
+
   getDelivery(id) {
-    return Object.hasOwn(this.state.tasks, id) ? safeDelivery(this.state.tasks[id].delivery) : null;
+    if (this.#deliveryHost) return this.#deliveryHost.status(id);
+    return Object.hasOwn(this.state.tasks,id) ? safeDelivery(this.state.tasks[id].delivery) : null;
   }
 
   // Offline operator observation, never an approval/merge operation.
@@ -590,7 +622,7 @@ export class TaskStore {
   updateTask(id, patch) {
     const task = this.state.tasks[id];
     if (!task) return null;
-    if (Object.hasOwn(patch, "delivery") && !isDeepStrictEqual(patch.delivery, safeDelivery(task.delivery))) {
+    if (Object.hasOwn(patch, "_delivery_evidence") || (Object.hasOwn(patch, "delivery") && !isDeepStrictEqual(patch.delivery, this.getDelivery(id)) && !isDeepStrictEqual(patch.delivery, safeDelivery(task.delivery)))) {
       throw new ControlPlaneError("delivery_update_required", "Delivery observations require the checked operation");
     }
     const { delivery: ignoredDelivery, ...safePatch } = patch;
@@ -636,6 +668,7 @@ export class TaskStore {
     const task = this.state.tasks[id];
     if (!task) return null;
     const copy = normalizeTaskRecord(task);
+    copy.delivery = this.getDelivery(id);
     if (!includeEvents) delete copy.events;
     return copy;
   }
@@ -646,6 +679,7 @@ export class TaskStore {
       .slice(0, limit)
       .map((task) => {
         const copy = normalizeTaskRecord(task);
+        copy.delivery = this.getDelivery(task.id);
         delete copy.events;
         return copy;
       });

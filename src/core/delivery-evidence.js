@@ -25,12 +25,46 @@ const unknown = reason => ({ preview_only: true, approval_supported: false,
 // Host-only dependency injection. This module does not authenticate transport
 // JSON: a future adapter must first verify the source and complete pagination.
 // It is deliberately not connected to store setters or HTTP/MCP/CLI paths.
-export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock = Date.now } = {}) {
+export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock = Date.now, history } = {}) {
   const events = new Map();
   const observations = new Map();
   const latestDecisions = new Map();
+  let invalidHistory = false;
+  if (history !== undefined) {
+    try {
+      if (!ownKeys(history, ['events','observations','latestDecisions'])) fail();
+      for (const [name, map, maximum] of [['events',events,256],['observations',observations,128],['latestDecisions',latestDecisions,256]]) {
+        const entries = history[name];
+        if (!Array.isArray(entries) || entries.length > maximum) fail();
+        for (const entry of entries) {
+          if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string' || entry[0].length > 1000 || map.has(entry[0])) fail();
+          const [key,value] = entry;
+          if (name === 'events') { if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) fail(); }
+          if (name === 'observations') { if (!ownKeys(value,['observed','hash']) || !Number.isSafeInteger(value.observed) || typeof value.hash !== 'string' || !/^[a-f0-9]{64}$/.test(value.hash)) fail(); }
+          if (name === 'latestDecisions') {
+            if (!Array.isArray(value) || value.length > 256) fail();
+            for (const row of value) {
+              if (!Array.isArray(row) || row.length !== 2 || !identifier(row[0])) fail();
+              const event=row[1];
+              if (!ownKeys(event,['event_id','user_id','head_sha','state','occurred_at']) || event.user_id !== row[0] || !identifier(event.event_id) || !sha(event.head_sha) || !['approved','changes_requested','revoked'].includes(event.state)) fail();
+              time(event.occurred_at);
+            }
+            if (new Set(value.map(row=>row[0])).size !== value.length) fail();
+            map.set(key,new Map(structuredClone(value))); continue;
+          }
+          map.set(key,structuredClone(value));
+        }
+      }
+      if ([...latestDecisions.values()].reduce((n,map)=>n+map.size,0)>256) fail();
+    } catch { invalidHistory = true; }
+  }
   return Object.freeze({
+    exportHistory() {
+      if (invalidHistory) fail();
+      return structuredClone({events:[...events],observations:[...observations],latestDecisions:[...latestDecisions].map(([key,map])=>[key,[...map]])});
+    },
     async evaluate(input) {
+      if (invalidHistory) return unknown('history_invalid');
       if (!adapter || typeof adapter.readObservation !== 'function' || typeof adapter.readHead !== 'function') return unknown('adapter_unconfigured');
       try {
         const target = Object.freeze(targetIdentity(input));
@@ -94,7 +128,7 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
         for (const event of normalizedEvents) events.set(JSON.stringify([scope,event.event_id]),digest(event));
         observations.set(scope,{ observed, hash });
         if (latestByUser.size > 0) latestDecisions.set(revision,latestByUser);
-        return { ...unknown('preview_only'), candidate: { ...target, checks:evidence.checks, decision:decision?.state ?? 'unknown',
+        return { ...unknown('preview_only'), validity: {observed_at:evidence.observed_at,valid_until:evidence.valid_until}, candidate: { ...target, checks:evidence.checks, decision:decision?.state ?? 'unknown',
           user_id:decision?.user_id ?? null, event_id:decision?.event_id ?? null } };
       } catch {
         return unknown('evidence_unavailable'); // Never expose arbitrary adapter errors.

@@ -248,9 +248,11 @@ export function deliverySummaryHtml(delivery) {
   const esc = value => String(value ?? "unknown").replace(/[&<>"']/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[character]);
-  return '<div class="task-lineage">Delivery · unverified · approval unavailable<br>' +
+  const freshHost = delivery.verification === "verified" && delivery.source === "verified_host" &&
+    delivery.approval_supported === true && Date.parse(delivery.verified_until) > Date.now();
+  return '<div class="task-lineage">Delivery · ' + (freshHost ? 'verified host observation' : 'unverified · approval unavailable') + '<br>' +
     [delivery.repository, delivery.base_branch, delivery.branch, delivery.pull_request_number, delivery.head_sha].map(esc).join(" · ") +
-    '<br>Verified checks/review: unknown · Reported: ' + [delivery.reported_checks, delivery.reported_review_state, delivery.observed_at].map(esc).join(" · ") + '</div>';
+    '<br>Verified checks/review: ' + (freshHost ? [delivery.checks, delivery.review_state].map(esc).join(' · ') : 'unknown') + ' · Reported: ' + [delivery.reported_checks, delivery.reported_review_state, delivery.observed_at].map(esc).join(" · ") + '</div>';
 }
 
 export function dashboardHtml(config) {

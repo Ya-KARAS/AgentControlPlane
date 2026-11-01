@@ -81,3 +81,12 @@ Review focus: a valid-looking GitHub User account is not a human policy decision
 403/incomplete/head-race never reuses a prior candidate; replay must not restore a
 revoked decision; simulation must not reach a production setter. Replay memory
 is not a durable replay ledger and this evaluator is not production acceptance.
+
+## Host-only persistence follow-up (authorized, no credentials/live wiring)
+
+Architecture: existing evaluator exports/restores bounded replay history, not authority. A host service can refresh a task only through injected authenticated adapter and explicit user policy. Its fresh decision is held in process only; persisted per-task history is private bookkeeping. Restart has no approval until fresh validation. Default application injects nothing; no HTTP/MCP/CLI mutation path exists.
+
+- [x] Write evaluator history/restart revocation RED; implement strict bounded history restore/export, run existing16+new tests GREEN.
+- [x] Write real TaskStore host-service RED for default denial, explicit simulated policy approval, expiry, new-head invalidation, cold restart replay/revocation, forged persisted flags, generic mutation, writer drift and persist/audit failure. Implement private capability commit callback under existing lock/audit, host-only DI service; read projection never trusts disk approval.
+- [x] Write createApplication host injection RED and no-adapter/JSON config denial; wire only overrides.deliveryEvidence (not config/body), no network mutation route. Preserve legacy record updates and task lineage.
+- [x] Run targeted suites and npm run verify, document durable-memory bounds, trusted-host threat boundary, exact still-unconfigured real adapter/user binding, rollback; commit. Parent independent review and ordinary feature push.

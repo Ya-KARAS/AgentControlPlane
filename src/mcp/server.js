@@ -152,7 +152,8 @@ function buildToolSpecs({ orchestrator, store, config }) {
       async handler({ task_id }) {
         const id = store.resolveTaskId(task_id);
         if (!id) return failure(new Error("Unknown or ambiguous task id"));
-        return result({ delivery: store.getDelivery(id), approval_supported: false }, "Delivery observations only; human approval is unavailable.");
+        const delivery = store.getDelivery(id);
+        return result({ delivery, approval_supported: delivery?.approval_supported === true }, "Delivery status; manual reports never authorize approval or merge.");
       },
     },
     {
