@@ -565,19 +565,19 @@ export class TaskStore {
   recordDelivery(id, input) {
     if (!Object.hasOwn(this.state.tasks, id)) throw new ControlPlaneError("task_not_found", "Task not found");
     const task = this.state.tasks[id];
-    const current = safeDelivery(task.delivery);
+    const current = safeDelivery(task.delivery) ? task.delivery : null;
     const delivery = transitionDelivery(current, input);
     const wasLocked = Boolean(this.checkpointLeaseToken);
     this.acquireExecutorLease();
     let persisted = false;
     try {
-      if (isDeepStrictEqual(current, delivery)) return structuredClone(delivery);
+      if (isDeepStrictEqual(current, delivery)) return safeDelivery(delivery);
       this.state.tasks[id] = { ...task, delivery, updatedAt: now() };
       this.persist();
       persisted = true;
       this.audit("task.delivery_observed", { taskId: id, repository: delivery.repository,
         pull_request_number: delivery.pull_request_number, head_sha: delivery.head_sha });
-      return structuredClone(delivery);
+      return safeDelivery(delivery);
     } catch (error) {
       if (!persisted) this.state.tasks[id] = task;
       this.checkpointFaulted = true;

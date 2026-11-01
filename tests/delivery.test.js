@@ -28,3 +28,14 @@ test('safe reader drops corrupt or forged approval metadata',()=>{
  assert.equal(safeDelivery(null),null);assert.equal(safeDelivery({...input,prompt:'secret'}),null);assert.equal(safeDelivery({...input,review_state:'approved'}),null);
  assert.equal(safeDelivery(input).head_sha,'a'.repeat(40));
 });
+
+test('revision retry is idempotent after conservative reset without restoring stale checks',()=>{
+ const previous=normalizeDelivery({...input,checks:'passed',review_state:'changes_requested'},opts);
+ const observation={...input,head_sha:'b'.repeat(40),checks:'passed',review_state:'changes_requested',observed_at:'2026-11-01T11:02:00Z'};
+ const stored=transitionDelivery(previous,observation,opts);
+ assert.deepEqual(transitionDelivery(stored,observation,opts),stored);
+ assert.equal(stored.reported_checks,'unknown');assert.equal(stored.reported_review_state,'pending_review');
+ fails(()=>transitionDelivery(stored,{...observation,checks:'failed'},opts),'delivery_conflict');
+ fails(()=>transitionDelivery(stored,{...observation,checks:'unknown',review_state:'pending_review'},opts),'delivery_conflict');
+ fails(()=>transitionDelivery(stored,{...observation,_observation_hash:'a'.repeat(64)},opts));
+});

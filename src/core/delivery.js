@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ControlPlaneError } from './errors.js';
 
 const invalid = () => new ControlPlaneError('invalid_delivery', 'Invalid bounded delivery metadata');
@@ -41,13 +42,29 @@ export function normalizeDelivery(input, { nowMs = Date.now() } = {}) {
     checks: 'unknown', review_state: 'unknown', reported_checks: reportedChecks, reported_review_state: reportedReview,
     observed_at: new Date(observed).toISOString(), source: 'manual', verification: 'unverified', approval_supported: false };
 }
+// Persisted replay evidence is private bookkeeping, never caller authority.
+const observationHash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+function persistedDelivery(input, options = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid();
+  const { _observation_hash, ...metadata } = input;
+  const normalized = normalizeDelivery(metadata, options);
+  if (_observation_hash !== undefined) {
+    if (typeof _observation_hash !== 'string' || !/^[a-f0-9]{64}$/.test(_observation_hash)) throw invalid();
+    normalized._observation_hash = _observation_hash;
+  }
+  return normalized;
+}
 export function safeDelivery(input) {
-  try { return normalizeDelivery(input); } catch { return null; }
+  try {
+    const { _observation_hash, ...metadata } = persistedDelivery(input);
+    return metadata;
+  } catch { return null; }
 }
 export function transitionDelivery(current, input, options = {}) {
   const next = normalizeDelivery(input, options);
-  if (!current) return next;
-  const previous = normalizeDelivery(current, options);
+  const incomingHash = observationHash(next);
+  if (!current) return { ...next, _observation_hash: incomingHash };
+  const previous = persistedDelivery(current, options);
   if (previous.repository.toLowerCase() !== next.repository.toLowerCase() ||
       (previous.pull_request_number !== null && previous.pull_request_number !== next.pull_request_number)) {
     throw new ControlPlaneError('delivery_identity_conflict', 'Delivery repository or attached PR cannot silently change');
@@ -55,12 +72,13 @@ export function transitionDelivery(current, input, options = {}) {
   const time = Date.parse(next.observed_at) - Date.parse(previous.observed_at);
   if (time < 0) throw new ControlPlaneError('stale_delivery', 'An older delivery observation cannot replace the current one');
   if (time === 0) {
-    if (JSON.stringify(previous) === JSON.stringify(next)) return previous;
+    const { _observation_hash, ...previousMetadata } = previous;
+    if ((_observation_hash ?? observationHash(previousMetadata)) === incomingHash) return previous;
     throw new ControlPlaneError('delivery_conflict', 'Conflicting delivery observations have the same time');
   }
   if (previous.head_sha !== next.head_sha || previous.branch !== next.branch || previous.base_branch !== next.base_branch) {
     next.reported_checks = 'unknown';
     if (!['not_requested', 'draft_pr', 'closed'].includes(next.reported_review_state)) next.reported_review_state = 'pending_review';
   }
-  return next;
+  return { ...next, _observation_hash: incomingHash };
 }

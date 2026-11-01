@@ -45,6 +45,11 @@ idempotent; a conflicting observation at the same timestamp or an older
 observation is refused. Once attached, repository and a non-null PR number cannot
 silently change. A changed head/base/branch clears reported checks and returns
 review to pending_review except explicit draft/not_requested/closed observations.
+An internal replay fingerprint of the original validated observation is retained
+before conservative new-head resets, so an identical retry remains idempotent
+after restart without restoring stale checks. It is not caller-supplied, is not
+authentication evidence, and is omitted from all public views. Conflicting
+equal-time observations remain refused.
 No accepted approval is transferable to another head because approval is never
 admitted in this implementation.
 

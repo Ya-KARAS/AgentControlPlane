@@ -35,3 +35,16 @@ test('offline CLI imports only safe observations and never accepts human asserti
  const ok=run(['--offline',task.id,file]);assert.equal(ok.status,0,ok.stderr);assert.equal(new TaskStore(store.stateDir).getDelivery(task.id).reported_checks,'passed');
  fs.writeFileSync(file,JSON.stringify({...observation,review_state:'approved',human:true}));const denied=run(['--offline',task.id,file]);assert.notEqual(denied.status,0);assert.doesNotMatch(denied.stdout+denied.stderr,/private-prompt|observation.json|human:true/);
 });
+
+test('revision retry survives cold restart and preserves conservative checks plus conflict guard',(t)=>{
+ const {store,task}=setup(t);store.recordDelivery(task.id,observation);
+ const revision={...observation,head_sha:'b'.repeat(40),observed_at:'2026-11-01T00:02:00Z'};
+ const stored=store.recordDelivery(task.id,revision);
+ const restarted=new TaskStore(store.stateDir);
+ const before=fs.readFileSync(store.statePath,'utf8');const auditBefore=fs.readFileSync(store.auditPath,'utf8');
+ assert.deepEqual(restarted.recordDelivery(task.id,revision),stored);
+ assert.equal(stored.reported_checks,'unknown');assert.equal(stored.reported_review_state,'pending_review');
+ assert.equal(fs.readFileSync(store.statePath,'utf8'),before);assert.equal(fs.readFileSync(store.auditPath,'utf8'),auditBefore);
+ fails(()=>restarted.recordDelivery(task.id,{...revision,checks:'failed'}),'delivery_conflict');
+ assert.equal(JSON.stringify(restarted.getTask(task.id)).includes('_observation_hash'),false);
+});
