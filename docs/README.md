@@ -34,6 +34,7 @@ its original path so release notes and development handoffs keep stable links.
 
 ## Product and release planning
 
+- [Ordinary Chat handoff workflow and feasibility](ORDINARY-CHAT-HANDOFF-FEASIBILITY.md)
 - [Roadmap](ROADMAP.md) · [中文](ROADMAP.zh-CN.md)
 - [Cross-device roadmap](CROSS-DEVICE-ROADMAP.md) · [中文](CROSS-DEVICE-ROADMAP.zh-CN.md)
 - [Commercialization](COMMERCIALIZATION.md) · [中文](COMMERCIALIZATION.zh-CN.md)
