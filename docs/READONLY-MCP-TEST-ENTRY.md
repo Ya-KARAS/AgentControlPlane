@@ -114,3 +114,16 @@ Rollback: stop this test process, then revert its independent feature commits
 through review. It has no persisted application state, schema migration or
 credentials to clean up. Do not stop or modify normal ACP, discard user work or
 merge main as part of this test. Existing branches and draft PRs remain intact.
+
+## Cross-platform subprocess teardown
+
+The guarded CLI test waits for the child `close` event, not merely signal delivery.
+After the test deliberately sends SIGTERM, POSIX must close normally with code0;
+Windows must report the exact SIGTERM termination tuple. Windows does not run the
+POSIX JavaScript signal handler for `child.kill('SIGTERM')`; this follows
+[Node child-process semantics](https://nodejs.org/api/child_process.html#subprocesskillsignal).
+No other exit code or signal is accepted. The test first proves the announced
+port is occupied (EADDRINUSE negative control), then proves the same port can be
+bound after close. A bounded close wait and teardown guard detect a stuck child;
+`child.killed` alone is never treated as proof of exit. Windows execution remains
+a CI result, not something reproduced by the Linux Cloud container.

@@ -51,13 +51,27 @@ test('explicit CLI ignores poisoned production environment under import/filesyst
  }
  const child=spawn(process.execPath,['--import','data:text/javascript,'+encodeURIComponent(guard),'scripts/readonly-test-entry.js','--port','0'],{cwd:process.cwd(),env:{...process.env,AGENT_CONTROL_CONFIG:poison,AGENT_CONTROL_STATE_DIR:dir,AGENT_CONTROL_HOST:'0.0.0.0',AGENT_CONTROL_PORT:'4318'}});
  let stdout='',stderr='';child.stdout.on('data',d=>stdout+=d);child.stderr.on('data',d=>stderr+=d);
- const exited=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
- t.after(()=>{if(child.exitCode===null)child.kill('SIGTERM');});
+ const exited=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
+ const waitClosed=()=>{let deadline;return Promise.race([exited,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('CLI did not close after SIGTERM')),5000);})]).finally(()=>clearTimeout(deadline));};
+ t.after(async()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');await waitClosed();});
  for(let attempt=0;attempt<200&&!stdout.includes('\n')&&child.exitCode===null;attempt++)await new Promise(r=>setTimeout(r,10));
  assert.ok(stdout.includes('\n'),stderr);const info=JSON.parse(stdout.trim());assert.match(info.address,/^http:\/\/127\.0\.0\.1:\d+$/);assert.equal(info.executors_started,false);
  const response=await fetch(info.address+'/health');assert.equal(response.status,200);assert.equal((await response.json()).production_state_loaded,false);
  const tools=await fetch(info.address+'/mcp',{method:'POST',headers:{'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}).then(r=>r.json());assert.equal(tools.result.tools.length,2);
- child.kill('SIGTERM');assert.deepEqual(await exited,{code:0,signal:null});assert.equal(stderr,'');assert.equal(stdout.includes('PRODUCTION-SECRET'),false);
+ // Negative control: the announced listener really owns this port before stop.
+ const port=Number(new URL(info.address).port);
+ const competing=http.createServer();t.after(()=>{if(competing.listening)competing.close();});
+ await assert.rejects(new Promise((resolve,reject)=>{competing.once('error',reject);competing.listen(port,'127.0.0.1',resolve);}),{code:'EADDRINUSE'});
+ assert.equal(child.kill('SIGTERM'),true);
+ const outcome=await waitClosed();
+ // Windows emulates SIGTERM by terminating the child; it cannot run the POSIX
+ // JS signal cleanup handler. Accept only that exact platform-specific outcome.
+ assert.deepEqual(outcome,process.platform==='win32'?{code:null,signal:'SIGTERM'}:{code:0,signal:null});
+ assert.equal(child.exitCode,outcome.code);assert.equal(child.signalCode,outcome.signal);
+ const released=http.createServer();t.after(()=>{if(released.listening)released.close();});
+ await new Promise((resolve,reject)=>{released.once('error',reject);released.listen(port,'127.0.0.1',resolve);});
+ await new Promise((resolve,reject)=>released.close(error=>error?reject(error):resolve()));
+ assert.equal(stderr,'');assert.equal(stdout.includes('PRODUCTION-SECRET'),false);
  assert.deepEqual(fs.readdirSync(dir),['production-config.json']);
 });
 
