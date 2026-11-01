@@ -123,3 +123,39 @@ test('absolute HTTP deadline releases all stalled request capacity',async()=>run
   await new Promise(r=>setTimeout(r,250));assert.equal((await fetch(url+'/health')).status,200);
  }finally{for(const request of requests)request.destroy();}
 },{deadlineMs:100}));
+
+test('standard request metadata is accepted and ignored without becoming tool arguments',async()=>run(async({url,post})=>{
+ const marker='private-metadata-marker';
+ for(const name of ['get_requirements','read_capabilities']){
+  for(const _meta of [{progressToken:1},{progressToken:marker},{'example.org/context':{opaque:marker}}]){
+   const r=await post('tools/call',{name,arguments:{},_meta});
+   assert.equal(r.body.error,undefined);assert.notEqual(r.body.result?.isError,true);assert.ok(r.body.result?.structuredContent);
+   assert.equal(JSON.stringify(r.body).includes(marker),false);
+  }
+ }
+ const {Client}=await import('@modelcontextprotocol/sdk/client/index.js');
+ const {StreamableHTTPClientTransport}=await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+ const client=new Client({name:'offline-meta-client',version:'1.0.0'});
+ try{
+  await client.connect(new StreamableHTTPClientTransport(new URL(url+'/mcp')));
+  const result=await client.callTool({name:'read_capabilities',arguments:{}},undefined,{onprogress:()=>{}});
+  assert.equal(result.structuredContent.executors_started,false);
+ }finally{await client.close();}
+ const health=await fetch(url+'/health').then(r=>r.text());const diag=await fetch(url+'/diagnostics').then(r=>r.text());
+ assert.equal((health+diag).includes(marker),false);
+}));
+
+test('metadata compatibility cannot authorize writes relax arguments or retain hostile metadata',async()=>run(async({post})=>{
+ const marker='private-metadata-invalid';
+ let deep=marker;for(let i=0;i<10;i++)deep={nested:deep};
+ for(const params of [
+  {name:'dispatch_project',arguments:{},_meta:{progressToken:1}},
+  {name:'read_capabilities',arguments:{[marker]:true},_meta:{progressToken:1}},
+  {name:'read_capabilities',arguments:{},extra:marker,_meta:{}},
+  ...[null,[],marker,{progressToken:{}},{progressToken:1.5},{progressToken:marker.repeat(30)},{opaque:marker.repeat(600)},{opaque:deep},{opaque:Array(129).fill(marker)}].map(_meta=>({name:'read_capabilities',arguments:{},_meta})),
+ ]){
+  const r=await post('tools/call',params);assert.equal(r.body.error?.code,-32602);
+  assert.equal(JSON.stringify(r.body).includes(marker),false);
+ }
+ const ok=await post('tools/call',{name:'read_capabilities'});assert.equal(ok.body.result.structuredContent.mode,'read-only');
+}));

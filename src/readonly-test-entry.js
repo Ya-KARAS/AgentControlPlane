@@ -4,7 +4,18 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 
 const fixtureSchema=z.object({id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),summary:z.string().min(1).max(512),body:z.string().min(1).refine(s=>Buffer.byteLength(s,'utf8')<=16384)}).strict();
-const toolCallSchema=z.object({name:z.enum(['get_requirements','read_capabilities']),arguments:z.object({}).strict().optional()}).strict();
+// Request metadata is protocol envelope data, never tool input or authority.
+// These immediate tools may ignore progress requests; discard metadata before SDK.
+function boundedMeta(meta){
+ if(Buffer.byteLength(JSON.stringify(meta),'utf8')>8192)return false;
+ if(Object.hasOwn(meta,'progressToken')&&!(typeof meta.progressToken==='string'&&meta.progressToken.length<=256)&&!Number.isSafeInteger(meta.progressToken))return false;
+ const stack=[[meta,0]];let count=0;
+ while(stack.length){const [value,depth]=stack.pop();if(++count>128||depth>8)return false;
+  if(value&&typeof value==='object'){for(const [key,item] of Object.entries(value)){if(key.length>256)return false;stack.push([item,depth+1]);}}
+ }
+ return true;
+}
+const toolCallSchema=z.object({name:z.enum(['get_requirements','read_capabilities']),arguments:z.object({}).strict().optional(),_meta:z.record(z.unknown()).refine(boundedMeta).optional()}).strict();
 const defaultFixture={id:'synthetic-requirements',summary:'Synthetic read-only protocol test',body:'Prepare an engineering document for a synthetic example. No execution is requested.'};
 const capabilities=Object.freeze({mode:'read-only',executors_started:false,ordinary_chat_connected:false,production_state_loaded:false,tools:['get_requirements','read_capabilities'],fixture_only:true});
 function json(response,status,body){response.writeHead(status,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'});response.end(JSON.stringify(body));}
@@ -58,6 +69,10 @@ export function createReadOnlyTestEntry({fixture=defaultFixture,deadlineMs=5000}
    bump(counters.methods,body.method==='initialize'?'initialize':body.method==='tools/list'?'list':body.method==='tools/call'?'call':'other');
    if(body.method==='tools/call'&&!toolCallSchema.safeParse(body.params).success){
     bump(counters.rejections,'tool_call');json(response,200,{jsonrpc:'2.0',id:typeof body.id==='string'||typeof body.id==='number'?body.id:null,error:{code:-32602,message:'Only read-only test tools are available'}});return;
+   }
+   if(body.method==='tools/call'){
+    const {name,arguments:args}=body.params;
+    body.params={name,...(args===undefined?{}:{arguments:args})};
    }
    mcp=new McpServer({name:'acp-readonly-test',version:'1.0.0'},{maxToolInputElements:256});
    const annotations={readOnlyHint:true,destructiveHint:false,openWorldHint:false,idempotentHint:true};

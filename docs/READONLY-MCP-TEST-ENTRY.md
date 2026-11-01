@@ -216,3 +216,38 @@ user-visible error/time to the official platform support channel without secrets
 do not broaden Host/Origin, disable bounds, change keys or loop retries. Real
 ordinary Chat connectivity and two-way document handoff remain unpassed until
 that actual authorized test succeeds.
+
+## Standard tools/call request metadata
+
+The original strict params guard allowed only `name` and `arguments`. At that
+revision, even `{name:"read_capabilities",arguments:{},_meta:{progressToken:1}}`
+was rejected locally with JSON-RPC -32602. This is an offline-reproduced protocol
+compatibility defect, not proof of the actual request shape from the recent
+ChatGPT call (no live body or headers were captured). The later aggregate
+diagnostics confirmed three calls reached the local tool-call rejection guard,
+with no new Host/Origin, capacity or transport rejections. These counters identify
+the rejecting boundary, without identifying the rejected parameter or attributing
+each request to a particular visible operation.
+
+The [MCP request schema](https://modelcontextprotocol.io/specification/2025-06-18/schema)
+allows request `_meta`, including optional progressToken. The installed SDK can
+add it when a client requests progress. The receiver may ignore progress for
+these immediate read tools, as specified by the
+[progress contract](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress).
+The entry now accepts bounded object `_meta` only as protocol-envelope metadata:
+at most 8 KiB JSON, 128 values, 8 nested levels, 256-character keys; progressToken is
+a string up to 256 characters or a safe integer. Metadata is discarded before SDK
+dispatch, never passed as tool arguments, echoed, persisted, used as authority or
+added as diagnostic labels. Oversized/malformed metadata gets the same fixed error.
+
+Only the two existing names and absent/empty-object arguments remain valid.
+Unknown tools, extra argument keys, null/array arguments and extra top-level tool
+params remain rejected. Host/Origin, body, deadline and capacity checks do not
+change. No progress notifications or third tool are added.
+
+Offline tests include a real SDK Client calling over Streamable HTTP with an
+onprogress callback, both read tools with metadata, malformed/oversized metadata,
+and write/argument bypass attempts. This does not claim the installed ordinary
+Chat integration is fixed. Existing local/tunnel processes are not restarted by
+this change; any live validation is coordinated separately under its active
+approval window, with no raw request capture or key access.
