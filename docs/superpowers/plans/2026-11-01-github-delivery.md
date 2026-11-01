@@ -29,29 +29,30 @@
 
 Files: `src/core/delivery.js`, `tests/delivery.test.js`.
 Interfaces: normalizeDelivery(input,{nowMs}); transitionDelivery(current,input,{nowMs}); safeDelivery(input) -> normalized metadata or null. Reported checks unknown|pending|passed|failed; effective checks/review always unknown (no live verification); separate reported_checks/reported_review_state; all observations source=manual/verification=unverified and approval_supported=false; UTC ISO timestamp canonical; 40hex SHA or null; bounded Git-safe relative branch names, owner/repo slug, PR positive integer or null.
-- [ ] Write literal tests for defaults, invalid refs/SHA/time/unknown keys, every nonprivileged state, CI doesn't approve, forged human/approved/merged rejection, stale/conflict/idempotency, new-head resets, identity pinning and rejected revision.
-- [ ] Run `node --test tests/delivery.test.js`, expect missing module; retain RED.
-- [ ] Implement pure bounded validation/transitions, no I/O.
-- [ ] Run targeted GREEN and full `npm run verify`; commit.
+- [x] Write literal tests for defaults, invalid refs/SHA/time/unknown keys, every nonprivileged state, CI doesn't approve, forged human/approved/merged rejection, stale/conflict/idempotency, new-head resets, identity pinning and rejected revision.
+- [x] Run `node --test tests/delivery.test.js`, expect missing module; retain RED.
+- [x] Implement pure bounded validation/transitions, no I/O.
+- [x] Run targeted GREEN and full `npm run verify`; commit.
 
 ## Task2: Persistence and operator-local import
 
 Files: `src/core/store.js`, `scripts/import-delivery.js`, `tests/delivery-store.test.js`.
 Interfaces: store.recordDelivery(taskId,input), store.getDelivery(taskId); CLI `node scripts/import-delivery.js --offline TASK_ID FILE` using existing loadConfig stateDir, no executor construction.
-- [ ] Test legacy null defaults, cold restart, status/lineage unchanged across rejection/revision, stale instance drift, generic-patch bypass, no partial invalid update, audit chain, CLI safety and approval rejection.
-- [ ] Run tests expect missing methods/script RED.
-- [ ] Add synchronous checked persistence/audit using existing primitives; offline script strict size/arguments/generic errors. No approval capability manufactured.
-- [ ] Run GREEN and full verify; commit.
+- [x] Test legacy null defaults, cold restart, status/lineage unchanged across rejection/revision, stale instance drift, generic-patch bypass, no partial invalid update, audit chain, CLI safety and approval rejection.
+- [x] Run tests expect missing methods/script RED.
+- [x] Add synchronous checked persistence/audit using existing primitives; offline script strict size/arguments/generic errors. No approval capability manufactured.
+- [x] Run GREEN and full verify; commit.
 
 ## Task3: Safe read surfaces
 
 Files: `src/server.js`, `src/mcp/server.js`, `src/dashboard.js`, `tests/delivery-surfaces.test.js`.
 Interfaces: GET `/v1/tasks/:id/delivery`; MCP `delivery_status(task_id)` readOnlyHint; dashboard uses existing task delivery records, no extra network mutation.
-- [ ] Test real HTTP auth/GET and unsupported POST; MCP registration/call/safe-null data/no mutation or executor calls; VM-execute escaped delivery renderer including hostile labels.
-- [ ] Run RED, implement minimal surfaces, run GREEN/full verify; commit.
+- [x] Test real HTTP auth/GET and unsupported POST; MCP registration/call/safe-null data/no mutation or executor calls; VM-execute escaped delivery renderer including hostile labels.
+- [x] Run RED, implement minimal surfaces, run GREEN/full verify; commit.
 
 ## Task4: Contracts and delivery
 
 Files: docs/DELIVERY.md, bilingual architecture/protocol, docs index/scripts README/package command.
-- [ ] Document observation sample, unknown/unverified meaning, unsupported authenticated approval, stop/import/restart, no authority inferred from CI, recoverable refusal, additive-state rollback and no merge/deploy.
-- [ ] Verify full suite and diff; commit. Parent independently reviews immutable head; fix findings with RED/GREEN, final verify. No push by implementer; parent handles ordinary feature push/coordinator draft PR.
+- [x] Document observation sample, unknown/unverified meaning, unsupported authenticated approval, stop/import/restart, no authority inferred from CI, recoverable refusal, additive-state rollback and no merge/deploy.
+- [x] Verify full suite and diff; commit.
+- [ ] Parent independently reviews immutable head; fix findings with RED/GREEN, final verify. No push by implementer; parent handles ordinary feature push/coordinator draft PR.

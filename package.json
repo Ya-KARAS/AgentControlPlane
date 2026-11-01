@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
+    "delivery:import": "node scripts/import-delivery.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
     "check": "node --check src/server.js && node scripts/build-userscript.js --check && node scripts/check-docs-links.js && node scripts/check-browser-companion.js",

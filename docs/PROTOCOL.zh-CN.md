@@ -120,3 +120,12 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 ## Token 预算
 
 用量测量和中断精度取决于执行器的遥测数据。Codex 暴露实时的线程目标，可以在运行期间轮询。CLI 适配器可能只在最终事件中报告累计用量，因此它们的预算也作为策略指导发送，但无法始终以相同的粒度强制执行。Provider 在两次测量之间可能会消耗额外的 token。
+
+## 交付观测（PR3）
+
+只读 `delivery_status(task_id)` 和 GET `/v1/tasks/:id/delivery` 返回任务的可选
+交付元数据，与执行 `status` 分开；缺失或损坏数据返回 null。手工报告单列为
+`reported_checks` / `reported_review_state`，已验证 `checks` / `review_state`
+保持 `unknown`。`approval_supported` 为 false；客户端自称用户、模型建议或
+绿色 CI 均不能设置 approved/merged。既有认证不变，无修改交付的工具或路由。
+详见 [交付契约与离线操作](DELIVERY.md)。
