@@ -69,3 +69,13 @@ for (const input of [
 test("fencing counter overflow fails closed", () => {
   fails(() => claimControlLease({ lease: { ...lease, generation: Number.MAX_SAFE_INTEGER }, ownerId: "muse", nowMs: nowMs + ttlMs, ttlMs }), "invalid_control_lease");
 });
+
+test("accepted server clocks round-trip when expiry crosses into an extended ISO year", () => {
+  const boundary = Date.parse("9999-12-31T23:59:50.000Z");
+  const claimed = claimControlLease({ lease: null, ownerId: "dot", nowMs: boundary, ttlMs: 30_000 });
+  assert.deepEqual(claimed, { owner: "dot", generation: 1, expires_at: "+010000-01-01T00:00:20.000Z" });
+  const renewed = renewControlLease({ lease: claimed, ownerId: "dot", generation: 1, nowMs: boundary + 1, ttlMs: 30_000 });
+  assert.equal(renewed.expires_at, "+010000-01-01T00:00:20.001Z");
+  const released = releaseControlLease({ lease: renewed, ownerId: "dot", generation: 1, nowMs: boundary + 2 });
+  assert.equal(claimControlLease({ lease: released, ownerId: "muse", nowMs: boundary + 3, ttlMs: 30_000 }).generation, 2);
+});

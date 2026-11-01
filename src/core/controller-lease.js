@@ -7,7 +7,7 @@ function expiry(lease) {
   if (!lease || !Number.isSafeInteger(lease.generation) || lease.generation < 1 ||
       !(lease.owner === null || validOwner(lease.owner)) ||
       typeof lease.expires_at !== "string" ||
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(lease.expires_at)) throw invalid();
+      !/^(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(lease.expires_at)) throw invalid();
   const ms = Date.parse(lease.expires_at);
   const canonical = lease.expires_at.includes(".") ? lease.expires_at : lease.expires_at.replace("Z", ".000Z");
   if (!Number.isFinite(ms) || new Date(ms).toISOString() !== canonical) throw invalid();
