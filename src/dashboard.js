@@ -242,6 +242,17 @@ export const DASHBOARD_STRINGS = {
   },
 };
 
+// Display only fixed fields; never interpolate imported text as markup or URLs.
+export function deliverySummaryHtml(delivery) {
+  if (!delivery) return "";
+  const esc = value => String(value ?? "unknown").replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+  return '<div class="task-lineage">Delivery · unverified · approval unavailable<br>' +
+    [delivery.repository, delivery.base_branch, delivery.branch, delivery.pull_request_number, delivery.head_sha].map(esc).join(" · ") +
+    '<br>Verified checks/review: unknown · Reported: ' + [delivery.reported_checks, delivery.reported_review_state, delivery.observed_at].map(esc).join(" · ") + '</div>';
+}
+
 export function dashboardHtml(config) {
   const info = {
     version: config.version ?? "0.0.0",
@@ -478,6 +489,7 @@ footer { padding: 10px 20px 18px; color: var(--muted); font-size: 12px; max-widt
 </footer>
 <script>
 "use strict";
+var deliverySummaryHtml = ${deliverySummaryHtml.toString()};
 var STRINGS = ${JSON.stringify(DASHBOARD_STRINGS)};
 var CFG = ${JSON.stringify(info)};
 
@@ -793,7 +805,7 @@ function renderTasks() {
       return (
         "<tr>" +
         '<td class="mono">' + clock(task.createdAt) + "</td>" +
-        '<td class="objective"><div title="' + objective + '">' + objective + "</div>" + lineage + "</td>" +
+        '<td class="objective"><div title="' + objective + '">' + objective + "</div>" + lineage + deliverySummaryHtml(task.delivery) + "</td>" +
         '<td class="' + statusClass(task.status) + '">' + statusKey(task.status) + "</td>" +
         '<td class="hide-sm">' + escapeHtml(task.executor || "") + "</td>" +
         '<td class="hide-sm mono">' + escapeHtml((task.policy && task.policy.model) || "") + "</td>" +

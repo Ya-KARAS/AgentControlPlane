@@ -588,6 +588,12 @@ export async function createApplication(overrides = {}) {
         return;
       }
 
+      if (request.method === "GET" && parts.length === 4 && parts[0] === "v1" && parts[1] === "tasks" && parts[3] === "delivery") {
+        if (!store.getTask(parts[2])) throw new ControlPlaneError("task_not_found", "Task not found");
+        sendJson(response, 200, { delivery: store.getDelivery(parts[2]), approval_supported: false });
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/v1/usage") {
         sendJson(response, 200, { usage: store.usageReport() });
         return;
