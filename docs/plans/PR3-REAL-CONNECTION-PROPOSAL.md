@@ -5,7 +5,23 @@ that PR3 live acceptance has passed. It adds no runtime configuration or authori
 The governing design is PR0#20 Sections8/11. Existing code is host-only and off by
 default. There is no model-operated approve/merge/deploy endpoint.
 
-## Selected smallest safe topology
+## Current acceptance location (supersedes the original local proposal)
+
+The user subsequently required cloud-computer acceptance. All current testing
+stays in the original saved Cloud environment with isolated loopback fixtures;
+Windows/local fallback is not authorized. No persistent cloud runner is inferred
+from that environment. The original local-node proposal below is a future
+alternative only, not an approved action or a reason to wait for Windows access.
+A real user-verifying browser flow still requires an approved reachable origin,
+actual user participation and credential enrollment; none occurred in Cloud.
+
+Cloud checks: anonymous api.github.com repository GET failed with DNS EAI_AGAIN
+before visibility or real adapter behavior could be established. Chromium exists
+but failed with an incorrectly configured SUID sandbox, and namespace mode
+reported No usable sandbox. No --no-sandbox workaround or system permission
+change was used. No actual browser UI or human WebAuthn acceptance is claimed.
+
+## Original future deployment proposal (not authorized)
 
 Run one ACP process and its GitHub read adapter on the user's existing ACP
 computer, with private local state and loopback UI. The exact computer and
