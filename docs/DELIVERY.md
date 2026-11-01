@@ -459,3 +459,30 @@ PR/head and complete a fresh verification to accept/reject it. No cloud hostname
 localhost mapping to the user's computer, RP or principal is invented here.
 Credential/RP registration and host connection are separate actions from this
 ordinary library installation and still have not been performed.
+
+### Cloud environment diagnostic (2026-11-01, no configuration changed)
+
+A bounded diagnostic distinguishes container transport from connected-tool access.
+Direct system DNS lookup returned EAI_AGAIN for registry.npmjs.org, api.github.com
+and github.com. The existing HTTP/HTTPS proxy environment is configured (values
+were not exposed); npm successfully used the official registry. Node's supported
+--use-env-proxy request failed, and the existing-proxy curl diagnostic failed at
+CONNECT with response403 (curl56, HTTP000 before a GitHub response). This is an
+explicit proxy refusal, not evidence of GitHub repository visibility or API token
+permissions. No more retries were made after that refusal; no proxy/DNS/VPN or
+credentials were changed. Registry success does not imply GitHub is allowed.
+
+Chromium's installed SUID helper has mode4755 but is owned by nobody, not root.
+The namespace alternative was also unavailable: unshare could not open
+/proc/self/uid_map because it is read-only. No --no-sandbox workaround, chmod,
+chown or privilege change was performed. No supported browser entry for this
+container was established; an external scraping browser is not this container's
+loopback acceptance environment.
+
+Smallest platform actions: provide an approved outbound GitHub route through the
+existing proxy and a supported sandboxed browser launch mode/helper in this
+Cloud environment. The project must not alter either platform policy itself.
+After the platform condition actually changes, rerun one bounded read-only and
+loopback-browser acceptance test. Until then report live GitHub/browser/human
+acceptance blocked, not passed. Evidence remains under
+`/tmp/acp-cloud-acceptance/environment-diagnostic.json` for this execution.
