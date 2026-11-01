@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { ControlPlaneError } from "./errors.js";
+import { normalizeSubscriptionSnapshot, effectiveSubscription, subscriptionScope } from "./subscriptions.js";
 import {
   adaptV1Event,
   normalizePresence,
@@ -268,6 +269,51 @@ export class TaskStore {
     this.persist();
     this.audit("task.kind", { taskId, kind: task.kind });
     return structuredClone(task);
+  }
+
+  // Operator-local manual input only. Official adapters require a separate
+  // verified admission path; a JSON file cannot self-assert that provenance.
+  recordManualSubscription(input) {
+    const snapshot = normalizeSubscriptionSnapshot(input);
+    if (snapshot.source !== "manual" || snapshot.confidence !== "user_reported") {
+      throw new ControlPlaneError("invalid_subscription", "Manual imports require manual/user_reported provenance");
+    }
+    const previous = this.state.subscription_snapshots;
+    const entries = Array.isArray(previous) ? previous : [];
+    const index = entries.findIndex(item => subscriptionScope(item) === subscriptionScope(snapshot));
+    if (index >= 0) {
+      if (JSON.stringify(entries[index]) === JSON.stringify(snapshot)) return structuredClone(snapshot);
+      if (Date.parse(snapshot.observed_at) <= Date.parse(entries[index].observed_at)) {
+        throw new ControlPlaneError("subscription_conflict", "A newer or conflicting subscription observation already exists");
+      }
+    } else if (entries.length >= 256) throw new ControlPlaneError("subscription_limit", "Subscription scope limit reached");
+    const held = Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease();
+    let persisted = false;
+    try {
+      const next = [...entries];
+      if (index >= 0) next[index] = snapshot; else next.push(snapshot);
+      this.state.subscription_snapshots = next;
+      this.persist(); persisted = true;
+      this.audit("subscription.manual_import", { provider: snapshot.provider, surface: snapshot.surface });
+      return structuredClone(snapshot);
+    } catch (error) {
+      if (!persisted) {
+        if (previous === undefined) delete this.state.subscription_snapshots;
+        else this.state.subscription_snapshots = previous;
+      }
+      this.checkpointFaulted = true;
+      throw error;
+    } finally { if (!held && !this.checkpointFaulted) this.releaseExecutorLease(); }
+  }
+
+  listSubscriptionSnapshots(nowMs = Date.now()) {
+    const entries = this.state.subscription_snapshots;
+    if (!Array.isArray(entries)) return [];
+    return entries.slice(0, 256).flatMap(input => {
+      try { return [effectiveSubscription(input, nowMs)]; }
+      catch { return []; } // Corrupt evidence cannot produce a green status.
+    });
   }
 
   persist() {
