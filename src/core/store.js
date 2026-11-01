@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { ControlPlaneError } from "./errors.js";
+import { claimControlLease, renewControlLease, releaseControlLease } from "./controller-lease.js";
+import { isTrustedControllerActor } from "../controllers/registry.js";
+
 import {
   adaptV1Event,
   normalizePresence,
@@ -9,6 +13,20 @@ import {
   normalizeTaskKind,
   normalizeToken,
 } from "./usage-events.js";
+
+function requireControllerActor(actor) {
+  if (!isTrustedControllerActor(actor)) throw new ControlPlaneError("untrusted_controller", "A verified controller actor is required");
+}
+
+function initialControllerState(actor, mode, ttlMs) {
+  if (actor == null) return { controller: null, control_lease: null };
+  requireControllerActor(actor);
+  if (!["single", "cooperative", "failover"].includes(mode)) throw new ControlPlaneError("invalid_config", "Invalid controller mode");
+  return {
+    controller: { id: actor.id, kind: actor.kind, mode },
+    control_lease: claimControlLease({ lease: null, ownerId: actor.id, nowMs: Date.now(), ttlMs }),
+  };
+}
 
 function now() {
   return new Date().toISOString();
@@ -69,6 +87,10 @@ function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
     ...structuredClone(task),
+    controller: task.controller ? { id: task.controller.id, kind: task.controller.kind, mode: task.controller.mode } : null,
+    control_lease: task.control_lease ? {
+      owner: task.control_lease.owner, generation: task.control_lease.generation, expires_at: task.control_lease.expires_at,
+    } : null,
     logical_task_id: task.logical_task_id ?? task.id,
     executor_history: Array.isArray(task.executor_history)
       ? structuredClone(task.executor_history)
@@ -477,7 +499,11 @@ export class TaskStore {
     workspaceRelinked = false,
     handoff = false,
     freshSession = false,
+    controllerActor = null,
+    controllerMode = "single",
+    controlLeaseTtlMs = 120_000,
   }) {
+    const controllerState = initialControllerState(controllerActor, controllerMode, controlLeaseTtlMs);
     this.#pruneTasks();
     const id = crypto.randomUUID();
     const createdAt = now();
@@ -486,6 +512,7 @@ export class TaskStore {
       logicalTaskId ?? parent?.logical_task_id ?? parent?.id ?? id;
     const task = {
       id,
+      ...controllerState,
       logical_task_id: logicalTaskIdValue,
       parentTaskId,
       workspace,
@@ -551,13 +578,71 @@ export class TaskStore {
       policy: policy.name,
       handoff: handoff === true,
     });
+    if (task.control_lease) this.audit("task.control_lease", {
+      taskId: id, action: "claim", owner: task.control_lease.owner, generation: task.control_lease.generation,
+    });
     return normalizeTaskRecord(task);
   }
 
-  updateTask(id, patch) {
+  // Trusted in-process API only; never exposed as an MCP/HTTP takeover tool.
+  // Synchronous compare + persist shares the existing store writer lock/drift
+  // checks. A released tombstone must survive restart to fence old generations.
+  updateControlLease(id, { actor, action, generation, ttlMs = 120_000 }) {
+    requireControllerActor(actor);
+    const task = this.state.tasks[id];
+    if (!task) throw new ControlPlaneError("task_not_found", "Task not found");
+    const lease = task.control_lease ?? null;
+    if (!Number.isSafeInteger(generation) || generation !== (lease?.generation ?? 0)) {
+      throw new ControlPlaneError("control_lease_mismatch", "Controller fencing generation does not match");
+    }
+    const transition = { claim: claimControlLease, renew: renewControlLease, release: releaseControlLease };
+    if (!Object.hasOwn(transition, action)) throw new ControlPlaneError("invalid_control_lease", "Unknown controller lease action");
+    const mode = task.controller?.mode ?? "single";
+    const nowMs = Date.now();
+    if (action === "claim" && lease?.owner && lease.owner !== actor.id &&
+        Date.parse(lease.expires_at) <= nowMs && mode !== "failover") {
+      throw new ControlPlaneError("controller_takeover_disabled", "Only failover mode permits expired-owner takeover");
+    }
+    const nextLease = transition[action]({ lease, ownerId: actor.id, generation, nowMs, ttlMs });
+    const next = { ...task, control_lease: nextLease,
+      controller: { id: actor.id, kind: actor.kind, mode }, updatedAt: now() };
+    const alreadyLocked = Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease(); // Detect another writer before changing memory.
+    let persisted = false;
+    try {
+      this.state.tasks[id] = next;
+      this.persist();
+      persisted = true;
+      this.audit("task.control_lease", { taskId: id, action, owner: nextLease.owner, generation: nextLease.generation });
+      return normalizeTaskRecord(next);
+    } catch (error) {
+      if (!persisted) this.state.tasks[id] = task;
+      this.checkpointFaulted = true; // Uncertain persistence/audit must not enable another writer.
+      throw error;
+    } finally {
+      if (!alreadyLocked && !this.checkpointFaulted) this.releaseExecutorLease();
+    }
+  }
+
+  updateTask(id, patch, controllerContext = undefined) {
     const task = this.state.tasks[id];
     if (!task) return null;
-    Object.assign(task, patch, { updatedAt: now() });
+    for (const field of ["controller", "control_lease"]) {
+      if (Object.hasOwn(patch, field) && !isDeepStrictEqual(patch[field], task[field] ?? null)) {
+        throw new ControlPlaneError("control_lease_update_required", "Controller ownership must use the checked lease operation");
+      }
+    }
+    // Legacy callers may write a full unchanged record; never assign ownership
+    // fields from that patch, even when they compare equal.
+    const { controller: ignoredController, control_lease: ignoredLease, ...safePatch } = patch;
+    // Executor/internal writes remain compatible. Any controller-authored patch
+    // must carry a verified actor and the live fencing generation.
+    if (controllerContext !== undefined) {
+      requireControllerActor(controllerContext?.actor);
+      renewControlLease({ lease: task.control_lease, ownerId: controllerContext.actor.id,
+        generation: controllerContext.generation, nowMs: Date.now(), ttlMs: 30_000 });
+    }
+    Object.assign(task, safePatch, { updatedAt: now() });
     this.persist();
     return normalizeTaskRecord(task);
   }

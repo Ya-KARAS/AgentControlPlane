@@ -1,3 +1,4 @@
+import { resolveControllerActor } from "../controllers/registry.js";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
 import {
@@ -926,6 +927,17 @@ export class Orchestrator extends EventEmitter {
     return true;
   }
 
+  #controllerTaskOptions() {
+    if (this.config.controllers?.enabled !== true) return {};
+    // Current shared-bearer/local transports do not verify separate agents.
+    // Never derive actor identity from caller_id, controller_id or prompt text.
+    return {
+      controllerActor: resolveControllerActor({ principalId: "local-operator", kind: "mcp" }),
+      controllerMode: this.config.controllers.mode ?? "single",
+      controlLeaseTtlMs: (this.config.controllers.leaseTtlSeconds ?? 120) * 1000,
+    };
+  }
+
   dispatch(request) {
     if (request.project_id && !this.projectRegistry) {
       throw new ControlPlaneError(
@@ -1045,6 +1057,7 @@ export class Orchestrator extends EventEmitter {
       discovery: this.executorDiscovery[provider] ?? null,
     });
     const task = this.store.createTask({
+      ...this.#controllerTaskOptions(),
       workspace,
       brief,
       policy,
@@ -1209,6 +1222,7 @@ export class Orchestrator extends EventEmitter {
       });
     }
     const task = this.store.createTask({
+      ...this.#controllerTaskOptions(),
       workspace,
       brief,
       policy,
@@ -1417,6 +1431,7 @@ export class Orchestrator extends EventEmitter {
       });
     }
     const task = this.store.createTask({
+      ...this.#controllerTaskOptions(),
       workspace,
       brief,
       policy,
