@@ -39,7 +39,7 @@ Interfaces: normalizeSubscriptionSnapshot(input,{nowMs}); subscriptionScope(snap
 ## Task2: Existing-store persistence and local manual import
 
 Files: modify `src/core/store.js`; create `scripts/import-subscription.js`, `tests/subscription-store.test.js`; update package script/docs later.
-Interfaces: TaskStore.recordManualSubscription(input); TaskStore.listSubscriptionSnapshots(nowMs=Date.now()); CLI `node scripts/import-subscription.js FILE` uses loadConfig stateDir, max64KiB input, no executor construction, safe generic errors.
+Interfaces: TaskStore.recordManualSubscription(input); TaskStore.listSubscriptionSnapshots(nowMs=Date.now()); CLI `node scripts/import-subscription.js --offline FILE` uses loadConfig stateDir, max64KiB input, no executor construction, safe generic errors.
 - [ ] Test legacy state, cold restart, stale/same-time conflict, bounded records, no official provenance, secret field rejection, unchanged tasks/usage/audit integrity, stale writer drift; execute CLI with isolated config/state.
 - [ ] Run targeted command expect missing store methods/script RED.
 - [ ] Add minimal checked synchronous existing-store transaction; whitelist manual admission and audit safe scope/action only; generic CLI errors do not echo input/path/secrets.

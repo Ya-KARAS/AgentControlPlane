@@ -242,6 +242,30 @@ export const DASHBOARD_STRINGS = {
   },
 };
 
+// Shared with the browser via toString so tested rendering is the shipped code.
+export function subscriptionPanelHtml(status, lang) {
+  const esc = value => String(value ?? "unknown").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const title = lang === "zh" ? "订阅状态（手工观测；与任务令牌分开）" : "Subscription status (manual observations; separate from task tokens)";
+  const snapshots = status?.snapshots ?? [];
+  let body = snapshots.length ? snapshots.map(row => {
+    const fresh = row.freshness === "fresh" && Date.parse(row.valid_until) > Date.now();
+    const availability = fresh ? row.availability : "unknown";
+    const remaining = fresh && row.remaining_percent !== null ? esc(row.remaining_percent) + "%" : "unknown";
+    return "<div class=card>" + [row.provider, row.surface, row.account_alias, row.plan, row.model_family, row.quota_window].map(esc).join(" · ") +
+      "<br>" + esc(availability) + " · " + remaining + " · reset: " + esc(fresh ? row.reset_at : null) +
+      "<br>" + esc(row.source) + " / " + esc(row.confidence) + " · " + esc(row.freshness) +
+      "<br>observed: " + esc(row.observed_at) + " · valid until: " + esc(row.valid_until) + " · overage: " + esc(fresh ? row.overage_status : null) + "</div>";
+  }).join("") : "<div class=card>unknown — " + (lang === "zh" ? "暂无可用观测；不代表额度为零。" : "No current observation; this does not mean zero quota.") + "</div>";
+  body += (status?.advisory ?? []).map(row => "<div class=card>" + [row.executor, row.availability, row.action, row.reason].map(esc).join(" · ") + "</div>").join("");
+  return "<h2>" + title + "</h2>" + body;
+}
+
+export async function refreshSubscriptionPanel(read, target, lang) {
+  target.innerHTML = subscriptionPanelHtml(null, lang);
+  try { target.innerHTML = subscriptionPanelHtml(await read("/v1/subscriptions"), lang); }
+  catch { /* Unknown is already shown; never retain a previous green observation. */ }
+}
+
 export function dashboardHtml(config) {
   const info = {
     version: config.version ?? "0.0.0",
@@ -464,6 +488,8 @@ footer { padding: 10px 20px 18px; color: var(--muted); font-size: 12px; max-widt
     </div>
     <div id="tasks"></div>
   </section>
+
+  <section id="subscriptions"></section>
 
   <section>
     <h2 id="kUsage"></h2>
@@ -1054,7 +1080,11 @@ function renderRecommendation() {
       : "");
 }
 
+var subscriptionPanelHtml = ${subscriptionPanelHtml.toString()};
+var refreshSubscriptionPanel = ${refreshSubscriptionPanel.toString()};
+
 async function refresh() {
+  await refreshSubscriptionPanel(api, document.getElementById("subscriptions"), lang);
   try {
     var executorList = await api("/v1/executors");
     var tasksUrl = "/v1/tasks?limit=30";

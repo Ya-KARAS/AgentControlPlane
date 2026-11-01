@@ -26,7 +26,8 @@ test('stale writer and bounded scopes fail closed',t=>{const {store}=setup(t);co
  const full=new TaskStore(path.join(store.stateDir,'full'));full.state.subscription_snapshots=Array.from({length:256},(_,i)=>({...sample,account_alias:'alias'+i}));full.persist();assert.throws(()=>full.recordManualSubscription(sample),e=>e.code==='subscription_limit');
 });
 test('operator CLI imports only local manual file into configured state and hides invalid input',t=>{const {dir}=setup(t);const input=path.join(dir,'input.json'),cfg=path.join(dir,'config.json'),state=path.join(dir,'cli-state');fs.mkdirSync(path.join(dir,'work'));fs.writeFileSync(cfg,JSON.stringify({workspaceRoots:[path.join(dir,'work')],codex:{command:'missing-passive-cli'}}));fs.writeFileSync(input,JSON.stringify(sample));
- const run=()=>spawnSync(process.execPath,['scripts/import-subscription.js',input],{cwd:process.cwd(),encoding:'utf8',env:{...process.env,AGENT_CONTROL_CONFIG:cfg,AGENT_CONTROL_STATE_DIR:state}});
+ const run=(offline=true)=>spawnSync(process.execPath,['scripts/import-subscription.js',...(offline?['--offline']:[]),input],{cwd:process.cwd(),encoding:'utf8',env:{...process.env,AGENT_CONTROL_CONFIG:cfg,AGENT_CONTROL_STATE_DIR:state}});
+ assert.equal(run(false).status,1);
  const imported=run();assert.equal(imported.status,0,imported.stderr);assert.equal(new TaskStore(state).listSubscriptionSnapshots().length,1);
  fs.writeFileSync(input,JSON.stringify({...sample,apiKey:'PRIVATE-SENTINEL'}));const invalid=run();assert.equal(invalid.status,1);assert.equal((invalid.stdout+invalid.stderr).includes('PRIVATE-SENTINEL'),false);
 });
