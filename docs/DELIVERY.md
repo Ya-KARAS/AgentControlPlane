@@ -416,7 +416,9 @@ same target. Options and verification require user verification; registration
 also requires user presence. Only standard ES256/RS256 algorithms are offered,
 with the same library-supported allowlist passed to registration verification.
 Challenges are single-use before async work,30–300 seconds(default120), at most
-32 pending by default(max128), and never restored across restart. A failed,
+32 outstanding by default(max128), including generation and consumed challenges
+whose asynchronous verification/storage work has not settled. Expiry does not
+release in-flight capacity. Challenges are never restored across restart. A failed,
 expired, mismatched or replayed challenge cannot yield a verified result. No
 request can pick a principal at finish; it is bound at begin and reauthorized.
 
@@ -425,7 +427,10 @@ Storage is an explicit trusted-host persistence contract, not a new identity DB:
 `insertCredential({principalId,credential,expectedAbsent:true})` must atomically
 reject an existing credential; `compareAndSwapCounter({principalId,credentialId,
 expectedCounter,newCounter})` must durably commit the expected counter or return
-false. A credential ID must have unique principal ownership in that host store.
+false. It must require that the credential still exists, belongs to that same
+principal and retains its immutable public key; never upsert a deleted credential.
+The same-counter0-to-0 case is valid for authenticators without counters and
+still requires this existence/ownership check. A credential ID must have unique principal ownership in that host store.
 Unknown credentials never reach the authentication verifier. Do not implement
 these callbacks by returning true without a durable write. Failure or exception
 cannot return success; policy and clock are checked again after commit. A commit

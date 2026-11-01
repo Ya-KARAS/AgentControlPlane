@@ -86,3 +86,20 @@ test('challenge cannot cross registration/authentication purposes and malformed 
  const f=fixture();const s=await f.verifier.beginRegistration({principalId:'test-user',target});await rejects(()=>f.verifier.finishAuthentication({challengeId:s.challengeId,target,response:{id:'credential-1'}}));
  for(const override of [{rpID:'elsewhere.test'},{expectedOrigin:'http://example.test'},{expectedOrigin:'https://example.test/path'},{authorize:undefined},{ttlMs:1},{maxPending:0}])assert.equal(fixture(override).verifier.enabled,false);
 });
+
+test('consumed challenges retain capacity until pending verification settles, even after expiry',async()=>{
+ const f=fixture({maxPending:1});let release,entered;
+ const started=new Promise(resolve=>entered=resolve), held=new Promise(resolve=>release=resolve);
+ const original=f.library.verifyAuthenticationResponse;
+ f.library.verifyAuthenticationResponse=async options=>{entered();await held;return original(options);};
+ const s=await f.verifier.beginAuthentication({principalId:'test-user',target});
+ const finishing=f.verifier.finishAuthentication({challengeId:s.challengeId,target,response:{id:'credential-1'}});
+ await started;
+ await rejects(()=>f.verifier.beginAuthentication({principalId:'test-user',target}));
+ f.setNow(31000);
+ await rejects(()=>f.verifier.beginAuthentication({principalId:'test-user',target}));
+ release();
+ await rejects(()=>finishing);
+ const next=await f.verifier.beginAuthentication({principalId:'test-user',target});
+ assert.ok(next.challengeId);
+});

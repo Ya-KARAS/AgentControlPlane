@@ -33,7 +33,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       ['generateRegistrationOptions','generateAuthenticationOptions','verifyRegistrationResponse','verifyAuthenticationResponse'].every(key=>typeof library?.[key]==='function') &&
       Number.isInteger(ttlMs) && ttlMs>=30_000 && ttlMs<=300_000 && Number.isInteger(maxPending) && maxPending>=1 && maxPending<=128;
   } catch { /* Invalid/unconfigured host never creates an enabled verifier. */ }
-  const pending=new Map();let generating=0;
+  const pending=new Map();let generating=0,finishing=0;
   function now() { const n=clock();if(!Number.isSafeInteger(n)||n<0)throw unavailable();return n; }
   function live(record) {const n=now();if(n<record.createdAt||n>=record.expiresAt)throw unavailable();}
   async function authorized(principalId,purpose,target) {
@@ -49,7 +49,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       if(!configured)throw unavailable();
       const binding=targetBinding(target),createdAt=now();
       for(const [key,row] of pending)if(row.expiresAt<=createdAt)pending.delete(key);
-      if(pending.size+generating>=maxPending)throw unavailable();
+      if(pending.size+generating+finishing>=maxPending)throw unavailable();
       generating++;
       try {
         await authorized(principalId,kind,binding);
@@ -69,11 +69,14 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
     } catch {throw unavailable();}
   }
   async function finish(kind,{challengeId,response,target}={}) {
+    let reserved=false;
     try {
       if(!configured)throw unavailable();
       const record=pending.get(challengeId);
       pending.delete(challengeId); // Consume before ANY async work, including failure.
-      if(!record||record.kind!==kind||JSON.stringify(record.target)!==JSON.stringify(targetBinding(target)))throw unavailable();
+      if(!record)throw unavailable();
+      finishing++;reserved=true; // Keep capacity while crypto/storage is in flight.
+      if(record.kind!==kind||JSON.stringify(record.target)!==JSON.stringify(targetBinding(target)))throw unavailable();
       live(record);
       if(!response||typeof response!=='object'||Array.isArray(response)||JSON.stringify(response).length>65536)throw unavailable();
       await authorized(record.principalId,kind,record.target);
@@ -107,6 +110,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
         ? {verified:true,registration_only:true,credentialId:credential.id}
         : {verified:true,ceremony_only:true,principalId:record.principalId,credentialId:credential.id,target:record.target};
     } catch {throw unavailable();}
+    finally {if(reserved)finishing--;}
   }
   return Object.freeze({enabled:Boolean(configured),
     beginRegistration:input=>begin('registration',input),finishRegistration:input=>finish('registration',input),
