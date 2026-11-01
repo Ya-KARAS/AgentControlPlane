@@ -141,3 +141,67 @@ no migration and can be ignored by older code, but older code does not enforce
 this metadata validation boundary. Do not continue approval/delivery mutation on
 an old binary. No destructive Git cleanup, credential removal or schema rewrite
 is needed. PR4 cloud execution and PR5 chat research remain separate stages.
+
+## Host adapter interface: offline preview only
+
+`src/core/delivery-evidence.js` provides
+`createDeliveryEvidenceEvaluator({adapter, authorizeUser, clock})`. This is an
+isolated interface, **not connected** to application bootstrap, TaskStore,
+HTTP, MCP or manual CLI. No config JSON can instantiate a trusted adapter or
+approval setter. All simulated implementations live in tests. Existing public
+views remain unknown and production `recordDelivery` still rejects approved and
+merged; this addition does not connect a real user or GitHub channel.
+
+A future trusted host adapter supplies two asynchronous methods:
+
+- `readObservation(target)` returns exact repository/PR/head, `checks`,
+  `complete`, `observed_at`, `valid_until`, and `decisions`.
+- `readHead(target)` returns repository/PR/head after evidence collection and
+  potentially asynchronous policy evaluation, detecting a revision race.
+
+The target is `{repository, pull_request_number, head_sha}`. Observation times
+are canonical UTC ISO; lifetime is at most ten minutes and never future-dated.
+`complete: true` means the trusted adapter has fetched all relevant pages and
+required evidence; the evaluator cannot prove that an adapter actually did so.
+The adapter must authenticate its source and enforce allowlisted repositories
+outside this module. Returning a caller-supplied JSON object is not source
+verification. HTTP errors (including403), incomplete data, invalid clocks,
+expired evidence, conflicting event IDs and head mismatch yield no candidate.
+No arbitrary adapter error text is returned.
+
+Each immutable decision event contains `event_id`, stable `user_id`, `head_sha`,
+`state` (`approved`, `changes_requested`, `revoked`) and `occurred_at`. Events are
+bound through the observation's repository/PR/head; event time cannot exceed its
+observation. A revocation must have its own immutable event/revision ID. The
+latest event per user supersedes their older event, so an old approval cannot
+win over a newer revocation. Equal-time contradictory decisions fail closed.
+
+`authorizeUser(userId,target)` is an explicit trusted host policy callback. With
+no callback, no user is authorized. This PR supplies **no production policy or
+list of approvers**. Account type `User`, shared bearer, `human:true`, local TTY
+and model recommendations do not establish policy. The future authenticated
+human channel and policy must still be chosen and accepted by the user; testing
+with a fixture callback does not settle that choice.
+
+Evaluation returns `preview_only:true`, `approval_supported:false`,
+`effective:{checks:"unknown",review_state:"unknown"}` and either a bound
+`candidate` preview or null. The candidate may contain a simulated decision and
+its user/event IDs; it is never a task update, user approval grant, merge
+permission or live GitHub fact. Do not wire this preview directly to a privileged
+setter. A future production integration needs separate provenance, persistence,
+user-policy and revocation acceptance before changing effective states.
+
+An evaluator keeps bounded in-memory event fingerprints (256) and observation
+high-water marks (128 PR scopes). Identical event replay is idempotent; changed
+content under an event ID, regressed observations and conflicting equal-time
+observations are rejected. Capacity exhaustion fails closed without eviction.
+A later failed evaluation does not reuse a cached candidate. Concurrent older
+reads cannot replace newer revocations. This cache is **not a durable replay
+ledger**; evaluator recreation/restart loses it and no restart safety is claimed.
+A real approval store would require durable event/revocation handling.
+
+The new tests cover default unknown, an explicitly injected test host policy,
+repo/PR/head/event binding, missing pages, freshness, head race,403, replay,
+revocation/new head, concurrent revocation and invalid final clock. All fixtures
+are offline and the production import rejection remains tested. No new token,
+permission, network call, deployment or official approval capability is added.
