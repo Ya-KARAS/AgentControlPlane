@@ -75,3 +75,18 @@ test('clock failure after adapter/policy awaits cannot yield a candidate', async
   const e=evaluator(fixture(),{clock:()=>++reads===1?now:NaN});
   assert.equal((await e.evaluate(target)).candidate,null);
 });
+
+test('newer observation cannot omit remembered revocation and replay its old approval', async () => {
+  const f=fixture(), e=evaluator(f);
+  const revoked={...f.observation,observed_at:new Date(now-10).toISOString(),decisions:[
+    f.observation.decisions[0],
+    {...f.observation.decisions[0],event_id:'revoke-2',state:'revoked',occurred_at:new Date(now-20).toISOString()},
+  ]};
+  f.setObservation(revoked);
+  assert.equal((await e.evaluate(target)).candidate.decision,'revoked');
+  f.setObservation({...f.observation,observed_at:new Date(now-1).toISOString()});
+  const replay=await e.evaluate(target);
+  unknown(replay); assert.equal(replay.candidate,null);
+  f.setObservation({...revoked,observed_at:new Date(now).toISOString()});
+  assert.equal((await e.evaluate(target)).candidate.decision,'revoked');
+});

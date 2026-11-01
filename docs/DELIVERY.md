@@ -196,7 +196,10 @@ high-water marks (128 PR scopes). Identical event replay is idempotent; changed
 content under an event ID, regressed observations and conflicting equal-time
 observations are rejected. Capacity exhaustion fails closed without eviction.
 A later failed evaluation does not reuse a cached candidate. Concurrent older
-reads cannot replace newer revocations. This cache is **not a durable replay
+reads cannot replace newer revocations. The evaluator also remembers the latest
+event per revision/user; a later response that omits or regresses that event is
+rejected, even if the adapter incorrectly claims complete pagination. This
+latest-event memory is bounded by the existing event limit and is not evicted. This cache is **not a durable replay
 ledger**; evaluator recreation/restart loses it and no restart safety is claimed.
 A real approval store would require durable event/revocation handling.
 

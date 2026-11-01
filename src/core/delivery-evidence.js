@@ -28,6 +28,7 @@ const unknown = reason => ({ preview_only: true, approval_supported: false,
 export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock = Date.now } = {}) {
   const events = new Map();
   const observations = new Map();
+  const latestDecisions = new Map();
   return Object.freeze({
     async evaluate(input) {
       if (!adapter || typeof adapter.readObservation !== 'function' || typeof adapter.readHead !== 'function') return unknown('adapter_unconfigured');
@@ -78,10 +79,21 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
           const key=JSON.stringify([scope,event.event_id]);
           if (events.has(key) && events.get(key)!==digest(event)) fail();
         }
+        // Complete observations cannot omit or regress a decision already seen
+        // for this exact revision/user. In particular, a newer response must
+        // not replay an old approval after remembering its revocation.
+        const revision = JSON.stringify([scope,target.head_sha]);
+        const remembered = latestDecisions.get(revision);
+        for (const [userId, old] of remembered ?? []) {
+          const incoming = latestByUser.get(userId);
+          if (!incoming || time(incoming.occurred_at) < time(old.occurred_at) ||
+              (incoming.occurred_at === old.occurred_at && digest(incoming) !== digest(old))) fail();
+        }
         const newKeys = normalizedEvents.map(event => JSON.stringify([scope,event.event_id])).filter(key => !events.has(key));
         if (events.size + newKeys.length > 256 || (!previous && observations.size >= 128)) fail();
         for (const event of normalizedEvents) events.set(JSON.stringify([scope,event.event_id]),digest(event));
         observations.set(scope,{ observed, hash });
+        if (latestByUser.size > 0) latestDecisions.set(revision,latestByUser);
         return { ...unknown('preview_only'), candidate: { ...target, checks:evidence.checks, decision:decision?.state ?? 'unknown',
           user_id:decision?.user_id ?? null, event_id:decision?.event_id ?? null } };
       } catch {
