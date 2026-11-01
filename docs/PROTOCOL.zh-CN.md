@@ -120,3 +120,25 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 ## Token 预算
 
 用量测量和中断精度取决于执行器的遥测数据。Codex 暴露实时的线程目标，可以在运行期间轮询。CLI 适配器可能只在最终事件中报告累计用量，因此它们的预算也作为策略指导发送，但无法始终以相同的粒度强制执行。Provider 在两次测量之间可能会消耗额外的 token。
+
+## 可选控制器所有权（PR1）
+
+`controllers.enabled` 默认 `false`；旧 dispatch/continue/handoff 调用无需新增参数。
+启用后，新任务仅归属明确的 `local-operator`。当前共享 bearer/本地传输无法分别
+认证私人 Agent；`caller_id`、`controller_id`、`controller` 和提示词均不能自证身份。
+原有传输授权和用户取消能力保持不变。
+
+新增只读 MCP 工具 `list_controllers`，可选 `limit` 为 1–100 的整数（默认 20），
+表示检查最近多少条任务。返回 `enabled`、`mode`、`lease_ttl_seconds`、
+`identity_scope: "local_operator"`、公开 `controllers`（`id`、`kind`、
+`display_name`）及这些任务中的 `task_owners`。所有权摘要仅包含 `task_id`、
+`owner`、`generation`、`expires_at` 和 `lease_state`（`active`、`expired`、
+`released`），不包含 principal 绑定、凭据、路径、提示词、事件或执行器数据，也不
+续租。原端点认证仍有效；未配置 token 的 loopback 端点可读取同一安全视图。
+不新增可修改所有权的 claim/renew/release/takeover 工具或路由。
+
+任务新增可选 `controller`（`id`、`kind`、`mode`）和 `control_lease`（`owner`、
+`generation`、`expires_at`）；旧记录和功能关闭时创建的任务均规范化为 `null`。
+释放保留 `owner: null` 和最后的 generation，重领必须递增以避免 ABA。释放后的
+`controller.id` 是最后的 actor，不代表活跃所有者；当前控制权以 lease 为准。
+配置、模式及边界详见 [控制器说明](CONTROLLERS.md)。

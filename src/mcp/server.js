@@ -1,3 +1,4 @@
+import { normalizeAgentRegistry } from "../controllers/registry.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -94,6 +95,7 @@ function toJsonSchema(shape) {
 
 function buildToolSpecs({ orchestrator, store, config }) {
   const networkAccess = Boolean(config.codex?.networkAccess);
+  const controllerRegistry = normalizeAgentRegistry(config.controllers?.agents ?? []);
   return [
     {
       name: "dispatch_project",
@@ -141,6 +143,31 @@ function buildToolSpecs({ orchestrator, store, config }) {
         } catch (error) {
           return failure(error);
         }
+      },
+    },
+    {
+      name: "list_controllers",
+      title: "Read controller registry and ownership status",
+      description: "Read public controller descriptors and lease status for recent tasks. Current transports identify only the local operator; this tool never changes ownership.",
+      inputSchema: { limit: z.number().int().min(1).max(100).default(20) },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+      async handler({ limit }) {
+        const nowMs = Date.now();
+        const taskOwners = store.listTasks(limit).filter((task) => task.control_lease).map((task) => {
+          const lease = task.control_lease;
+          return {
+            task_id: task.id, owner: lease.owner, generation: lease.generation, expires_at: lease.expires_at,
+            lease_state: lease.owner === null ? "released" : Date.parse(lease.expires_at) > nowMs ? "active" : "expired",
+          };
+        });
+        return result({
+          enabled: config.controllers?.enabled === true,
+          mode: config.controllers?.mode ?? "single",
+          lease_ttl_seconds: config.controllers?.leaseTtlSeconds ?? 120,
+          identity_scope: "local_operator",
+          controllers: controllerRegistry,
+          task_owners: taskOwners,
+        }, `Returned ${controllerRegistry.length} public controllers and ${taskOwners.length} task leases.`);
       },
     },
     {

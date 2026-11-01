@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ControlPlaneError } from "./errors.js";
 import { resolveRerouteConfig } from "./reroute.js";
+import { normalizeAgentRegistry } from "../controllers/registry.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, "..", "..");
@@ -200,6 +201,17 @@ export function loadConfig(configPath = process.env.AGENT_CONTROL_CONFIG) {
       );
     }
   }
+  const controllers = config.controllers;
+  if (!controllers || typeof controllers.enabled !== "boolean" ||
+      !["single", "cooperative", "failover"].includes(controllers.mode) ||
+      !Number.isInteger(controllers.leaseTtlSeconds) ||
+      controllers.leaseTtlSeconds < 30 || controllers.leaseTtlSeconds > 600 ||
+      !Array.isArray(controllers.agents) ||
+      controllers.agents.some((agent) => !agent || typeof agent.id !== "string" || !agent.id) ||
+      new Set(controllers.agents.map((agent) => agent.id)).size !== controllers.agents.length) {
+    throw new ControlPlaneError("invalid_config", "controllers must have valid enabled, mode, leaseTtlSeconds and unique agent IDs");
+  }
+  normalizeAgentRegistry(controllers.agents);
   if (typeof config.codex.networkAccess !== "boolean") {
     throw new ControlPlaneError(
       "invalid_config",
