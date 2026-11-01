@@ -107,6 +107,12 @@ no login, installation or transmission was performed by this development round.
 | idempotency_key | chat-handoff:{logical_task_id}:{direction}:{version}:{body_sha256} |
 | confirmation | Always pending_user_review; no approved/merge/authenticated-human field accepted |
 
+The CLI additionally caps the complete serialized JSON file at **262144 bytes
+(256 KiB)** before parsing. This is separate from the decoded UTF-8 body limit
+of **65536 bytes (64 KiB)**. Excessive JSON escaping can exceed the file cap even
+when the decoded body is valid; save a compact UTF-8 JSON representation instead.
+The CLI rejects such files with a generic error and never prints their content.
+
 The packet's `logical_task_id` is the intent correlation ID before ACP dispatch,
 not permission to overwrite ACP's server-generated `logical_task_id`. Keep a
 mapping from intent ID to the first returned ACP logical ID and each execution

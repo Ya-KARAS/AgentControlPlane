@@ -79,3 +79,18 @@ test('offline CLI checks a local packet without printing its body or accepting i
  const checked=run([file,'--expected-parent','0','--logical-task','logical-example']);assert.equal(checked.status,0,checked.stderr);assert.equal(JSON.parse(checked.stdout).offline_only,true);assert.equal(checked.stdout.includes('# Requirements'),false);
  assert.notEqual(run([file]).status,0);assert.notEqual(run([file,'--expected-parent','1']).status,0);
 });
+
+test('CLI file bound is separate from decoded body bound: compact accepted, oversized escaping rejected safely',(t)=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'acp-chat-encoding-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const item=envelope({body:'a'.repeat(65536)});
+ const compact=JSON.stringify(item);
+ const expanded=compact.replace(JSON.stringify(item.body),'"'+'\\u0061'.repeat(65536)+'"');
+ assert.ok(Buffer.byteLength(compact)<262144);assert.ok(Buffer.byteLength(expanded)>262144);
+ assert.equal(validateChatHandoff(JSON.parse(expanded),{expectedParentVersion:0}).valid,true);
+ const run=(file)=>spawnSync(process.execPath,['scripts/check-chat-handoff.js',file,'--expected-parent','0','--logical-task','logical-example'],{cwd:process.cwd(),encoding:'utf8'});
+ const compactFile=path.join(root,'compact.json'),expandedFile=path.join(root,'expanded.json');
+ fs.writeFileSync(compactFile,compact);fs.writeFileSync(expandedFile,expanded);
+ assert.equal(run(compactFile).status,0);
+ const rejected=run(expandedFile);assert.equal(rejected.status,1);assert.equal(rejected.stdout,'');
+ assert.match(rejected.stderr,/Offline handoff check failed/);assert.equal(rejected.stderr.includes(expandedFile),false);assert.equal(rejected.stderr.includes('\\u0061'),false);
+});
