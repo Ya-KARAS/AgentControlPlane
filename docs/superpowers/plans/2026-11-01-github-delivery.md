@@ -56,3 +56,28 @@ Files: docs/DELIVERY.md, bilingual architecture/protocol, docs index/scripts REA
 - [x] Document observation sample, unknown/unverified meaning, unsupported authenticated approval, stop/import/restart, no authority inferred from CI, recoverable refusal, additive-state rollback and no merge/deploy.
 - [x] Verify full suite and diff; commit.
 - [ ] Parent independently reviews immutable head; fix findings with RED/GREEN, final verify. No push by implementer; parent handles ordinary feature push/coordinator draft PR.
+
+## Authorized follow-up: adapter contract and offline evidence preview
+
+No actual approval channel has been chosen. Add a host-injected evaluator only;
+never wire it to application/store/CLI/MCP and never add a trusted setter.
+
+- [x] Write tests in `tests/delivery-evidence.test.js` before adding
+  `src/core/delivery-evidence.js`: unconfigured unknown, explicit test-only host
+  adapter/policy, exact repo/PR/head/user/event binding, incomplete pages,
+  expiration/future time, 403, pre/post head races, replay/conflicting event IDs,
+  revocation and new-head invalidation; public manual paths remain closed.
+- [x] Observe missing-module RED; implement `createDeliveryEvidenceEvaluator({
+  adapter, authorizeUser, clock })` returning `evaluate(target)` with preview-only
+  candidate fields, never effective approval. Default policy denies every user.
+  Adapter callbacks are trusted host code, never request/config JSON. All fake
+  adapters exist only in tests. In-memory replay map is evaluator-local and
+  bounded; no cached approval survives missing/expired evidence.
+- [x] Run targeted GREEN and full verify, commit implementation/tests.
+- [x] Document the contract and limits, final verify, commit; parent performs
+  independent review before ordinary push on this same PR3 branch.
+
+Review focus: a valid-looking GitHub User account is not a human policy decision;
+403/incomplete/head-race never reuses a prior candidate; replay must not restore a
+revoked decision; simulation must not reach a production setter. Replay memory
+is not a durable replay ledger and this evaluator is not production acceptance.
