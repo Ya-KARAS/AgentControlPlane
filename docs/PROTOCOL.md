@@ -144,3 +144,13 @@ Codex exposes a live thread goal and can be polled while running. CLI adapters
 may report cumulative usage only in their final event, so their budget is also
 sent as policy guidance but cannot always be enforced at the same granularity.
 Providers can consume additional tokens between measurements.
+
+## Delivery observations (PR3)
+
+Read-only `delivery_status(task_id)` and GET `/v1/tasks/:id/delivery` expose
+optional task-specific metadata, separately from execution `status`. Missing or
+malformed delivery returns null. Manual reports use `reported_checks` and
+`reported_review_state`; verified `checks`/`review_state` remain `unknown`.
+`approval_supported` is false: approved/merged cannot be asserted by a client,
+CI or model. Existing authentication is unchanged; no mutating delivery tool or
+route exists. See [delivery contract and offline operations](DELIVERY.md).
