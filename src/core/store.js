@@ -565,12 +565,12 @@ export class TaskStore {
     this.#deliveryHost=createDeliveryHostService({adapter,authorizeUser,clock,
       healthy:()=>epoch === this.#deliveryHostEpoch && !this.checkpointFaulted,
       read:(id)=>Object.hasOwn(this.state.tasks,id) ? {delivery:safeDelivery(this.state.tasks[id].delivery),journal:this.state.tasks[id]._delivery_evidence} : null,
-      commit:(id,journal,expected)=>this.#persistDeliveryEvidence(id,journal,expected,epoch),
+      commit:(id,journal,expected,merge)=>this.#persistDeliveryEvidence(id,journal,expected,epoch,merge),
     });
     return this.#deliveryHost;
   }
 
-  #persistDeliveryEvidence(id,journal,expected,epoch) {
+  #persistDeliveryEvidence(id,journal,expected,epoch,merge) {
     const task=this.state.tasks[id];
     if (epoch !== this.#deliveryHostEpoch || !task || JSON.stringify(safeDelivery(task.delivery)) !== expected) throw new ControlPlaneError("delivery_conflict", "Delivery binding changed");
     const wasLocked=Boolean(this.checkpointLeaseToken);
@@ -580,7 +580,7 @@ export class TaskStore {
       if (isDeepStrictEqual(task._delivery_evidence,journal)) return;
       this.state.tasks[id]={...task,_delivery_evidence:structuredClone(journal)};
       this.persist(); persisted=true;
-      this.audit("task.delivery_evidence",{taskId:id,repository:task.delivery.repository,pull_request_number:task.delivery.pull_request_number,head_sha:task.delivery.head_sha});
+      this.audit("task.delivery_evidence",{taskId:id,repository:task.delivery.repository,pull_request_number:task.delivery.pull_request_number,head_sha:task.delivery.head_sha,...(merge ? {merged:merge.merged,merge_commit_sha:merge.merge_commit_sha,merge_event_id:merge.event_id,merge_source:merge.source} : {})});
     } catch(error) {
       if (!persisted) this.state.tasks[id]=task;
       this.checkpointFaulted=true;

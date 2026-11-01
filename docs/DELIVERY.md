@@ -288,3 +288,32 @@ review. Removing the host override immediately disables effective approval;
 retained journals must not be interpreted as grants by an older binary. Old task
 records require no migration, and model/executor updates remain compatible while
 ownership/approval fields are protected.
+
+### Verified merged facts are not merge commands or user approval
+
+A host observation may optionally include `merge` with an explicit boolean
+`merged`, `merge_commit_sha`, provider `event_id`, `source: "github"` and
+`occurred_at`. A true fact requires a 40-hex merge commit, bounded event ID and
+canonical timestamp no later than observation. False requires null fact details;
+absent evidence is unknown. The envelope binds exact repository, PR and reviewed
+head, followed by a fresh head check. No actual GitHub client or merge operation
+is added. A future adapter must obtain authentic provider facts; caller-supplied
+JSON and a source label do not authenticate anything.
+
+Merged observation is independent of human review policy. A configured read
+adapter can project `merged: true|false|null`, `merge_commit_sha`, `merge_source`
+and `merge_event_id` without an approver policy, while `review_state` stays
+unknown and `approval_supported` stays false. Without a read adapter, all facts
+remain unknown. The field does not set approved, perform merge or imply that the
+user approved the merged code. Existing manual approved/merged imports remain
+refused. The dashboard shows a fresh merged fact separately from checks/review.
+
+The private bounded journal remembers a verified true fact per revision and
+fingerprints its event against repo/PR/head. Omission, false regression, changed
+merge commit or transplanting that event to another head is rejected across
+restart. Its event counts share the existing 256 event limit; at most 128 merged
+revision records are retained with fail-closed capacity handling. Restart still
+requires fresh provider evidence; disk history alone never restores merged=true.
+Audit includes only task/repo/PR/head, merged boolean, merge commit, bounded
+provider event and source. Expiration, failed refresh or revision change clears
+the projection; task lifecycle/lineage is unchanged.

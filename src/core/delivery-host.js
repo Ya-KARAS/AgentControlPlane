@@ -3,17 +3,17 @@ import { createDeliveryEvidenceEvaluator } from './delivery-evidence.js';
 // Trusted process composition only. No credential, policy or transport is
 // inferred from config or request JSON. This is not a network authentication API.
 export function createDeliveryHostService({ adapter, authorizeUser, clock = Date.now, read, commit, healthy }) {
-  const active = adapter && typeof adapter.readObservation === 'function' && typeof adapter.readHead === 'function' && typeof authorizeUser === 'function';
+  const active = adapter && typeof adapter.readObservation === 'function' && typeof adapter.readHead === 'function';
   const projections = new Map();
   const pending = new Map();
   const stamp = value => JSON.stringify(value);
-  const unknown = delivery => delivery ? { ...delivery, checks:'unknown', review_state:'unknown', approval_supported:false } : null;
+  const unknown = delivery => delivery ? { ...delivery, checks:'unknown', review_state:'unknown', approval_supported:false,merged:null,merge_commit_sha:null,merge_source:null,merge_event_id:null } : null;
   function status(id) {
     const state=read(id), projection=projections.get(id);
     let now;
     try { now=clock(); } catch { return unknown(state?.delivery); }
     if (!healthy() || !projection || !Number.isSafeInteger(now) || now < projection.observed || now >= projection.until || projection.stamp !== stamp(state?.delivery)) return unknown(state?.delivery);
-    return { ...state.delivery, checks:projection.checks, review_state:projection.review, source:'verified_host', verification:'verified', verified_until:new Date(projection.until).toISOString(), approval_supported:true };
+    return { ...state.delivery, checks:projection.checks, review_state:projection.review, source:'verified_host', verification:'verified', verified_until:new Date(projection.until).toISOString(), approval_supported:typeof authorizeUser === 'function',merged:projection.merge?.merged ?? null,merge_commit_sha:projection.merge?.merge_commit_sha ?? null,merge_source:projection.merge?.source ?? null,merge_event_id:projection.merge?.event_id ?? null };
   }
   return Object.freeze({ status,
     async refresh(id) {
@@ -31,10 +31,10 @@ export function createDeliveryHostService({ adapter, authorizeUser, clock = Date
           const result=await evaluator.evaluate(target);
           if (!result.candidate || !healthy() || stamp(read(id)?.delivery) !== stamp(delivery)) return status(id);
           const journal={version:1,history:evaluator.exportHistory()};
-          commit(id,journal,stamp(delivery)); // No async yield between binding and persist.
+          commit(id,journal,stamp(delivery),result.candidate.merge); // No async yield between binding and persist.
           const now=clock(), observed=Date.parse(result.validity.observed_at), until=Date.parse(result.validity.valid_until);
           if (!Number.isSafeInteger(now) || now < observed || now >= until || !healthy()) return status(id);
-          projections.set(id,{stamp:stamp(delivery),observed,until,checks:result.candidate.checks,
+          projections.set(id,{stamp:stamp(delivery),observed,until,checks:result.candidate.checks,merge:result.candidate.merge,
             review:result.candidate.decision === 'approved' ? 'approved' : result.candidate.decision === 'changes_requested' ? 'changes_requested' : result.candidate.decision === 'revoked' ? 'pending_review' : 'unknown'});
           return status(id);
         } catch { projections.delete(id); return status(id); }

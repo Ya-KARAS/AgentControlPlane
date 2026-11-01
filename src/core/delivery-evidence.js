@@ -18,6 +18,14 @@ function targetIdentity(value) {
       value.pull_request_number < 1 || !sha(value.head_sha)) fail();
   return { repository: value.repository, pull_request_number: value.pull_request_number, head_sha: value.head_sha };
 }
+function mergeFact(value, observed) {
+  if (value === undefined || value === null) return null;
+  if (!ownKeys(value,['merged','merge_commit_sha','event_id','source','occurred_at']) || typeof value.merged !== 'boolean' || value.source !== 'github') fail();
+  if (value.merged) {
+    if (!sha(value.merge_commit_sha) || !identifier(value.event_id) || time(value.occurred_at) > observed) fail();
+  } else if (value.merge_commit_sha !== null || value.event_id !== null || value.occurred_at !== null) fail();
+  return {merged:value.merged,merge_commit_sha:value.merge_commit_sha,event_id:value.event_id,source:value.source,occurred_at:value.occurred_at};
+}
 const sameTarget = (a,b) => a.repository === b.repository && a.pull_request_number === b.pull_request_number && a.head_sha === b.head_sha;
 const unknown = reason => ({ preview_only: true, approval_supported: false,
   effective: { checks: 'unknown', review_state: 'unknown' }, candidate: null, reason });
@@ -29,10 +37,11 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
   const events = new Map();
   const observations = new Map();
   const latestDecisions = new Map();
+  const merges = new Map();
   let invalidHistory = false;
   if (history !== undefined) {
     try {
-      if (!ownKeys(history, ['events','observations','latestDecisions'])) fail();
+      if (!ownKeys(history, ['events','observations','latestDecisions','merges'])) fail();
       for (const [name, map, maximum] of [['events',events,256],['observations',observations,128],['latestDecisions',latestDecisions,256]]) {
         const entries = history[name];
         if (!Array.isArray(entries) || entries.length > maximum) fail();
@@ -55,13 +64,22 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
           map.set(key,structuredClone(value));
         }
       }
+      if (history.merges !== undefined) {
+        if (!Array.isArray(history.merges) || history.merges.length > 128) fail();
+        for (const row of history.merges) {
+          if (!Array.isArray(row) || row.length !== 2 || typeof row[0] !== 'string' || row[0].length > 1000 || merges.has(row[0])) fail();
+          const fact=mergeFact(row[1],Number.MAX_SAFE_INTEGER);
+          if (!fact?.merged) fail();
+          merges.set(row[0],fact);
+        }
+      }
       if ([...latestDecisions.values()].reduce((n,map)=>n+map.size,0)>256) fail();
     } catch { invalidHistory = true; }
   }
   return Object.freeze({
     exportHistory() {
       if (invalidHistory) fail();
-      return structuredClone({events:[...events],observations:[...observations],latestDecisions:[...latestDecisions].map(([key,map])=>[key,[...map]])});
+      return structuredClone({events:[...events],observations:[...observations],latestDecisions:[...latestDecisions].map(([key,map])=>[key,[...map]]),...(merges.size ? {merges:[...merges]} : {})});
     },
     async evaluate(input) {
       if (invalidHistory) return unknown('history_invalid');
@@ -70,11 +88,12 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
         const target = Object.freeze(targetIdentity(input));
         const evidence = await adapter.readObservation(target);
         const now = clock();
-        if (!Number.isSafeInteger(now) || !ownKeys(evidence, ['repository','pull_request_number','head_sha','checks','complete','observed_at','valid_until','decisions']) ||
+        if (!Number.isSafeInteger(now) || !ownKeys(evidence, ['repository','pull_request_number','head_sha','checks','complete','observed_at','valid_until','decisions','merge']) ||
             !sameTarget(target, targetIdentity({ repository:evidence.repository, pull_request_number:evidence.pull_request_number, head_sha:evidence.head_sha })) ||
             evidence.complete !== true || !['unknown','pending','passed','failed'].includes(evidence.checks) || !Array.isArray(evidence.decisions) || evidence.decisions.length > 256) fail();
         const observed = time(evidence.observed_at), until = time(evidence.valid_until);
         if (observed > now || until <= now || until <= observed || until-observed > 600_000) fail();
+        const merge=mergeFact(evidence.merge,observed);
         const normalizedEvents = evidence.decisions.map(event => {
           if (!ownKeys(event,['event_id','user_id','head_sha','state','occurred_at']) || !identifier(event.event_id) || !identifier(event.user_id) ||
               event.head_sha !== target.head_sha || !['approved','changes_requested','revoked'].includes(event.state) || time(event.occurred_at) > observed) fail();
@@ -123,13 +142,20 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
           if (!incoming || time(incoming.occurred_at) < time(old.occurred_at) ||
               (incoming.occurred_at === old.occurred_at && digest(incoming) !== digest(old))) fail();
         }
+        const mergeKey=merge?.merged ? JSON.stringify([scope,'merge',merge.event_id]) : null;
+        const mergeHash=mergeKey ? digest({...target,...merge}) : null;
+        if (mergeKey && events.has(mergeKey) && events.get(mergeKey)!==mergeHash) fail();
+        const knownMerge=merges.get(revision);
+        if (knownMerge && (!merge?.merged || digest(knownMerge)!==digest(merge))) fail();
+        if (merge?.merged && !knownMerge && merges.size >= 128) fail();
         const newKeys = normalizedEvents.map(event => JSON.stringify([scope,event.event_id])).filter(key => !events.has(key));
-        if (events.size + newKeys.length > 256 || (!previous && observations.size >= 128)) fail();
+        if (events.size + newKeys.length + (mergeKey && !events.has(mergeKey) ? 1 : 0) > 256 || (!previous && observations.size >= 128)) fail();
         for (const event of normalizedEvents) events.set(JSON.stringify([scope,event.event_id]),digest(event));
         observations.set(scope,{ observed, hash });
+        if (merge?.merged) { merges.set(revision,merge); events.set(mergeKey,mergeHash); }
         if (latestByUser.size > 0) latestDecisions.set(revision,latestByUser);
         return { ...unknown('preview_only'), validity: {observed_at:evidence.observed_at,valid_until:evidence.valid_until}, candidate: { ...target, checks:evidence.checks, decision:decision?.state ?? 'unknown',
-          user_id:decision?.user_id ?? null, event_id:decision?.event_id ?? null } };
+          user_id:decision?.user_id ?? null, event_id:decision?.event_id ?? null,...(merge ? {merge} : {}) } };
       } catch {
         return unknown('evidence_unavailable'); // Never expose arbitrary adapter errors.
       }

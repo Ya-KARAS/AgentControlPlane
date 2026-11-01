@@ -90,3 +90,14 @@ Architecture: existing evaluator exports/restores bounded replay history, not au
 - [x] Write real TaskStore host-service RED for default denial, explicit simulated policy approval, expiry, new-head invalidation, cold restart replay/revocation, forged persisted flags, generic mutation, writer drift and persist/audit failure. Implement private capability commit callback under existing lock/audit, host-only DI service; read projection never trusts disk approval.
 - [x] Write createApplication host injection RED and no-adapter/JSON config denial; wire only overrides.deliveryEvidence (not config/body), no network mutation route. Preserve legacy record updates and task lineage.
 - [x] Run targeted suites and npm run verify, document durable-memory bounds, trusted-host threat boundary, exact still-unconfigured real adapter/user binding, rollback; commit. Parent independent review and ordinary feature push.
+
+## Follow-up: verified merged fact (read only)
+
+- [x] RED tests for optional provider merge evidence bound to exact observation target,
+  explicit true/false/unknown, merge commit/event/source/time, mismatches and head races.
+- [x] GREEN evaluator validation and durable merge high-water history; true cannot regress
+  under replay/restart. History remains bounded and old histories load safely.
+- [x] RED/GREEN host persistence/projection and safe audit, with no human policy needed
+  for provider facts and no automatic approved decision. Manual merged stays rejected.
+- [x] Verify targeted + full suite; document fact observation versus executing merge.
+No actual GitHub client, merge action, credentials, network or default approver added.
