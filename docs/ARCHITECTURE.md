@@ -101,3 +101,27 @@ adapters execute with the host user's privileges and are therefore restricted
 to allowlisted, trusted workspaces. A hosted relay requires a separate
 multi-tenant authentication and device-trust design; the local server must not
 be exposed directly to the public Internet.
+
+## Optional single-process controller ownership
+
+PR1 adds an opt-in registry and task control lease to the existing TaskStore,
+without a second queue/store or a change to executor lifecycle. Private,
+operator-configured principal bindings resolve only verified in-process actors;
+public descriptors exclude those bindings. Current transports deliberately bind
+only `local-operator`, so named-agent authentication is not claimed.
+
+Pure lease transitions use server time, bounded TTLs and monotonic generations.
+Release persists a generation tombstone; every store transition compares the
+expected generation synchronously and uses the existing writer lock, state-drift
+checks, persistence and audit chain. `single` and `cooperative` prevent another
+owner's expired-lease takeover; `failover` permits a verified actor to claim an
+expired lease. Cooperative participants may propose/review, but no parallel
+writer or special proposal queue is created. There is no automatic takeover
+scheduler or heartbeat. Controller takeover never starts, cancels or reroutes an
+executor. Execution checkpoint leases retain their separate meaning.
+
+The only new network surface is read-only `list_controllers`. Controller-authored
+in-process task patches require a verified actor and live generation; ordinary
+trusted executor/internal updates preserve their old API. No per-agent network
+mutation interface is exposed. This is single-process control, not distributed
+ownership. See [controller invariants and rollback](CONTROLLERS.md).

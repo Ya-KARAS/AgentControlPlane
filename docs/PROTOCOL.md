@@ -144,3 +144,30 @@ Codex exposes a live thread goal and can be polled while running. CLI adapters
 may report cumulative usage only in their final event, so their budget is also
 sent as policy guidance but cannot always be enforced at the same granularity.
 Providers can consume additional tokens between measurements.
+
+## Optional controller ownership (PR1)
+
+`controllers.enabled` defaults to `false`. Existing dispatch/continue/handoff
+requests require no new arguments. With the feature enabled, those operations
+attribute new tasks to the explicit `local-operator`; current shared-bearer and
+local transports do not authenticate separate personal agents. Client-supplied
+`caller_id`, `controller_id`, `controller` or prompt text never establishes an
+identity. Existing transport authorization and user cancellation remain in place.
+
+`list_controllers` is a read-only MCP tool. Its optional `limit` is an integer
+from 1 to 100 (default 20), selecting the most recent tasks to inspect. It returns
+`enabled`, `mode`, `lease_ttl_seconds`, `identity_scope: "local_operator"`, public
+`controllers` (`id`, `kind`, `display_name`) and `task_owners` for leases among
+those tasks. Each lease summary contains only `task_id`, `owner`, `generation`,
+`expires_at` and `lease_state` (`active`, `expired`, `released`). No principal
+bindings, credentials, workspace paths, prompts, events or executor data appear
+in this tool. It does not renew leases. Ordinary endpoint authentication still
+applies; a loopback endpoint configured without a token can read the same safe
+view. No mutating controller claim/renew/release/takeover tool or route is added.
+
+Task records expose optional `controller` (`id`, `kind`, `mode`) and
+`control_lease` (`owner`, `generation`, `expires_at`); legacy/feature-off new tasks
+normalize both to `null`. Release retains `owner: null` and the last generation,
+so a reclaim increments rather than resetting the fence. `controller.id` after
+release identifies the last actor, not an active owner. Only the lease establishes
+current control. See [controller configuration and invariants](CONTROLLERS.md).
