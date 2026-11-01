@@ -120,3 +120,12 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 ## Token 预算
 
 用量测量和中断精度取决于执行器的遥测数据。Codex 暴露实时的线程目标，可以在运行期间轮询。CLI 适配器可能只在最终事件中报告累计用量，因此它们的预算也作为策略指导发送，但无法始终以相同的粒度强制执行。Provider 在两次测量之间可能会消耗额外的 token。
+
+## 被动订阅观测（PR2）
+
+可选订阅记录复用 TaskStore 状态和审计，不与任务 token 或现金支出混合。仅离线
+operator 命令导入 manual/user_reported 快照，不调用模型、CLI 或浏览器探测额度。
+GET `/v1/subscriptions`、只读 MCP `subscription_status` 和本地面板展示有界、精确
+范围的观测；到期降为 unknown，null 不代表0。由 operator 配置兼容能力的路由建议
+始终需要手工批准，不改变实际派发或默认关闭的自动 reroute；没有新增网络修改
+入口。详见 [契约、操作及回滚](SUBSCRIPTIONS.md)。
