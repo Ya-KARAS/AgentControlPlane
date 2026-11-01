@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { safeDelivery, transitionDelivery } from "./delivery.js";
 import { ControlPlaneError } from "./errors.js";
 import {
   adaptV1Event,
@@ -69,6 +71,7 @@ function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
     ...structuredClone(task),
+    delivery: safeDelivery(task.delivery),
     logical_task_id: task.logical_task_id ?? task.id,
     executor_history: Array.isArray(task.executor_history)
       ? structuredClone(task.executor_history)
@@ -554,10 +557,44 @@ export class TaskStore {
     return normalizeTaskRecord(task);
   }
 
+  getDelivery(id) {
+    return Object.hasOwn(this.state.tasks, id) ? safeDelivery(this.state.tasks[id].delivery) : null;
+  }
+
+  // Offline operator observation, never an approval/merge operation.
+  recordDelivery(id, input) {
+    if (!Object.hasOwn(this.state.tasks, id)) throw new ControlPlaneError("task_not_found", "Task not found");
+    const task = this.state.tasks[id];
+    const current = safeDelivery(task.delivery);
+    const delivery = transitionDelivery(current, input);
+    const wasLocked = Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease();
+    let persisted = false;
+    try {
+      if (isDeepStrictEqual(current, delivery)) return structuredClone(delivery);
+      this.state.tasks[id] = { ...task, delivery, updatedAt: now() };
+      this.persist();
+      persisted = true;
+      this.audit("task.delivery_observed", { taskId: id, repository: delivery.repository,
+        pull_request_number: delivery.pull_request_number, head_sha: delivery.head_sha });
+      return structuredClone(delivery);
+    } catch (error) {
+      if (!persisted) this.state.tasks[id] = task;
+      this.checkpointFaulted = true;
+      throw error;
+    } finally {
+      if (!wasLocked && !this.checkpointFaulted) this.releaseExecutorLease();
+    }
+  }
+
   updateTask(id, patch) {
     const task = this.state.tasks[id];
     if (!task) return null;
-    Object.assign(task, patch, { updatedAt: now() });
+    if (Object.hasOwn(patch, "delivery") && !isDeepStrictEqual(patch.delivery, safeDelivery(task.delivery))) {
+      throw new ControlPlaneError("delivery_update_required", "Delivery observations require the checked operation");
+    }
+    const { delivery: ignoredDelivery, ...safePatch } = patch;
+    Object.assign(task, safePatch, { updatedAt: now() });
     this.persist();
     return normalizeTaskRecord(task);
   }
