@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "logical_task_id": "intent-acp-example",
+  "handoff_id": "handoff-example-1",
+  "direction": "requirements_to_chat",
+  "version": 1,
+  "parent_version": 0,
+  "source": "private_agent",
+  "summary": "Prepare an engineering document for the existing ACP repository",
+  "body": "# Requirements\nPreserve existing ACP behavior. Propose tests and separate draft PRs. Do not merge main.\n",
+  "confirmation": "pending_user_review",
+  "body_sha256": "6742a5d4f290519aedc5880d1e8bbe68947306a7fe753e79547c4410e1ed8d02",
+  "idempotency_key": "chat-handoff:intent-acp-example:requirements_to_chat:1:6742a5d4f290519aedc5880d1e8bbe68947306a7fe753e79547c4410e1ed8d02"
+}
