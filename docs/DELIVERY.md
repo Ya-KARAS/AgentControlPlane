@@ -317,3 +317,66 @@ requires fresh provider evidence; disk history alone never restores merged=true.
 Audit includes only task/repo/PR/head, merged boolean, merge commit, bounded
 provider event and source. Expiration, failed refresh or revision change clears
 the projection; task lifecycle/lineage is unchanged.
+
+## Read-only GitHub adapter code (unwired, Cloud acceptance only)
+
+`createGitHubDeliveryAdapter` in `src/core/github-delivery-adapter.js` implements
+`readObservation`/`readHead`. A trusted host must inject `request`; there is no
+fallback fetch, environment-token discovery, credential storage, app installation
+or default application registration. The request contract returns
+`{status,url,headers,body}` with a bounded JSON string body. It must honor TLS,
+`redirect: error`, cancellation and no-cache instructions. The adapter only emits
+GETs to the configured repository's PR endpoint and exact head check-runs endpoint;
+no arbitrary URL, review/comment mutation, merge/deploy action or model request.
+
+Checks default to unknown. To observe a specific checks policy, the host supplies
+`requiredChecks: [{name: "verify", app_id: 123}]` with explicitly approved issuer
+IDs; no default issuer or required branch rule is inferred. All pages are read
+under page/record/byte/time bounds, and incomplete or head-mismatched data fails
+closed. Same-name checks from another app cannot satisfy the policy. A passed
+projection means only this explicit context policy passed, not that every GitHub
+branch rule or permission permits merge. Legacy statuses and workflow-run shortcut
+aggregation are deliberately not implemented; do not use this adapter to certify
+repositories whose required inputs it cannot read completely.
+
+PR identity is checked before/after collection and again by the host evaluator.
+An affirmative provider merged flag, valid merged_at and merge commit are needed
+for a merged fact; merge_commit_sha by itself never proves merge. Observations
+are marked github by adapter code, not from a caller source field. Review decisions
+remain empty: GitHub metadata access is not independent human acceptance. A real
+user-decision adapter still needs an explicitly approved authentication method and
+principal policy. This adapter never maps account type=User to a human decision.
+Raw provider output/errors/URLs are not returned as evidence or published.
+
+Fixture tests cover exact GETs, missing transport, no credentials, wrong target,
+403/429/redirects, malformed body, page/record/byte/time bounds, external links,
+partial context data, issuer mismatch, head races and merged-fact requirements.
+These tests are not a live GitHub acceptance result.
+
+### Current Cloud acceptance and user verification dependency blocker
+
+Cloud-only acceptance supersedes the earlier Windows/local-node test proposal.
+No Windows path, local fallback, new credential, RP registration or public listener
+is approved. The parent attempted anonymous Cloud GET of
+`https://api.github.com/repos/Ya-KARAS/AgentControlPlane`; it failed DNS `EAI_AGAIN`.
+Repository public visibility remains unverified. Evidence is retained in the
+Cloud task at `/tmp/acp-cloud-acceptance/github-public-probe.json`; no retry with
+credentials was made. Chromium is installed, but its default SUID sandbox was
+misconfigured and the namespace fallback reported `No usable sandbox`. Parent did
+not use `--no-sandbox` or alter system settings; actual browser UI acceptance is
+blocked. Evidence: `/tmp/acp-cloud-acceptance/ui-browser-stderr.log`. Offline
+HTTP/MCP/VM tests do not substitute for either live acceptance.
+
+The dependency inventory contains MCP SDK/Zod (and transitive JOSE), not a full
+WebAuthn registration/assertion ceremony verifier. JOSE alone is not a replacement
+for CBOR/COSE/authenticator-data/origin/RP/challenge/UV verification. No handwritten
+ceremony cryptography is introduced. Concrete proposed follow-up dependency:
+`@simplewebauthn/server`, pinned to an approved exact compatible 14.x release and
+lockfile after dependency/security review; its official server documentation is
+https://simplewebauthn.dev/docs/packages/server. Its current release/compatibility
+must be verified before pinning; this document does not assert an installed or
+approved version. This adds a runtime dependency and transitive code surface, so
+it is a specific approval/design decision, not performed here. Actual browser UV,
+credential enrollment, RP/origin trust, principal binding and real user acceptance
+remain unconfigured. A virtual authenticator test would not prove live human
+acceptance. The standard entry point stays unwired/fail-closed.

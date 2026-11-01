@@ -101,3 +101,21 @@ Architecture: existing evaluator exports/restores bounded replay history, not au
   for provider facts and no automatic approved decision. Manual merged stays rejected.
 - [x] Verify targeted + full suite; document fact observation versus executing merge.
 No actual GitHub client, merge action, credentials, network or default approver added.
+
+## Read-only GitHub adapter (cloud-code follow-up)
+
+No new authorization, credentials or live calls during implementation. The host
+injects the network client; there is no default fetch, environment token lookup
+or automatic application wiring. Cloud-only acceptance supersedes the earlier
+local-node test proposal; no Windows/local fallback is authorized.
+
+- [x] RED fixtures for exact GET endpoint/repo/head, malformed/403/429/redirect,
+  bounded pagination/bytes/records, check context completeness and head races.
+- [x] Implement createGitHubDeliveryAdapter({request,repository,requiredChecks,
+  clock,ttlMs,maxPages,maxRecords,maxBytes,timeoutMs}) with readHead/readObservation.
+  Only api.github.com PR and head check-run GETs; transport must disable redirects.
+  Missing check policy produces unknown, never green from one workflow. No GitHub
+  review is mapped to human acceptance; decisions remain empty.
+- [x] GREEN targeted and full verify; document contract, cloud-only configuration,
+  precise WebAuthn dependency blocker. No hand-written ceremony crypto or new deps.
+- [x] Commit immutable head for parent independent review, no push by implementer.
