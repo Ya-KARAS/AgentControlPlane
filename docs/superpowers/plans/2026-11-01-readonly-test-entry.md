@@ -28,3 +28,15 @@ SDK error reflection. HTTP connection/request lifecycle deadlines (not ACP
 background timers) explicitly destroy stalled sockets and free capacity, instead
 of relying on Node's delayed timeout sweep. Connection count is also bounded16.
 Both defects reproduced as RED before the minimal corrections; no scope expansion.
+
+## Follow-up: fixed, memory-only diagnostics
+
+- [ ] RED tests: GET /diagnostics, fixed HTTP/reason/method categories, rejection
+  visibility, forbidden marker absence, unknown-path cardinality, slow-request
+  expiry/capacity and no extra MCP tools. No tunnel/account activity.
+- [ ] Add saturating counters in the isolated composition root only; no request
+  values, persistent writes, reset route or new MCP tools. Diagnostic GET uses
+  unchanged loopback/Host/Origin/concurrency/deadline constraints.
+- [ ] GREEN targeted tests and full verify; independent review before push.
+- [ ] Document snapshot self-counting, interpretation limits, official-client
+  compatibility, and a newly authorized short window for any future live test.

@@ -58,6 +58,11 @@ test('explicit CLI ignores poisoned production environment under import/filesyst
  assert.ok(stdout.includes('\n'),stderr);const info=JSON.parse(stdout.trim());assert.match(info.address,/^http:\/\/127\.0\.0\.1:\d+$/);assert.equal(info.executors_started,false);
  const response=await fetch(info.address+'/health');assert.equal(response.status,200);assert.equal((await response.json()).production_state_loaded,false);
  const tools=await fetch(info.address+'/mcp',{method:'POST',headers:{'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}).then(r=>r.json());assert.equal(tools.result.tools.length,2);
+ const marker='diagnostic-no-log-private-marker';
+ const rejected=await fetch(info.address+'/mcp',{method:'POST',headers:{'content-type':'application/json',accept:'application/json, text/event-stream','x-private-test':marker},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'get_requirements',arguments:{[marker]:marker}}})}).then(r=>r.text());
+ assert.equal(rejected.includes(marker),false);
+ const diagnostic=await fetch(info.address+'/diagnostics').then(r=>r.text());assert.equal(diagnostic.includes(marker),false);
+ assert.equal((await fetch(info.address+'/health').then(r=>r.text())).includes(marker),false);
  // Negative control: the announced listener really owns this port before stop.
  const port=Number(new URL(info.address).port);
  const competing=http.createServer();t.after(()=>{if(competing.listening)competing.close();});
@@ -71,7 +76,7 @@ test('explicit CLI ignores poisoned production environment under import/filesyst
  const released=http.createServer();t.after(()=>{if(released.listening)released.close();});
  await new Promise((resolve,reject)=>{released.once('error',reject);released.listen(port,'127.0.0.1',resolve);});
  await new Promise((resolve,reject)=>released.close(error=>error?reject(error):resolve()));
- assert.equal(stderr,'');assert.equal(stdout.includes('PRODUCTION-SECRET'),false);
+ assert.equal(stderr,'');assert.equal(stdout.includes('PRODUCTION-SECRET'),false);assert.equal(stdout.includes(marker),false);
  assert.deepEqual(fs.readdirSync(dir),['production-config.json']);
 });
 

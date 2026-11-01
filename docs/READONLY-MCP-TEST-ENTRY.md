@@ -127,3 +127,92 @@ port is occupied (EADDRINUSE negative control), then proves the same port can be
 bound after close. A bounded close wait and teardown guard detect a stuck child;
 `child.killed` alone is never treated as proof of exit. Windows execution remains
 a CI result, not something reproduced by the Linux Cloud container.
+
+## Memory-only diagnostic snapshot (not an MCP tool)
+
+`GET http://127.0.0.1:PORT/diagnostics` reads fixed aggregate counters from this
+isolated process only. It uses the same exact Host/Origin checks, loopback bind,
+8 active-request and16 connection caps, and absolute HTTP lifecycle deadlines.
+A diagnostic GET accepts no body (nonzero Content-Length or Transfer-Encoding is
+rejected); queries and all other diagnostic routes are unsupported. There is no
+reset/import/write endpoint or new MCP tool. Do not publish this endpoint through
+an additional tunnel: the operator reads it directly on the permitted loopback.
+It does not load production configuration, state, identity or credentials.
+
+The fixed response contains:
+
+- `requests_total`: completed-header HTTP requests reaching this handler, including
+  health and diagnostics themselves and rejected requests.
+- `statuses`: fixed200/202/400/403/404/405/406/413/415/429/500/503 buckets, `other`
+  for another response status, and `closed` when a response did not finish.
+- `rejections`: fixed host_origin/capacity/route/content_type/invalid_json/
+  invalid_rpc/tool_call/body_size/diagnostic_body/deadline/handler reasons.
+- `methods`: initialize/list/call/other/invalid categories. The first three mean
+  parsed initialize/tools-list/tools-call requests, not successful operations.
+  No caller-provided method/tool string becomes a label.
+- `transport`: fixed connection_deadline and invalid_http event counts. These
+  include socket events without a complete HTTP request and do not count as
+  `requests_total`. Idle keepalive expiry can also increment connection_deadline.
+
+All values saturate at `counter_limit=Number.MAX_SAFE_INTEGER`; object keys and
+storage cardinality never grow with traffic. No headers or Host/Origin values,
+IP addresses, query/path values, bodies, identifiers, keys, timestamps, user data
+or arbitrary error text are retained. There is no request logging or disk
+persistence. Process exit discards counters. Rejection/transport counts are not
+mutually exclusive, so they must not be summed as a request total.
+
+A snapshot increments requests_total for its own GET before serializing; that
+GET's status200 is counted only after its response finishes, so statuses normally
+lag the snapshot by that response. Health probes, SDK notifications and unrelated
+local probes also affect counts. Compare fixed MCP method and rejection deltas,
+not raw total alone. Standard JSON-RPC correlation IDs are still returned by the
+protocol; this is not a universal redaction layer for secrets supplied as valid
+IDs or deliberate fixture content. Never put secrets in those fields. Tests use
+sensitive markers in rejected headers/query/unknown argument fields and prove
+those markers absent from health/diagnostics/fixed errors/CLI stdout and stderr.
+
+## Interpreting the ordinary Chat setup failure
+
+The reported official tunnel-client0.0.19 test had successful local entry health,
+client healthz and readyz, but two ordinary Chat custom-MCP creation attempts near
+22:08/22:10UTC showed a generic rate-limit/client-connection message. No tool
+discovery or installed plugin was confirmed. The authorized20-minute test ended
+22:25:19; all test PIDs/ports were cleared. This code change did not read its key,
+restart that test, install locally or attempt another account operation.
+
+[Official Secure MCP Tunnel documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+describes client health/readiness and limits; those checks do not establish that
+ChatGPT discovery reached this MCP server. No Host/Origin rewrite guarantee has
+been established here. The endpoint still requires the same exact loopback Host
+and optional loopback Origin; diagnostics must not be used to auto-allow arbitrary
+forwarded headers. The current entry has no explicit429 response path; a generic
+ChatGPT message alone cannot distinguish upstream rate limiting from local403,
+503, malformed requests or a request that never reached this handler. These
+counters add evidence, not a fix for an unverified upstream limit.
+
+### Next minimal bounded test — requires fresh user confirmation
+
+1. Obtain approval for a new short readonly test window, specified machine/port,
+   existing permitted Personal Tunnels Read/Use scope and one custom-MCP attempt.
+   The expired window is not reusable authorization. Do not expose/print the key,
+   create permissions/accounts or repeatedly submit after another rate-limit error.
+2. Start only this synthetic isolated entry on the explicitly permitted temporary
+   loopback port. Do not start normal ACP. Verify health and read diagnostics on
+   loopback; record only the aggregate snapshot after those baseline probes.
+3. If separately authorized, run the existing official client normally and verify
+   its local readiness. From the ordinary personal Chat account make one controlled
+   discovery attempt; do not dispatch, approve, merge or request engineering work.
+4. Read the loopback aggregate snapshot again, then stop all test processes and
+   prove process/port cleanup. No raw HTTP logging/support dump is needed.
+5. Interpret: initialize/list deltas show parsed protocol progress. host_origin403
+   means this entry rejected a request, but identifies no caller. capacity503 means
+   local saturation. invalid/body/deadline/transport deltas indicate their fixed
+   local condition. No parsed-MCP delta does NOT prove no socket arrived: check
+   rejections/transport too. Zero relevant deltas only locates the uncertainty
+   upstream of those observations; it cannot attribute a provider rate limit.
+
+If no MCP traffic is observed despite readiness, report the snapshots and exact
+user-visible error/time to the official platform support channel without secrets;
+do not broaden Host/Origin, disable bounds, change keys or loop retries. Real
+ordinary Chat connectivity and two-way document handoff remain unpassed until
+that actual authorized test succeeds.
