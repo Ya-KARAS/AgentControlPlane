@@ -1,0 +1,61 @@
+import http from 'node:http';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
+
+const fixtureSchema=z.object({id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),summary:z.string().min(1).max(512),body:z.string().min(1).refine(s=>Buffer.byteLength(s,'utf8')<=16384)}).strict();
+const defaultFixture={id:'synthetic-requirements',summary:'Synthetic read-only protocol test',body:'Prepare an engineering document for a synthetic example. No execution is requested.'};
+const capabilities=Object.freeze({mode:'read-only',executors_started:false,ordinary_chat_connected:false,production_state_loaded:false,tools:['get_requirements','read_capabilities'],fixture_only:true});
+function json(response,status,body){response.writeHead(status,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'});response.end(JSON.stringify(body));}
+function readBody(request){return new Promise((resolve,reject)=>{
+ let size=0,parts=[],done=false;
+ request.on('data',chunk=>{if(done)return;size+=chunk.length;if(size>32768){done=true;parts=[];reject(413);}else parts.push(chunk);});
+ request.on('end',()=>{if(done)return;try{resolve(JSON.parse(Buffer.concat(parts).toString('utf8')));}catch{reject(400);}});
+ request.on('error',()=>reject(400));request.on('aborted',()=>reject(400));
+});}
+
+// Deliberately separate composition root. Do not import production config,
+// store, application, executors, pairing, relay or environment loaders here.
+export function createReadOnlyTestEntry({fixture=defaultFixture}={}) {
+ const data=Object.freeze({...fixtureSchema.parse(fixture),synthetic:fixture===defaultFixture,source:fixture===defaultFixture?'synthetic_fixture':'host_supplied_fixture'});
+ let active=0;
+ const mcpServers=new Set();
+ const server=http.createServer(async(request,response)=>{
+  const port=server.address()?.port;
+  if(request.headers.host!==`127.0.0.1:${port}` || (request.headers.origin!==undefined&&request.headers.origin!==`http://127.0.0.1:${port}`)){
+   json(response,403,{error:'Loopback origin and host required'});return;
+  }
+  if(active>=8){json(response,503,{error:'Read-only request limit reached'});return;}
+  active++;let finished=false;const finish=()=>{if(!finished){finished=true;active--;}};response.once('finish',finish);response.once('close',finish);
+  if(request.method==='GET'&&request.url==='/health'){json(response,200,{status:'ok',...capabilities,scope:'isolated test entry liveness only'});return;}
+  if(request.method!=='POST'||request.url!=='/mcp'){json(response,404,{error:'Read-only test route not found'});return;}
+  let mcp;
+  try{
+   if(!/^application\/json(?:;|$)/i.test(request.headers['content-type']??'')){json(response,415,{error:'JSON required'});return;}
+   const body=await readBody(request);
+   if(!body||Array.isArray(body)||typeof body!=='object'||body.jsonrpc!=='2.0'||typeof body.method!=='string'){json(response,400,{error:'Invalid JSON-RPC request'});return;}
+   if(body.method==='tools/call'&&!['get_requirements','read_capabilities'].includes(body.params?.name)){
+    json(response,200,{jsonrpc:'2.0',id:typeof body.id==='string'||typeof body.id==='number'?body.id:null,error:{code:-32602,message:'Only read-only test tools are available'}});return;
+   }
+   mcp=new McpServer({name:'acp-readonly-test',version:'1.0.0'},{maxToolInputElements:256});
+   const annotations={readOnlyHint:true,destructiveHint:false,openWorldHint:false,idempotentHint:true};
+   const empty=z.object({}).strict();
+   mcp.registerTool('get_requirements',{description:'Read the controlled test fixture; no dispatch or approval.',inputSchema:empty,annotations},async()=>({structuredContent:{fixture:data},content:[{type:'text',text:JSON.stringify({fixture:data})}]}));
+   mcp.registerTool('read_capabilities',{description:'Read this isolated entry capability limits; not normal ACP readiness.',inputSchema:empty,annotations},async()=>({structuredContent:{...capabilities},content:[{type:'text',text:JSON.stringify(capabilities)}]}));
+   mcpServers.add(mcp);
+   const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
+   await mcp.connect(transport);
+   await transport.handleRequest(request,response,body);
+  }catch(error){if(!response.headersSent&&!response.destroyed)json(response,typeof error==='number'?error:400,{error:'Read-only request rejected'});}
+  finally{if(mcp){mcpServers.delete(mcp);await mcp.close().catch(()=>{});}}
+ });
+ server.requestTimeout=5000;server.headersTimeout=5000;server.keepAliveTimeout=1000;
+ return Object.freeze({
+  listen(port=4328,host='127.0.0.1'){
+   if(host!=='127.0.0.1'||!Number.isInteger(port)||port<0||port>65535)return Promise.reject(new Error('Explicit loopback and valid port required'));
+   return new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>{server.removeListener('error',reject);resolve();});});
+  },
+  address:()=>server.address(),
+  async close(){for(const mcp of mcpServers)await mcp.close().catch(()=>{});server.closeAllConnections();if(server.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));},
+ });
+}

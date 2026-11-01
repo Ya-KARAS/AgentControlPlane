@@ -49,3 +49,5 @@ script execution is useful when a command needs additional arguments.
 | `npm run check:relay` | `check-relay.js` | Check a configured relay with local credentials. |
 | `npm run key:fingerprint` | `key-fingerprint.js` | Print a key fingerprint prefix for operator comparison. |
 | `npm run verify:audit` | `verify-audit.js` | Verify persisted audit evidence. |
+
+- `npm run readonly:test-entry -- --port 4328`: isolated synthetic-fixture MCP test, no production startup; see [read-only test entry](../docs/READONLY-MCP-TEST-ENTRY.md).
