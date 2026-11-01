@@ -13,3 +13,17 @@ test('host replacement disables old capability and shared JSON cannot select pol
 test('cold restart exact replay is a no-write refresh; policy absence or denial never grants approval',async(t)=>{const f=setup(t);await f.store.createDeliveryHost(f.options).refresh(f.task.id);const restarted=new TaskStore(f.store.stateDir),before=fs.readFileSync(f.store.statePath,'utf8'),audit=fs.readFileSync(f.store.auditPath,'utf8');await restarted.createDeliveryHost(f.options).refresh(f.task.id);assert.equal(restarted.getDelivery(f.task.id).review_state,'approved');assert.equal(fs.readFileSync(f.store.statePath,'utf8'),before);assert.equal(fs.readFileSync(f.store.auditPath,'utf8'),audit);await restarted.createDeliveryHost({...f.options,authorizeUser:undefined}).refresh(f.task.id);assert.equal(restarted.getDelivery(f.task.id).review_state,'unknown');await restarted.createDeliveryHost({...f.options,authorizeUser:async()=>false}).refresh(f.task.id);assert.equal(restarted.getDelivery(f.task.id).review_state,'unknown');});
 test('host-approved task lists include fresh projection and never private history',async(t)=>{const f=setup(t);await f.store.createDeliveryHost(f.options).refresh(f.task.id);assert.equal(f.store.listTasks()[0].delivery.review_state,'approved');assert.equal(JSON.stringify(f.store.listTasks()).includes('_delivery_evidence'),false);});
 test('legacy kind-update response cannot expose private decision journal',async(t)=>{const f=setup(t);await f.store.createDeliveryHost(f.options).refresh(f.task.id);assert.equal(JSON.stringify(f.store.markTaskKind(f.task.id,'maintenance')).includes('_delivery_evidence'),false);});
+test('task search matches fresh approval, expiry and revocation without exposing replay journal',async(t)=>{
+ const f=setup(t),host=f.store.createDeliveryHost(f.options);
+ await host.refresh(f.task.id);
+ const search=()=>f.store.findTasks({query:f.task.id.slice(0,8)})[0];
+ assert.equal(search().delivery.review_state,'approved');
+ assert.equal(JSON.stringify(search()).includes('_delivery_evidence'),false);
+ f.setClock(start+1000);assert.equal(search().delivery.review_state,'unknown');
+ f.setClock(start);
+ f.setObservation({...f.observation,observed_at:new Date(start).toISOString(),decisions:[f.event,{...f.event,event_id:'e2',state:'revoked',occurred_at:new Date(start-50).toISOString()}]});
+ await host.refresh(f.task.id);
+ assert.equal(search().delivery.review_state,'pending_review');
+ assert.deepEqual(search().delivery,f.store.getTask(f.task.id).delivery);
+ assert.equal(JSON.stringify(search()).includes('_delivery_evidence'),false);
+});

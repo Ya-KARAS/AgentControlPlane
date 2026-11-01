@@ -720,6 +720,7 @@ export class TaskStore {
     matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return matches.slice(0, Math.min(100, Math.max(1, Number(limit) || 20))).map((task) => {
       const copy = normalizeTaskRecord(task);
+      copy.delivery = this.getDelivery(task.id);
       delete copy.events;
       return copy;
     });
