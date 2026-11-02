@@ -4,7 +4,7 @@ import { ControlPlaneError } from './errors.js';
 const id=z.string().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 export const messageFields={message_id:id,conversation_id:id,channel:z.enum(['foreground','background']),kind:z.enum(['discussion','execution_request']).default('discussion'),text:z.string().min(1).max(4096).refine(s=>s.trim().length>0&&Buffer.byteLength(s,'utf8')<=8192),task_id:z.string().uuid().nullable().optional()};
 export const messageSchema=z.object(messageFields).strict();
-export const messageQueryFields={conversation_id:id.optional(),channel:z.enum(['foreground','background']).optional(),limit:z.number().int().min(1).max(50).default(20)};
+export const messageQueryFields={conversation_id:id.optional(),channel:z.enum(['foreground','background']).optional(),limit:z.number().int().min(1).max(50).default(20),before_sequence:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional()};
 export const messageQuerySchema=z.object(messageQueryFields).strict();
 export const messageDispatchSchema=z.object({message:messageSchema,request:z.record(z.unknown())}).strict();
 const error=code=>new ControlPlaneError(code,'Local message operation could not be completed');
