@@ -9,7 +9,8 @@ const commands=new WeakSet(), admissions=new WeakSet();
 const error=code=>new ControlPlaneError(code,'Execution-node recovery could not be safely confirmed');
 const hash=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const identifier=z.string().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const file=z.object({path:z.string().min(1).max(512).regex(/^[A-Za-z0-9._/-]+$/).refine(p=>!p.startsWith('/')&&!p.split('/').some(v=>!v||v==='.'||v==='..')),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
+const relativePath=z.string().min(1).max(512).regex(/^[A-Za-z0-9._/-]+$/).refine(p=>!p.startsWith('/')&&!p.split('/').some(v=>!v||v==='.'||v==='..'));
+const file=z.union([z.object({path:relativePath,sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),z.object({path:relativePath,sha256:z.null(),deleted:z.literal(true)}).strict()]);
 const files=z.array(file).max(256).refine(a=>new Set(a.map(v=>v.path)).size===a.length);
 const inventory={branch:z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine(s=>!s.includes('..')),head:z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),files};
 const binding={task_id:z.string().uuid(),node_id:identifier,generation:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)};
@@ -24,6 +25,7 @@ function observation(schema,raw){
  if(!Number.isFinite(at)||!Number.isFinite(until)||at>now||until<=now||until-at>60000||until<=at)throw error('node_observation_unavailable');
  return manifest(parsed.data);
 }
+export function normalizeRecoveryObservation(kind,raw){if(!['source','target'].includes(kind))throw error('node_observation_unavailable');return observation(kind==='source'?sourceSchema:targetSchema,raw);}
 export function sameRecoveryWorkspace(left,right){
  const canonical=value=>{try{return fs.realpathSync.native(value);}catch{return path.resolve(value);}};
  if(typeof left!=='string'||typeof right!=='string')return false;
