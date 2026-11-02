@@ -88,7 +88,8 @@ Do not use a wildcard process kill against all Codex/Node/PowerShell processes.
 ## Evidence, cleanup and failure meaning
 
 Windows uses Get-CimInstance Win32_Process (only PID/parent/creation metadata),
-with a bounded15s cold-provider query, then taskkill /PID <own-root> /T /F and a new census of the observed identities.
+using only the three selected properties (bounded30s first provider probe before
+app-server spawn;15s steady queries), then taskkill /PID <own-root> /T /F and a new census of the observed identities.
 No command lines, users or credentials are collected. PID creation identity is
 checked before termination; denied/changed/unknown identity never authorizes a
 kill based on a guessed PID. This is **observed-tree disappearance**, not a Windows
