@@ -180,3 +180,10 @@ normalize both to `null`. Release retains `owner: null` and the last generation,
 so a reclaim increments rather than resetting the fence. `controller.id` after
 release identifies the last actor, not an active owner. Only the lease establishes
 current control. See [controller configuration and invariants](CONTROLLERS.md).
+
+## Host-only node recovery
+
+Managed tasks add optional `execution_node_id` / `node_recovery` with legacy null
+defaults. Recovery mutators and admission receipts are host-only; no MCP mutation
+is registered. Client claims cannot provide measured stop or grant a new owner.
+See [state transitions, failure handling and stack order](NODE-RECOVERY.md).

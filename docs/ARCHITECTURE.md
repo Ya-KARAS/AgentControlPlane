@@ -132,3 +132,10 @@ in-process task patches require a verified actor and live generation; ordinary
 trusted executor/internal updates preserve their old API. No per-agent network
 mutation interface is exposed. This is single-process control, not distributed
 ownership. See [controller invariants and rollback](CONTROLLERS.md).
+
+## Offline node recovery
+
+[Node recovery](NODE-RECOVERY.md) uses the existing TaskStore writer boundary and
+single queue, with distinct execution generations and host-measured stopped
+checkpoints. Default composition installs no coordinator or runner. Uncertain
+restart blocks replay; actual distributed writer fencing remains a live gate.

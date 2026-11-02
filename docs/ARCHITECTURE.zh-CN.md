@@ -98,3 +98,9 @@ reroute 执行器；既有执行 checkpoint lease 的含义不变。
 唯一新增网络接口是只读 `list_controllers`。进程内以控制器身份修改任务须带可信
 actor 和有效 generation；原有可信执行器/内部更新 API 保持兼容。没有单独 Agent
 的网络修改入口，也不提供分布式所有权保证。详见 [控制器说明及回滚](CONTROLLERS.md)。
+
+## 离线执行节点恢复
+
+[节点恢复](NODE-RECOVERY.md) 复用 TaskStore 写入边界和唯一队列，执行 generation
+独立于控制器租约。主机必须测得源执行已停止并校验 checkpoint；默认不装配协调器
+或 runner。重启不确定状态阻塞重放；真实跨机器写入 fencing 仍需另行验收。
