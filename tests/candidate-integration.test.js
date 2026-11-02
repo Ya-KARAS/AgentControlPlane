@@ -24,3 +24,6 @@ test('candidate preserves exact uploaded design and offline handoff validation w
  const file=fs.readFileSync(new URL('../docs/ACP_V1_ENGINEERING_DESIGN.md',import.meta.url));assert.equal(file.length,31945);assert.equal(createHash('sha256').update(file).digest('hex'),'7942d94be736dfc55dcfce66096dba0bcbe1bf08bbc1b58a534e9e7f15f8ff1a');
  const packet=JSON.parse(fs.readFileSync(new URL('../docs/examples/ordinary-chat-handoff.json',import.meta.url)));const validated=validateChatHandoff(packet,{expectedParentVersion:packet.parent_version});assert.equal(validated.offline_only,true);assert.equal(validated.confirmation,'pending_user_review');
 });
+test('original design remains byte-exact under Git Windows-style autocrlf checkout filtering',async()=>{
+ const {spawnSync}=await import('node:child_process');const file='docs/ACP_V1_ENGINEERING_DESIGN.md';const converted=spawnSync('git',['-c','core.autocrlf=true','cat-file','--filters','--path='+file,'HEAD:'+file]);assert.equal(converted.status,0);assert.equal(converted.stdout.length,31945);assert.equal(createHash('sha256').update(converted.stdout).digest('hex'),'7942d94be736dfc55dcfce66096dba0bcbe1bf08bbc1b58a534e9e7f15f8ff1a');
+});

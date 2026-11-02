@@ -34,6 +34,8 @@ package, automatic subscription polling, estimated quota or routing activation.
 
 PR0 original design is **31,945 bytes**, SHA256
 `7942d94be736dfc55dcfce66096dba0bcbe1bf08bbc1b58a534e9e7f15f8ff1a`.
+A per-file Git `-text` attribute prevents Windows autocrlf from changing this
+archived upload; the regression exercises actual Git checkout filtering.
 [Baseline](ACP_V1_BASELINE.md) describes its historical main, not this newer candidate.
 
 Separate preparation roots are intentionally retained:

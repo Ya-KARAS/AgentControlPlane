@@ -32,3 +32,5 @@ No main merge/force push, no real ACP deployment, credentials, user enrollment, 
 Independent review: one Important fixture connection cap/deadline issue reproduced RED then fixed GREEN with absolute deadlines and max16 pre-header connections. No Critical/minor/deferred findings. Initial whole-suite startup-signal race was reproduced and fixed before review. Final evidence and exact remote CI are in the PR receipt.
 
 Final Cloud npm run verify exit0:1024tests/1023passed/0failed/1Windows-onlyskip; checkPASS. New combined/fixture targeted9/9. Original PR0/22/24/25 core artifacts remain byte-identical; source heads PR20–32 are all ancestors. Exact remote CI receipt is recorded in the draft PR.
+
+Platform follow-up: initial remote Windows CI41431006127 failed document CRLF hash and raw drive-path ESM preload. Exact autocrlf RED32321→GREEN31945 via per-file -text; standard pathToFileURL retains the same isolation negative controls. Final Cloud verify exit0:1025tests/1024passed/0failed/1skip, newtargeted10/10. Source document bytes unchanged. Same draft PR updated; no skipped assertion or sandbox workaround.

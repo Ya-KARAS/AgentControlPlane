@@ -8,3 +8,6 @@ userscript/release-manifest.json text eol=lf
 
 # Protocol fixtures use exact NDJSON line mutations in negative tests.
 tests/fixtures/dsh/*.ndjson text eol=lf
+
+# Preserve the uploaded engineering specification byte-for-byte on every OS.
+docs/ACP_V1_ENGINEERING_DESIGN.md -text
