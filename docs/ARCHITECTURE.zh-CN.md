@@ -124,3 +124,9 @@ bearer、TTY、模型声明均不能替代用户批准，也不授权合并或�
 [日报与归档](WORKFLOW-ARCHIVE.md) 复用既有可信验收证据和 TaskStore 写入边界。
 先持久记录验收及已同步日报，再从活动视图移出；活动视图不是新队列，历史 API
 及数据保留。默认关闭，不新增用户批准、合并或真实云执行能力。
+
+## 项目对话界面
+
+See [offline project conversations](CONVERSATIONS.md) for protected scoped message,
+continuation and safe stop interfaces, default-off authorization and browser limits.
+The original single queue and human approval boundary remain authoritative.

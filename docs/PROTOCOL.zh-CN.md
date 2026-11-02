@@ -177,3 +177,9 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 执行器不活跃。`list_active_tasks` / 活动视图只筛选已完成日报/归档的记录，原任务
 历史列表不变。`daily_report` 和按日期读取接口返回安全日报数据。
 [顺序、重试、历史保留和真实验收门槛](WORKFLOW-ARCHIVE.md)。
+
+## 离线对话接口
+
+See [offline project conversations](CONVERSATIONS.md) for protected scoped message,
+continuation and safe stop interfaces, default-off authorization and browser limits.
+The original single queue and human approval boundary remain authoritative.

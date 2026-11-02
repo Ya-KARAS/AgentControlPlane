@@ -45,3 +45,9 @@ test('real terminal notification releases safe-stop reservation before next work
  f.executor.emit('notification',{method:'turn/completed',params:{threadId:f.store.getTask(run.id).threadId,turn:{id:'t1',status:'interrupted',items:[]}}});await wait(()=>f.executor.turnStarts.length===2);assert.equal(f.store.getTask(run.id).status,'interrupted');assert.equal(f.orchestrator.running.has(run.id),false);assert.equal(f.service.snapshot({conversation_id:`task-${run.logical_task_id}`}).tasks.find(t=>t.id===run.id).can_follow_up,true);await f.orchestrator.requestStop(run.id);
  await f.orchestrator.cancel(second.id);
 });
+test('actual registered project shares a valid read post continuation and stop conversation',async t=>{
+ const { ProjectRegistry }=await import('../src/core/project-registry.js');const f=fixture(t);const registry=new ProjectRegistry({stateDir:f.config.stateDir,workspaceRoots:[f.workspace]});const workspace=f.workspace+'/registered';(await import('node:fs')).mkdirSync(workspace);const entry=registry.addProject(workspace);f.orchestrator.projectRegistry=registry;
+ const task=f.orchestrator.dispatch({workspace:`project:${entry.id}`,objective:'registered project',profile:'economy'});const cid=f.service.list().conversations.find(c=>c.label===`project:${entry.id}`).id;
+ assert.equal(cid,`project-${entry.id}`);assert.equal(f.service.snapshot({conversation_id:cid}).tasks[0].id,task.id);f.service.post({conversation_id:cid,message_id:'project-m',text:'discussion',task_id:task.id});await f.service.stop({conversation_id:cid,task_id:task.id});assert.equal(f.store.getTask(task.id).status,'cancelled');f.store.updateTask(task.id,{status:'completed',threadId:'codex-thread-1'});
+ const child=f.service.followUp({conversation_id:cid,message_id:'project-follow',text:'modify',task_id:task.id});assert.equal(child.task.project_id,`project:${entry.id}`);assert.equal(f.service.snapshot({conversation_id:cid}).tasks.length,2);
+});

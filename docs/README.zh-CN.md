@@ -51,3 +51,5 @@
 - [v0.4.0 最终发布记录](RELEASE-FINAL-v0.4.0.md)
 - [v0.4.0 真实 Token 对照](REAL-TOKEN-COMPARISON-RESULTS.md)
 - [旧版 Apache-2.0 说明](LEGACY-LICENSE-APACHE-2.0.md)
+
+- [Offline project conversations / 离线项目对话](CONVERSATIONS.md): scoped shared history, explicit modification/stop, authorization and actual-browser limits.

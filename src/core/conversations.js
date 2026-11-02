@@ -3,7 +3,7 @@ import { normalizeAgentRegistry } from '../controllers/registry.js';
 import { ControlPlaneError } from './errors.js';
 const id=z.string().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const terminal=new Set(['completed','partial','blocked','failed','cancelled','interrupted']);
-const scope=task=>task.project_id?`project-${task.project_id}`:`task-${task.logical_task_id??task.id}`;
+const scope=task=>task.project_id?`project-${task.project_id.replace(/^project:/,'')}`:`task-${task.logical_task_id??task.id}`;
 const fail=code=>new ControlPlaneError(code,'Conversation operation could not be confirmed');
 export const conversationQuery=z.object({conversation_id:id,before_sequence:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional()}).strict();
 export const conversationPost=z.object({conversation_id:id,message_id:id,text:z.string().min(1).max(4000),target:id.nullable().optional(),task_id:z.string().uuid().nullable().optional()}).strict();

@@ -24,21 +24,27 @@ Preserve original Dashboard/HTTP/MCP, single logical queue and controller/node f
 
 ## Task 1 — protected conversation contracts and safe stop
 
-- [ ] Add real TaskStore/Orchestrator HTTP tests for scope isolation, mention validation, auth/Origin, strict inputs, idempotent continuation and non-executing discussion; run RED.
-- [ ] Add stop tests: queued removal, no-turn fail-closed, interrupt failure retry, concurrent duplicate interrupt, acknowledgement without completion keeps workspace reserved, actual terminal result wins; run RED.
-- [ ] Add minimal conversation service/projection and routes; reuse MessageHub; existing terminal same-session continuation only. Add requestStop without changing legacy cancel semantics.
-- [ ] Add bounded before_sequence pagination to shared message query; test two pages and scope.
-- [ ] Run targeted GREEN and commit.
+- [x] Add real TaskStore/Orchestrator HTTP tests for scope isolation, mention validation, auth/Origin, strict inputs, idempotent continuation and non-executing discussion; run RED.
+- [x] Add stop tests: queued removal, no-turn fail-closed, interrupt failure retry, concurrent duplicate interrupt, acknowledgement without completion keeps workspace reserved, actual terminal result wins; run RED.
+- [x] Add minimal conversation service/projection and routes; reuse MessageHub; existing terminal same-session continuation only. Add requestStop without changing legacy cancel semantics.
+- [x] Add bounded before_sequence pagination to shared message query; test two pages and scope.
+- [x] Run targeted GREEN and commit.
 
 ## Task 2 — page and asynchronous interaction
 
-- [ ] Test real client controller using controlled transport: double submit/retry, delayed refresh, draft protection, project switch/back, read-only refresh, safe failure. Run RED.
-- [ ] Build responsive semantic page with project list, shared history/channel tags, registered @target not-connected labels, task progress/results, discussion composer, explicit terminal follow-up and stop confirmations. Token only in memory; no storage/URL/log. No auto mutation on navigation.
-- [ ] Serve only fixed assets, link Dashboard; run targeted GREEN and commit.
-- [ ] Attempt installed Chromium with supported sandbox for real DOM interactions; if unavailable record exact platform error and retain automated controller/HTTP coverage, never disable sandbox.
+- [x] Test real client controller using controlled transport: double submit/retry, delayed refresh, draft protection, project switch/back, read-only refresh, safe failure. Run RED.
+- [x] Build responsive semantic page with project list, shared history/channel tags, registered @target not-connected labels, task progress/results, discussion composer, explicit terminal follow-up and stop confirmations. Token only in memory; no storage/URL/log. No auto mutation on navigation.
+- [x] Serve only fixed assets, link Dashboard; run targeted GREEN and commit.
+- [x] Attempt installed Chromium with supported sandbox for real DOM interactions; if unavailable record exact platform error and retain automated controller/HTTP coverage, never disable sandbox.
 
 ## Task 3 — documentation and acceptance
 
-- [ ] Document capability/limits, complete original-stage matrix, concrete pending real configurations and rollback.
-- [ ] Independent whole-branch review; fix important issues RED→GREEN; final npm run verify.
-- [ ] Push feature branch, create independent draft based on PR31, verify exact remote SHA and Ubuntu/Windows CI. Do not merge.
+- [x] Document capability/limits, complete original-stage matrix, concrete pending real configurations and rollback.
+- [x] Independent whole-branch review; fix important issues RED→GREEN; final npm run verify.
+- [x] Push feature branch, create independent draft based on PR31, verify exact remote SHA and Ubuntu/Windows CI. Do not merge.
+
+Browser outcome: supported sandbox attempt blocked by misconfigured SUID helper; actual browser acceptance remains unpassed, never replaced by DOM harness. Independent review and final verify/remote receipt recorded in PR evidence once complete.
+
+Independent whole-branch review found three Important issues: actual registry scope syntax, lifecycle callbacks after reconnect/pagehide, and uncertain follow-up task switching. All reproduced RED and fixed GREEN. No Critical, minor or deferred findings. Browser/live/vendor boundaries remain unpassed as documented.
+
+Final Cloud verification: npm run verify exit0,964tests/963passed/0failed/1Windows-onlyskip; checkPASS. New targeted coverage23/23. No new package or live execution. Remote exact-head CI is recorded in the draft PR after push.

@@ -65,3 +65,5 @@ its original path so release notes and development handoffs keep stable links.
 - [Unified foreground/background local messages](MESSAGES.md)
 
 - [Verified acceptance, daily report and archive lifecycle](WORKFLOW-ARCHIVE.md)
+
+- [Offline project conversations / 离线项目对话](CONVERSATIONS.md): scoped shared history, explicit modification/stop, authorization and actual-browser limits.

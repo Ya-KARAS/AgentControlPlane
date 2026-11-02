@@ -26,3 +26,6 @@ test('stop duplicate and retry make no optimistic terminal status or mutation on
 test('changing a draft does not prevent retry of a failed stop request',async()=>{
  let fail=true;const c=createConversationClient({request:async(url,body)=>{if(body&&fail)throw Error('network');return view('task-a');}});await c.select('task-a');c.setDraft('draft one');await assert.rejects(c.stop('t'));c.setDraft('draft two');fail=false;await c.stop('t');assert.equal(c.state.draft,'draft two');
 });
+test('uncertain follow-up cannot be bypassed by choosing another parent task',async()=>{
+ const sent=[];const c=createConversationClient({uuid:()=>`id-${sent.length}`,request:async(url,body)=>{if(!body)return view('task-a');sent.push(body);throw Error('uncertain');}});await c.select('task-a');c.setDraft('one change');await assert.rejects(c.followUp({task_id:'parent-one'}));await assert.rejects(c.followUp({task_id:'parent-two'}),/retry_previous/);assert.equal(sent.length,1);
+});

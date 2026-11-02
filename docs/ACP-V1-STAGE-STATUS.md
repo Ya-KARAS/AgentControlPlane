@@ -50,11 +50,10 @@ the corresponding specific authorization. None is configured by this stage.
   permission gates remain. Manual confirmation/import is the current fallback.
   No private API, DOM/OCR extraction, cookie/session collection or unattended
   capability is promised. New live account tests need a separately active window.
-- Shared foreground group chat/background messages and daily-report-before-archive
-  are later workflow requirements recorded in PR24, not implemented by a controller
-  registry, nor by this node registry. They must reuse one task lineage/queue and
-  need their own bounded plan/tests; no vendor personal-agent callable integration
-  has been verified.
+- At the initial six-PR baseline, shared foreground group chat/background messages
+  and daily-report-before-archive were outstanding. Subsequent stacked increments
+  below implement their offline contracts and UI on one lineage/queue; no vendor
+  personal-agent callable integration has been verified.
 - Main integration/deployment is not done. Prepare specific PR/dependency/test
   evidence for individual user approval before any main merge. Do not auto-merge.
 
@@ -89,3 +88,29 @@ cloud availability and ordinary Chat two-way automation cannot be inferred from
 these isolated tests. An archived historical receipt is not current approval or
 merge permission. Persistent history stays local and capacity failures preserve
 active work; no Notion/API purchase or new account permission is introduced.
+
+## Latest offline conversation increment (stacked after PR31)
+
+The initial six independent PRs above remain unmerged. Later additive integration
+branches preserve their histories: PR21+PR26→PR27→PR28→PR29, plus PR23→PR30→PR31
+→the conversation page. PR22 subscription and PR24/25 isolated handoff branches
+are not silently included in this stack. Combined main integration is still pending.
+
+| Original requirement | Implemented code / offline evidence | Actual acceptance still missing |
+|---|---|---|
+| PR0 baseline/design | Original exact design, baseline, compatibility documents | User final acceptance/main integration |
+| PR1 controllers | Registry, local trusted operator, single-process lease/fencing/audit | No distinct vendor-agent authenticated transport or distributed claim |
+| PR2 subscriptions | Manual safe snapshots, expiry/unknown/exhausted views/advice on PR22 | Passive official account collectors not connected; no live quota calls |
+| PR3 GitHub approval | Metadata, strict provider adapter, user-verifier contracts, persistent evidence and invalidation | Exact origin/RP, principal policy, personal enrollment and real authenticated decisions |
+| PR4 local/cloud | Node preflight, checkpoint/fencing/recovery, fake-executor crash/restart tests | Existing persistent user-owned runner, actual write fencing, offline-home-machine trial |
+| PR5 ordinary Chat | Feasibility/handoff contracts and two reported successful synthetic read tools | Automatic document trigger/return, real content/version/recovery validation |
+| Unified messages | Common foreground/background journal and idempotent task bridge | Real vendor transports/replies and independent agent identity |
+| Group conversation UI | Offline project scope, @target labels, history paging, task progress/results, explicit modify/stop | Real Chromium visual/interaction test blocked by platform sandbox; actual vendor round trip absent |
+| User intervention | Authenticated explicit same-session continuation; stop retains reservation until terminal; no display-only cancellation | Each real executor's interruption/terminal behavior needs bounded live acceptance; no universal pause/resume contract |
+| Daily report/archive | Persist trusted acceptance→synced report→archive, revocation/restart/retry tests | Real user decision channel plus actual operational acceptance; bounded history offload remains separate |
+| Delivery/main | All feature work remains independently reviewable draft PRs | Specific merge approvals, final combined verification and deployment |
+
+Current conversation code does not finish the overall plan or automate ordinary
+Chat. It creates no token, account, permission, persistent runner or model request.
+Exact minimal real configurations and browser failure evidence are documented in
+[CONVERSATIONS.md](CONVERSATIONS.md).

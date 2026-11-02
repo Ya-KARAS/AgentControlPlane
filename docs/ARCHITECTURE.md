@@ -163,3 +163,9 @@ authorize merging or deployment. See [delivery boundaries](DELIVERY.md).
 the existing store/writer boundary. It persists acceptance and a synced dated
 report before marking inactive. Active work is a filtered view, not a queue;
 history and existing APIs remain. Default off; no approval/merge or real runner.
+
+## Project conversation page
+
+See [offline project conversations](CONVERSATIONS.md) for protected scoped message,
+continuation and safe stop interfaces, default-off authorization and browser limits.
+The original single queue and human approval boundary remain authoritative.

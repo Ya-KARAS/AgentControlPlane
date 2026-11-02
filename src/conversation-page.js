@@ -12,7 +12,7 @@ export function createConversationClient({request,onChange=()=>{},uuid=()=>crypt
   return value;
  }
  function mutate(action,extra={}){
-  if(!selected)return Promise.reject(Error('select_conversation'));const cid=selected,text=drafts.get(cid)??'',key=cid+':'+action+':'+(extra.task_id??'');
+  if(!selected)return Promise.reject(Error('select_conversation'));const cid=selected,text=drafts.get(cid)??'',key=cid+':'+action+(action==='stop'?':'+(extra.task_id??''):'');
   const signature=JSON.stringify(action==='stop'?extra:{text,...extra});let p=pending.get(key);
   if(p){if(p.signature!==signature)return Promise.reject(Error('retry_previous'));if(p.promise)return p.promise;}
   else{p={cid,signature,body:{conversation_id:cid,...extra,...(action==='stop'?{}:{message_id:uuid(),text})}};pending.set(key,p);}
@@ -22,13 +22,22 @@ export function createConversationClient({request,onChange=()=>{},uuid=()=>crypt
 }
 
 export function mountConversationPage(){
- const $=id=>document.getElementById(id);let token='',client=null,timer=null;
+ const $=id=>document.getElementById(id);let client=null,timer=null,connection=null,generation=0;
  const text=(tag,value)=>{const e=document.createElement(tag);e.textContent=value;return e;};
  const status=value=>{$('notice').textContent=value;};
- async function request(url,body){const abort=new AbortController(),deadline=setTimeout(()=>abort.abort(),10000);try{
-  const r=await fetch(url,{method:body?'POST':'GET',headers:{authorization:'Bearer '+token,'content-type':'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:abort.signal,...(body?{body:JSON.stringify(body)}:{})});if(!r.ok)throw Error('request_failed');return await r.json();
- }finally{clearTimeout(deadline);}}
- const safe=fn=>async()=>{try{await fn();status('已刷新。目标 Agent 均未连接；未调用模型。');}catch{status('操作未确认。请检查连接/授权并刷新；重试会保留原请求标识，不会自动创建新任务。');}};
+ function disconnect(){
+  generation++;clearInterval(timer);if(connection){connection.closed=true;connection.token='';for(const abort of connection.controllers)abort.abort();}connection=null;client=null;
+  for(const id of ['messages','tasks','projects','target','task'])$(id).replaceChildren();$('draft').value='';$('token').value='';$('compose').hidden=true;
+ }
+ async function request(session,url,body){
+  if(session.closed||session!==connection)throw Error('connection_closed');
+  const abort=new AbortController(),deadline=setTimeout(()=>abort.abort(),10000);session.controllers.add(abort);
+  try{
+   const r=await fetch(url,{method:body?'POST':'GET',headers:{authorization:'Bearer '+session.token,'content-type':'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:abort.signal,...(body?{body:JSON.stringify(body)}:{})});
+   if(session.closed||session!==connection||!r.ok)throw Error('request_failed');const result=await r.json();if(session.closed||session!==connection)throw Error('connection_closed');return result;
+  }finally{clearTimeout(deadline);session.controllers.delete(abort);}
+ }
+ const safe=fn=>async()=>{const entered=generation;try{const result=await fn();if(entered===generation&&result!==false)status('已刷新。目标 Agent 均未连接；未调用模型。');}catch{if(entered===generation)status('操作未确认。请检查连接/授权并刷新；重试会保留原请求标识，不会自动创建新任务。');}};
  function render(s){
   $('compose').hidden=!s.selected;$('draft').value=s.draft;$('send').disabled=s.busy||!s.draft.trim();$('follow').disabled=s.busy||!s.draft.trim();
   const target=$('target'),chosen=target.value;target.replaceChildren(new Option('不指定 Agent',''));for(const a of s.view?.agents??[])target.append(new Option('@'+a.display_name+' · 未连接',a.id));target.value=[...target.options].some(o=>o.value===chosen)?chosen:'';
@@ -41,18 +50,25 @@ export function mountConversationPage(){
  }
  async function select(){const id=decodeURIComponent(location.hash.slice(1));if([...$('projects').options].some(o=>o.value===id)){$('projects').value=id;await client.select(id);}}
  $('connect').addEventListener('click',safe(async()=>{
-  clearInterval(timer);token=$('token').value;$('token').value='';client=createConversationClient({request,onChange:render});const list=await request('/v1/conversations');$('projects').replaceChildren();for(const p of list.conversations)$('projects').append(new Option(p.label,p.id));
-  if(!list.conversations.length){status('没有已有项目任务；此页面不会新建或启动执行器。');return;}
-  const desired=decodeURIComponent(location.hash.slice(1));if(!list.conversations.some(p=>p.id===desired))history.replaceState(null,'','#'+list.conversations[0].id);await select();
-  timer=setInterval(()=>{if(document.visibilityState==='visible'&&client)client.refresh().catch(()=>status('刷新失败；当前显示可能已过期。'));},5000);
+  const token=$('token').value;disconnect();const session={token,closed:false,controllers:new Set()},ticket=generation;connection=session;
+  const own=createConversationClient({request:(url,body)=>request(session,url,body),onChange:s=>{if(connection===session&&generation===ticket)render(s);}});client=own;
+  try{
+   const list=await request(session,'/v1/conversations');$('projects').replaceChildren();for(const p of list.conversations)$('projects').append(new Option(p.label,p.id));
+   if(!list.conversations.length){status('没有已有项目任务；此页面不会新建或启动执行器。');return false;}
+   const desired=decodeURIComponent(location.hash.slice(1));if(!list.conversations.some(p=>p.id===desired))history.replaceState(null,'','#'+list.conversations[0].id);await select();
+   if(connection!==session)return false;
+   timer=setInterval(()=>{if(document.visibilityState==='visible'&&connection===session)own.refresh().catch(()=>{if(connection===session)status('刷新失败；当前显示可能已过期。');});},5000);
+   status('已连接本地 ACP。目标 Agent 均未连接；未调用模型。');
+  }catch{if(connection===session)status('连接未确认。请检查现有服务授权；没有自动启动执行器。');}
+  return false;
  }));
  $('projects').addEventListener('change',()=>{location.hash=$('projects').value;});window.addEventListener('hashchange',safe(async()=>{if(client)await select();}));
  $('draft').addEventListener('input',()=>client?.setDraft($('draft').value));
  const fields=()=>({target:$('target').value||null,task_id:$('task').value||null});
  $('send').addEventListener('click',safe(()=>client.post(fields())));
- $('follow').addEventListener('click',safe(async()=>{const t=client.state.view?.tasks.find(t=>t.id===$('task').value);if(!t?.can_follow_up){status('请先选择具有会话的已结束任务；运行中修改先保存讨论。');return;}if(confirm('将修改作为后续工程任务加入既有队列？这可能启动已配置执行器。'))await client.followUp(fields());}));
+ $('follow').addEventListener('click',safe(async()=>{const t=client.state.view?.tasks.find(t=>t.id===$('task').value);if(!t?.can_follow_up){status('请先选择具有会话的已结束任务；运行中修改先保存讨论。');return false;}if(confirm('将修改作为后续工程任务加入既有队列？这可能启动已配置执行器。'))await client.followUp(fields());}));
  $('refresh').addEventListener('click',safe(()=>client?.refresh()));$('older').addEventListener('click',safe(()=>client?.older()));
- window.addEventListener('pagehide',()=>{clearInterval(timer);token='';client=null;$('messages').replaceChildren();$('tasks').replaceChildren();$('draft').value='';});
+ window.addEventListener('pagehide',disconnect);
 }
 
 export function conversationHtml(){return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ACP 项目对话</title><style>
