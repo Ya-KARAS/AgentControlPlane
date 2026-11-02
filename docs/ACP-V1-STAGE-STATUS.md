@@ -135,3 +135,7 @@ The [acceptance/gap audit](ACP-V1-ACCEPTANCE-GAPS.md) distinguishes actual missi
 PR3 host/storage/decision composition and PR4 measured adapters/write enforcement
 from real configuration/acceptance, and gives one definite bounded offline next PR.
 No code feature or main merge is initiated by this documentation update.
+
+## Follow-on private decision code
+
+See [private delivery decisions](PRIVATE-DELIVERY-DECISIONS.md): bounded existing-store credential read/insert/revision-CAS, branded decision journal and explicit host composition are now implemented in the next stacked increment. Default off, no network approval surface/real user enrollment; PR4 production measurement/write fencing and real acceptance remain incomplete. Earlier gap rows describe their historical candidate.

@@ -59,12 +59,14 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
         await authorized(principalId,kind,binding);
         const rows=await credentials(principalId);
         if(kind==='authentication' && !rows.length)throw unavailable();
+        const decisionFence=kind==='authentication'&&typeof storage.readDecisionFence==='function'
+          ? await storage.readDecisionFence({repository:binding.repository,pull_request_number:binding.pull_request_number,head_sha:binding.head_sha}) : undefined;
         const options=kind==='registration'
           ? await library.generateRegistrationOptions({rpID,rpName,userName:principalId,userID:new TextEncoder().encode(principalId),
               attestationType:'none',supportedAlgorithmIDs:[-7,-257],timeout:ttlMs,excludeCredentials:rows.map(row=>({id:row.id})),authenticatorSelection:{userVerification:'required'}})
           : await library.generateAuthenticationOptions({rpID,timeout:ttlMs,userVerification:'required',allowCredentials:rows.map(row=>({id:row.id}))});
         if(!Number.isSafeInteger(createdAt+ttlMs))throw unavailable();
-        const record={kind,principalId,target:binding,createdAt,expiresAt:createdAt+ttlMs};
+        const record={kind,principalId,target:binding,decisionFence,createdAt,expiresAt:createdAt+ttlMs};
         live(record);
         if(typeof options?.challenge!=='string'||options.challenge.length<1||options.challenge.length>1024||pending.has(options.challenge))throw unavailable();
         pending.set(options.challenge,record);
@@ -113,7 +115,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       live(record);
       if(kind==='registration')return {verified:true,registration_only:true,credentialId:credential.id};
       const receipt=Object.freeze({verified:true,ceremony_only:true,principalId:record.principalId,credentialId:credential.id,target:record.target});
-      verifiedCeremonies.set(receipt,Object.freeze({storage,rpID,expectedOrigin,principalId:record.principalId,credentialId:credential.id,target:record.target,credentialRevision:credential.revision===undefined?undefined:credential.revision+1,createdAt:record.createdAt,expiresAt:record.expiresAt,proofId:createHash('sha256').update(JSON.stringify([rpID,expectedOrigin,challengeId,record.principalId,record.target,record.createdAt])).digest('hex')}));
+      verifiedCeremonies.set(receipt,Object.freeze({storage,rpID,expectedOrigin,principalId:record.principalId,credentialId:credential.id,target:record.target,decisionFence:record.decisionFence,credentialRevision:credential.revision===undefined?undefined:credential.revision+1,createdAt:record.createdAt,expiresAt:record.expiresAt,proofId:createHash('sha256').update(JSON.stringify([rpID,expectedOrigin,challengeId,record.principalId,record.target,record.createdAt])).digest('hex')}));
       return receipt;
     } catch {throw unavailable();}
     finally {if(reserved)finishing--;}

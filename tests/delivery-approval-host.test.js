@@ -46,3 +46,12 @@ test('closing a host invalidates outstanding ceremonies and cached authority wit
 test('same-millisecond revocation is durably deny-safe rather than replaying earlier approval',async t=>{
  const f=setup(t);await f.enroll();await f.decide();await f.host.refresh(f.task.id);await f.decide('revoked');assert.notEqual((await f.host.refresh(f.task.id)).review_state,'approved');f.clock(2001);assert.notEqual((await f.host.refresh(f.task.id)).review_state,'approved');
 });
+test('delayed approval from credential A cannot supersede later revocation on credential B',async t=>{
+ const f=setup(t);await f.enroll();const reg=await f.host.beginRegistration({principalId:'synthetic-user',target:decisionTarget});await f.host.finishRegistration({challengeId:reg.challengeId,target:decisionTarget,response:{id:'credential-b'}});
+ let release,reached;const started=new Promise(r=>{reached=r;}),original=f.provider.readHead;f.provider.readHead=async target=>{reached();await new Promise(r=>{release=r;});return original(target);};
+ const begin=await f.host.beginAuthentication({principalId:'synthetic-user',target:decisionTarget});const delayed=f.host.finishAuthentication({challengeId:begin.challengeId,target:decisionTarget,response:{id:'synthetic-credential'}});await started;
+ f.clock(3000);const negative={...decisionTarget,decision:'revoked'},n=await f.host.beginAuthentication({principalId:'synthetic-user',target:negative});await f.host.finishAuthentication({challengeId:n.challengeId,target:negative,response:{id:'credential-b'}});f.clock(4000);release();await assert.rejects(delayed,unavailable);f.provider.readHead=original;assert.notEqual((await f.host.refresh(f.task.id)).review_state,'approved');assert.equal(f.store.checkpointFaulted,false);
+});
+test('first observation after same-time revoke then approve is unknown rather than insertion-order approved',async t=>{
+ const f=setup(t);await f.enroll();await f.decide('revoked');await f.decide('approved');f.clock(2001);assert.equal((await f.host.refresh(f.task.id)).review_state,'unknown');f.clock(3000);await f.decide('approved');f.clock(3001);assert.equal((await f.host.refresh(f.task.id)).review_state,'approved');
+});

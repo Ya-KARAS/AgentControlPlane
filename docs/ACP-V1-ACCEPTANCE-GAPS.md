@@ -140,3 +140,14 @@ this checklist. Specific PR/main merge approvals remain separate from successful
 CI, this synthetic browser receipt and development recommendations.
 
 Documentation-round verification: npm run verify exit0,1025tests/1024passed/0failed/1Windows-onlyskip; checkPASS. No runtime code changed. Exact documentation HEAD/CI receipt is retained in PR33.
+
+## Follow-on implementation: private decisions
+
+The next stacked [private decision increment](PRIVATE-DELIVERY-DECISIONS.md) now
+implements the previously identified read/insert/revision-CAS storage, branded
+ceremony decision journal and host composition. The tables above are the original
+audit at244ac31, not a claim that these components remain missing after this
+follow-on. No actual enrollment or network review surface is installed. The
+remaining authenticated user-facing ceremony/host entry surface and real pilot
+are still absent, not merely filled by choosing config. PR4 measured adapters and
+physical write enforcement remain code gaps. No new ordinary Chat shipping gate.
