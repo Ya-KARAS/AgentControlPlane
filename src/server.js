@@ -1,3 +1,4 @@
+import { MessageHub, messageDispatchSchema } from "./core/messages.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -268,7 +269,8 @@ export async function createApplication(overrides = {}) {
   if (overrides.startCodex !== false) {
     await orchestrator.start();
   }
-  const handleMcp = createMcpHandler({ orchestrator, store, config,
+  const messageHub = new MessageHub({store,orchestrator,enabled:config.messages?.enabled??false,maxMessages:config.messages?.maxStoredMessages??1024});
+  const handleMcp = createMcpHandler({ orchestrator, store, config, messageHub,
     executionNodeObserver: overrides.executionNodeObserver });
   const pairingManager =
     overrides.pairingManager ??
@@ -589,6 +591,20 @@ export async function createApplication(overrides = {}) {
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === '/v1/messages') {
+        const query=Object.fromEntries(url.searchParams);
+        if(query.limit!==undefined)query.limit=Number(query.limit);
+        sendJson(response,200,messageHub.list(query));return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/messages') {
+        sendJson(response,201,{message:messageHub.post(await readJson(request,32*1024))});return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/messages/dispatch') {
+        const parsed=messageDispatchSchema.safeParse(await readJson(request));
+        if(!parsed.success)throw new ControlPlaneError('invalid_message','Invalid local message request');
+        sendJson(response,202,messageHub.dispatch(parsed.data.message,parsed.data.request));return;
+      }
+
       if (request.method === "GET" && url.pathname === "/v1/usage") {
         sendJson(response, 200, { usage: store.usageReport() });
         return;
@@ -715,6 +731,7 @@ export async function createApplication(overrides = {}) {
     candidateReview,
     projectRegistry,
     remoteRelayWorker,
+    messageHub,
     server,
     async close() {
       remoteRelayWorker.stop();

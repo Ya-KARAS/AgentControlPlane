@@ -104,3 +104,9 @@ actor 和有效 generation；原有可信执行器/内部更新 API 保持兼容
 [节点恢复](NODE-RECOVERY.md) 复用 TaskStore 写入边界和唯一队列，执行 generation
 独立于控制器租约。主机必须测得源执行已停止并校验 checkpoint；默认不装配协调器
 或 runner。重启不确定状态阻塞重放；真实跨机器写入 fencing 仍需另行验收。
+
+## 共用本地消息
+
+[统一消息](MESSAGES.md) 的前台 HTTP、后台 MCP 共用原 TaskStore 内的有界日志。
+发言和读取只是数据；显式执行入口才调用原派单/续作及唯一队列。默认关闭，
+消息文本或通道标签不能证明厂商 Agent 身份、用户验收或批准。

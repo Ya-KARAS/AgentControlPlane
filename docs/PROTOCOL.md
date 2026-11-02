@@ -187,3 +187,10 @@ Managed tasks add optional `execution_node_id` / `node_recovery` with legacy nul
 defaults. Recovery mutators and admission receipts are host-only; no MCP mutation
 is registered. Client claims cannot provide measured stop or grant a new owner.
 See [state transitions, failure handling and stack order](NODE-RECOVERY.md).
+
+## Unified local messages (optional)
+
+`post_message` / `list_messages` and protected `/v1/messages` share one local
+journal. Explicit `POST /v1/messages/dispatch` uses a server message key for
+original dispatch/continuation, so cross-channel replay does not duplicate work.
+See [bounds, identity, retry and lifecycle limits](MESSAGES.md). No auto-consumer.

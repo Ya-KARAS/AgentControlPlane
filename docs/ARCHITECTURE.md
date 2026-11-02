@@ -139,3 +139,10 @@ ownership. See [controller invariants and rollback](CONTROLLERS.md).
 single queue, with distinct execution generations and host-measured stopped
 checkpoints. Default composition installs no coordinator or runner. Uncertain
 restart blocks replay; actual distributed writer fencing remains a live gate.
+
+## Shared local messages
+
+[Unified messages](MESSAGES.md) use one bounded private TaskStore journal for
+foreground HTTP and background MCP. Posts/reads are data; only the explicit
+execution bridge uses original dispatch/continuation idempotency and queue.
+Default disabled; no vendor identity or acceptance is inferred from message text.
