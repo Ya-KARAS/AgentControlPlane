@@ -257,9 +257,14 @@ export function deliverySummaryHtml(delivery) {
     '<br>Verified checks/review: ' + (freshHost ? [delivery.checks, delivery.review_state].map(esc).join(' · ') : 'unknown') + ' · Reported: ' + [delivery.reported_checks, delivery.reported_review_state, delivery.observed_at].map(esc).join(" · ") + '<br>Merged fact: ' + esc(freshMerge ? delivery.merged : null) + ' · merge commit: ' + esc(freshMerge ? delivery.merge_commit_sha : null) + '</div>';
 }
 
+export function taskListUrl(query,active=false) {
+  return '/v1/tasks?limit=30'+(active?'&view=active':'')+(query?'&query='+encodeURIComponent(query):'');
+}
+
 export function dashboardHtml(config) {
   const info = {
     version: config.version ?? "0.0.0",
+    workflowEnabled:config.workflow?.enabled===true,
     host: config.server?.host ?? "127.0.0.1",
     port: config.server?.port ?? 4318,
     stateDir: config.stateDir ?? "",
@@ -494,6 +499,7 @@ footer { padding: 10px 20px 18px; color: var(--muted); font-size: 12px; max-widt
 <script>
 "use strict";
 var deliverySummaryHtml = ${deliverySummaryHtml.toString()};
+var taskListUrl = ${taskListUrl.toString()};
 var STRINGS = ${JSON.stringify(DASHBOARD_STRINGS)};
 var CFG = ${JSON.stringify(info)};
 
@@ -1073,10 +1079,7 @@ function renderRecommendation() {
 async function refresh() {
   try {
     var executorList = await api("/v1/executors");
-    var tasksUrl = "/v1/tasks?limit=30";
-    if (taskQuery) {
-      tasksUrl += "&query=" + encodeURIComponent(taskQuery);
-    }
+    var tasksUrl = taskListUrl(taskQuery,CFG.workflowEnabled);
     var [health, tasksRes, usageRes, dimensionsRes] = await Promise.all([
       api("/health"),
       api(tasksUrl),

@@ -204,3 +204,11 @@ malformed delivery returns null. Manual reports use `reported_checks` and
 `approval_supported` is false: approved/merged cannot be asserted by a client,
 CI or model. Existing authentication is unchanged; no mutating delivery tool or
 route exists. See [delivery contract and offline operations](DELIVERY.md).
+
+## Verified report/archive lifecycle (optional)
+
+`archive_task` and protected `POST /v1/tasks/:id/archive` accept only task identity;
+existing trusted user decision, passed checks and inactive runtime are required.
+`list_active_tasks` / `GET /v1/tasks?view=active` filter committed report/archive
+receipts; original task lists stay historical. `daily_report` / dated report GET
+read safe local report rows. [Ordering, retry, retention and live gates](WORKFLOW-ARCHIVE.md).

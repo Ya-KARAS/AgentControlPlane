@@ -1,3 +1,4 @@
+import { ArchiveService, workflowTaskFields, workflowReportFields, workflowActiveFields, workflowTaskSchema, workflowReportSchema, workflowActiveSchema } from "../core/workflow.js";
 import { MessageHub, messageFields, messageSchema, messageQueryFields, messageQuerySchema } from "../core/messages.js";
 import { normalizeAgentRegistry } from "../controllers/registry.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -101,12 +102,16 @@ function toJsonSchema(shape) {
   });
 }
 
-function buildToolSpecs({ orchestrator, store, config, messageHub, executionNodeObserver, executionNodeClock = Date.now }) {
+function buildToolSpecs({ orchestrator, store, config, messageHub, archiveService, executionNodeObserver, executionNodeClock = Date.now }) {
+  const workflow=archiveService??new ArchiveService({store,orchestrator,enabled:config.workflow?.enabled??false,timeZone:config.workflow?.timeZone??'UTC'});
   const messages = messageHub ?? new MessageHub({store,orchestrator,enabled:config.messages?.enabled??false,maxMessages:config.messages?.maxStoredMessages??1024});
   const nodeConfig = normalizeExecutionNodes(config.executionNodes);
   const networkAccess = Boolean(config.codex?.networkAccess);
   const controllerRegistry = normalizeAgentRegistry(config.controllers?.agents ?? []);
   return [
+    {name:'list_active_tasks',title:'Read active worklist',description:'Read the existing task store filtered by verified report/archive receipts; no second execution queue.',inputSchema:workflowActiveFields,annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false,idempotentHint:true},async handler(args){try{return result(workflow.active(args),'Active worklist.');}catch(error){return failure(error);}}},
+    {name:'daily_report',title:'Read dated acceptance report',description:'Read a bounded local historical report. It never grants current approval or merge permission.',inputSchema:workflowReportFields,annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false,idempotentHint:true},async handler({date}){try{return result({report:workflow.report(date)},'Historical acceptance report.');}catch(error){return failure(error);}}},
+    {name:'archive_task',title:'Report and archive accepted work',description:'Bookkeeping only after existing trusted user approval and passed checks; may refresh the configured read-only evidence adapter. Never approves, merges or executes tasks.',inputSchema:workflowTaskFields,annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true,idempotentHint:true},async handler({task_id}){try{const id=store.resolveTaskId(task_id);if(!id)throw new Error('Task not found');return result({task:await workflow.archive(id)},'Acceptance/report persisted before active-view archive.');}catch(error){return failure(error);}}},
     {
       name:'post_message',title:'Post a local message',description:'Record untrusted discussion data in the shared local journal; never dispatches or approves a task.',inputSchema:messageFields,
       annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false,idempotentHint:true},
@@ -755,10 +760,10 @@ function buildToolSpecs({ orchestrator, store, config, messageHub, executionNode
   ];
 }
 
-export function createMcpHandler({ orchestrator, store, config, messageHub, executionNodeObserver, executionNodeClock }) {
+export function createMcpHandler({ orchestrator, store, config, messageHub, archiveService, executionNodeObserver, executionNodeClock }) {
   const transports = new Map();
   const idleTimeoutMs = config.server.mcpSessionIdleMinutes * 60 * 1000;
-  const toolSpecs = buildToolSpecs({ orchestrator, store, config, messageHub, executionNodeObserver, executionNodeClock });
+  const toolSpecs = buildToolSpecs({ orchestrator, store, config, messageHub, archiveService, executionNodeObserver, executionNodeClock });
   const serverInfo = {
     ...SERVER_INFO,
     version: config.version ?? readPackageVersion(),
@@ -837,6 +842,11 @@ export function createMcpHandler({ orchestrator, store, config, messageHub, exec
         }),
       );
       return;
+    }
+
+    const workflowValidator=parsedBody?.method==='tools/call'?new Map([['archive_task',workflowTaskSchema],['daily_report',workflowReportSchema],['list_active_tasks',workflowActiveSchema]]).get(parsedBody.params?.name):null;
+    if(workflowValidator&&!workflowValidator.safeParse(parsedBody.params.arguments===undefined?{}:parsedBody.params.arguments).success){
+      response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({jsonrpc:'2.0',id:parsedBody.id??null,error:{code:-32602,message:'Invalid workflow request'}}));return;
     }
 
     const messageValidator = parsedBody?.method==='tools/call' ? parsedBody.params?.name==='post_message'?messageSchema:parsedBody.params?.name==='list_messages'?messageQuerySchema:null : null;

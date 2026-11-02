@@ -671,10 +671,7 @@ export class TaskStore {
     return this.#commitMessage(key,{...message,execution_task_id:taskId,logical_task_id:task.logical_task_id??task.id,state:'dispatched'},'task_bound');
   }
 
-  confirmMessageQueueRecovery(taskId,key) {
-    if(this.checkpointFaulted)throw checkpointError('checkpoint_store_faulted');
-    if(!this.isMessageTaskBound(taskId,key))throw new ControlPlaneError('message_conflict','Message binding missing');
-    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+  #validateRetainedAudit(allowEmpty=false) {
     try {
       let previous=null,sequence=null,started=false;
       for(const file of [this.auditArchivePath,this.auditPath]){
@@ -689,8 +686,22 @@ export class TaskStore {
           started=true;previous=h;sequence=entry.seq+1;
         }
       }
-      if(!started)throw checkpointError('checkpoint_audit_invalid');
+      if(!started){if(allowEmpty&&Object.keys(this.state.tasks).length===0){this.auditSeq=1;this.auditPrev=null;return;}throw checkpointError('checkpoint_audit_invalid');}
       this.auditSeq=sequence;this.auditPrev=previous;
+    }catch(error){this.checkpointFaulted=true;throw error;}
+  }
+
+  validateWorkflowAudit() {
+    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+    try{this.#validateRetainedAudit();}finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
+  confirmMessageQueueRecovery(taskId,key) {
+    if(this.checkpointFaulted)throw checkpointError('checkpoint_store_faulted');
+    if(!this.isMessageTaskBound(taskId,key))throw new ControlPlaneError('message_conflict','Message binding missing');
+    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+    try {
+      this.#validateRetainedAudit();
       this.audit('message.queue_recovered',{taskId,messageKey:key});
       const fd=fs.openSync(this.auditPath,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
     }catch(error){this.checkpointFaulted=true;throw error;}
@@ -752,6 +763,17 @@ export class TaskStore {
     return Object.values(this.state.tasks).some(other => other.id !== taskId && sameRecoveryWorkspace(other.workspace,task?.workspace) && (other.node_recovery && other.node_recovery.phase !== 'completed' || task?.node_recovery && other.status === 'running'));
   }
 
+  enableWorkflowRetention() {
+    if(this.state.workflow_retention===true)return;
+    const previous=this.state.workflow_retention,held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();let persisted=false;
+    try {
+      this.#validateRetainedAudit(true);
+      this.audit('workflow.retention_enabled',{});const fd=fs.openSync(this.auditPath,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      this.state.workflow_retention=true;this.persist();persisted=true;
+    }catch(error){if(!persisted)this.state.workflow_retention=previous;this.checkpointFaulted=true;throw error;}
+    finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
   async refreshDeliveryForWorkflow(id) { return this.#deliveryHost?.refresh(id)??null; }
 
   #workflowArchived(task,cache=new Map()) {
@@ -772,9 +794,7 @@ export class TaskStore {
     return {phase:archived?'archived':current.phase==='archived'?'needs_review':current.phase,active:!archived,report_date:current.report_date,report_id:current.id,archived_at:archived?current.archived_at:null,historical_acceptance:true};
   }
 
-  listActiveTasks(limit=20) {
-    const cache=new Map();return Object.values(this.state.tasks).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).filter(task=>!this.#workflowArchived(task,cache)).slice(0,limit).map(task=>this.getTask(task.id));
-  }
+  listActiveTasks(limit=20) { return this.findTasks({limit,activeOnly:true}); }
 
   #workflowCommit(id,workflow,type) {
     const previous=this.state.tasks[id];let persisted=false;
@@ -792,6 +812,7 @@ export class TaskStore {
     if(this.#workflowArchived(task))return this.getTask(id);
     const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
     try{
+      this.#validateRetainedAudit();
       const nowMs=clock();if(!Number.isSafeInteger(nowMs)||nowMs<0)fail('workflow_binding_changed');
       const binding=workflowFingerprint(task);
       const decision=()=>{
@@ -992,10 +1013,12 @@ export class TaskStore {
     return matches.length === 1 ? matches[0] : null;
   }
 
-  findTasks({ query = "", status = null, limit = 20 } = {}) {
+  findTasks({ query = "", status = null, limit = 20, activeOnly = false } = {}) {
+    const reportCache=new Map();
     const needle = String(query ?? "").trim().toLowerCase();
     const wanted = status ? new Set([status]) : null;
     const matches = Object.values(this.state.tasks).filter((task) => {
+      if(activeOnly&&this.#workflowArchived(task,reportCache))return false;
       if (wanted && !wanted.has(task.status)) return false;
       if (!needle) return true;
       const objective = String(task.brief?.objective ?? "").toLowerCase();
@@ -1123,7 +1146,7 @@ export class TaskStore {
       "interrupted",
     ]);
     const removable = tasks
-      .filter((task) => terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()) && !/^message:[a-f0-9]{64}$/.test(task.idempotency_key??'') && !(task.node_recovery&&task.node_recovery.phase!=='completed') && !task._workflow)
+      .filter((task) => this.state.workflow_retention!==true && terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()) && !/^message:[a-f0-9]{64}$/.test(task.idempotency_key??'') && !(task.node_recovery&&task.node_recovery.phase!=='completed') && !task._workflow)
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     const removeCount = tasks.length - this.maxTasks + 1;
     if (removable.length < removeCount) {

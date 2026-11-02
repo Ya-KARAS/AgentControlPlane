@@ -170,3 +170,10 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 保持 `unknown`。`approval_supported` 为 false；客户端自称用户、模型建议或
 绿色 CI 均不能设置 approved/merged。既有认证不变，无修改交付的工具或路由。
 详见 [交付契约与离线操作](DELIVERY.md)。
+
+## 可信验收、日报和归档（可选）
+
+`archive_task` / 受保护归档 POST 仅接受任务标识；必须已有可信用户验收、检查通过、
+执行器不活跃。`list_active_tasks` / 活动视图只筛选已完成日报/归档的记录，原任务
+历史列表不变。`daily_report` 和按日期读取接口返回安全日报数据。
+[顺序、重试、历史保留和真实验收门槛](WORKFLOW-ARCHIVE.md)。

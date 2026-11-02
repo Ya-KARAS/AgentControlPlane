@@ -57,3 +57,35 @@ the corresponding specific authorization. None is configured by this stage.
   has been verified.
 - Main integration/deployment is not done. Prepare specific PR/dependency/test
   evidence for individual user approval before any main merge. Do not auto-merge.
+
+## Subsequent integrated offline increments
+
+The earlier table is the PR20–25 audit snapshot, not a claim all stages shipped.
+Subsequent preserved stack:
+
+- PR26 node preflight: e2f637db, CI41409139573success; offline advice only.
+- PR27 controller/node integration: bf9e00d0, CI41411408780success.
+- PR28 checkpoint/fencing/recovery: b6805107, CI41413557360success; actual scheduler
+  and fake executors, no actual remote write enforcement or desktop-off test.
+- PR29 shared foreground HTTP/background MCP messages: c68245ac,
+  CI41417983992success; explicit idempotent dispatch, no vendor identity/group UI.
+- PR30 normal integration of PR23 into PR29: ec85dd27, CI41419609761success.
+- Current report/archive branch builds on PR30; exact tests/review/HEAD CI are
+  recorded in its own PR, without copying prerequisites or changing main.
+
+| Original stage / extension | Current honest state | Remaining acceptance |
+|---|---|---|
+| PR0 baseline/design | Documentation/offline verification complete; unmerged | Individual user merge decision |
+| PR1 controller ownership | Planned single-process minimum complete offline; unmerged | Distinct real per-agent auth/automatic cooperation not claimed |
+| PR2 subscriptions | Bounded manual observation/read/advice minimum implemented | Real supported vendor observations/collectors not verified; unknown stays unknown |
+| PR3 GitHub/user approval | Code + mock contracts implemented, partial overall | Real origin/RP/principal policy/enrollment and authenticated live acceptance |
+| PR4 local/cloud | Preflight and offline fenced recovery implemented, partial overall | Existing actual persistent runner, enforced remote writes, desktop-off/return recovery |
+| PR5 ordinary Chat | Research/contracts and two synthetic read tools verified; partial workflow | Supported actual trigger/document return, complete document integrity/permission/failure gates |
+| Shared messages | Common local HTTP/MCP API and retry-safe task bridge implemented | Full foreground group UI and actual callable private agents/transports |
+| Acceptance/report/archive | Offline implementation in current branch; evidence in PR | Actual trusted user channel/config remains required; no fabricated production approval |
+
+No branch has been silently deployed or merged. Real user/personal-agent identity,
+cloud availability and ordinary Chat two-way automation cannot be inferred from
+these isolated tests. An archived historical receipt is not current approval or
+merge permission. Persistent history stays local and capacity failures preserve
+active work; no Notion/API purchase or new account permission is introduced.

@@ -342,6 +342,11 @@ export function loadConfig(configPath = process.env.AGENT_CONTROL_CONFIG) {
   config.stateDir = path.resolve(
     process.env.AGENT_CONTROL_STATE_DIR ?? defaultStateDir,
   );
+  const workflowOptions=config.workflow??{};
+  if(typeof workflowOptions!=='object'||Array.isArray(workflowOptions)||Object.keys(workflowOptions).some(key=>!['enabled','timeZone'].includes(key)))throw new ControlPlaneError('invalid_config','Invalid workflow configuration');
+  config.workflow={enabled:false,timeZone:'UTC',...workflowOptions};
+  if(typeof config.workflow.enabled!=='boolean'||typeof config.workflow.timeZone!=='string'||config.workflow.timeZone.length>64)throw new ControlPlaneError('invalid_config','Invalid workflow configuration');
+  try{new Intl.DateTimeFormat('en',{timeZone:config.workflow.timeZone});}catch{throw new ControlPlaneError('invalid_config','Invalid workflow time zone');}
   const messageOptions = config.messages ?? {};
   if(typeof messageOptions!=='object'||Array.isArray(messageOptions)||Object.keys(messageOptions).some(key=>!['enabled','maxStoredMessages'].includes(key)))throw new ControlPlaneError('invalid_config','Invalid messages configuration');
   config.messages = {enabled:false,maxStoredMessages:1024,...messageOptions};

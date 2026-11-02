@@ -116,3 +116,15 @@ test('oversized or tampered report fails closed without reflecting its content',
  assert.throws(()=>f.service.report('2026-11-02'),e=>e.code==='workflow_report_unavailable'&&!e.message.includes('private-report-marker'));assert.equal(f.service.active({}).tasks.length,1);
  assert.throws(()=>f.service.report('../private-report-marker'),e=>e.code==='workflow_report_unavailable');
 });
+
+test('workflow-enabled capacity cannot prune unaccepted active work before its report exists',t=>{
+ const f=setup(t);f.store.maxTasks=1;
+ assert.throws(()=>f.store.createTask({workspace:'/new',brief:{objective:'new'},policy:{name:'economy'}}),e=>e.code==='task_capacity_reached');
+ const restarted=new TaskStore(f.dir);restarted.maxTasks=1;assert.throws(()=>restarted.createTask({workspace:'/new',brief:{objective:'new'},policy:{name:'economy'}}),e=>e.code==='task_capacity_reached');
+ assert.ok(restarted.getTask(f.task.id));
+});
+
+test('corrupt audit evidence blocks archival before any new acceptance is persisted',async t=>{
+ const f=setup(t);fs.appendFileSync(f.store.auditPath,'broken private-audit-marker\n');const before=fs.readFileSync(f.store.auditPath,'utf8');
+ await rejected(f.service.archive(f.task.id),'checkpoint_audit_invalid');assert.equal(f.service.active({}).tasks.length,1);assert.equal(f.store.checkpointFaulted,true);assert.equal(fs.readFileSync(f.store.auditPath,'utf8'),before);assert.equal(fs.existsSync(f.reportPath),false);
+});

@@ -7,6 +7,10 @@
     "mcpSessionIdleMinutes": 30
   },
   "workspaceRoots": [],
+  "workflow": {
+    "enabled": false,
+    "timeZone": "UTC"
+  },
   "messages": {
     "enabled": false,
     "maxStoredMessages": 1024
