@@ -53,3 +53,5 @@
 - [旧版 Apache-2.0 说明](LEGACY-LICENSE-APACHE-2.0.md)
 
 - [Offline project conversations / 离线项目对话](CONVERSATIONS.md): scoped shared history, explicit modification/stop, authorization and actual-browser limits.
+
+- [Complete offline candidate / 统一离线候选树](ACP-V1-CANDIDATE.md) and [credential-free browser fixture](CONVERSATION-FIXTURE.md).

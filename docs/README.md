@@ -25,6 +25,8 @@ its original path so release notes and development handoffs keep stable links.
 ## Development and operations
 
 - [Delivery observations and approval boundary](DELIVERY.md)
+- [Passive subscription status](SUBSCRIPTIONS.md)
+- [Isolated read-only MCP test entry](READONLY-MCP-TEST-ENTRY.md)
 - [Development workflow](DEVELOPMENT.md)
 - [Maintenance scripts](../scripts/README.md)
 - [Offline handoff acceptance](HANDOFF-ACCEPTANCE.md) · [中文](HANDOFF-ACCEPTANCE.zh-CN.md)
@@ -35,6 +37,8 @@ its original path so release notes and development handoffs keep stable links.
 
 ## Product and release planning
 
+- [ACP V1 engineering design](ACP_V1_ENGINEERING_DESIGN.md) · [PR0 baseline and compatibility matrix](ACP_V1_BASELINE.md)
+- [Ordinary Chat handoff workflow and feasibility](ORDINARY-CHAT-HANDOFF-FEASIBILITY.md)
 - [Roadmap](ROADMAP.md) · [中文](ROADMAP.zh-CN.md)
 - [Cross-device roadmap](CROSS-DEVICE-ROADMAP.md) · [中文](CROSS-DEVICE-ROADMAP.zh-CN.md)
 - [Commercialization](COMMERCIALIZATION.md) · [中文](COMMERCIALIZATION.zh-CN.md)
@@ -67,3 +71,5 @@ its original path so release notes and development handoffs keep stable links.
 - [Verified acceptance, daily report and archive lifecycle](WORKFLOW-ARCHIVE.md)
 
 - [Offline project conversations / 离线项目对话](CONVERSATIONS.md): scoped shared history, explicit modification/stop, authorization and actual-browser limits.
+
+- [Complete offline candidate / 统一离线候选树](ACP-V1-CANDIDATE.md) and [credential-free browser fixture](CONVERSATION-FIXTURE.md).

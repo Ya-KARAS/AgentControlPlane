@@ -7,6 +7,7 @@ script execution is useful when a command needs additional arguments.
 
 | Command | Script | Purpose |
 |---|---|---|
+| `npm run subscription:import -- --offline snapshot.json` | `import-subscription.js` | Import a manual subscription observation with ACP stopped; no quota probe. See [contract](../docs/SUBSCRIPTIONS.md). |
 | `npm run verify` | test and check scripts | Run the full repository gate. |
 | `npm run doctor` | `doctor.js` | Report executor discovery and readiness; may run executor commands and active endpoint probes that use model quota. |
 | `npm start` | `src/server.js` | Start ACP on the configured loopback address. |
@@ -51,3 +52,6 @@ script execution is useful when a command needs additional arguments.
 | `npm run verify:audit` | `verify-audit.js` | Verify persisted audit evidence. |
 
 - `npm run delivery:import -- --offline TASK_ID FILE`: import bounded unverified PR metadata with ACP stopped; see [delivery operations](../docs/DELIVERY.md). No approval or GitHub action.
+- `npm run readonly:test-entry -- --port 4328`: isolated synthetic-fixture MCP test, no production startup; see [read-only test entry](../docs/READONLY-MCP-TEST-ENTRY.md).
+
+- `node scripts/serve-conversation-fixture.js --port 18889`: synthetic credential-free loopback conversation page; see [fixture guide](../docs/CONVERSATION-FIXTURE.md). No production startup.

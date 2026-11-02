@@ -1,6 +1,7 @@
 import { ArchiveService, workflowTaskFields, workflowReportFields, workflowActiveFields, workflowTaskSchema, workflowReportSchema, workflowActiveSchema } from "../core/workflow.js";
 import { MessageHub, messageFields, messageSchema, messageQueryFields, messageQuerySchema } from "../core/messages.js";
 import { normalizeAgentRegistry } from "../controllers/registry.js";
+import { subscriptionStatus } from "../core/subscriptions.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -424,6 +425,17 @@ function buildToolSpecs({ orchestrator, store, config, messageHub, archiveServic
       },
       async handler({ limit }) {
         return result({ tasks: store.listTasks(limit) }, "Returned recent tasks.");
+      },
+    },
+    {
+      name: "subscription_status",
+      title: "Read subscription availability",
+      description: "Read manual subscription observations and approval-required routing advice. No quota probes, model calls or routing changes.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+      async handler() {
+        try { return result(subscriptionStatus(store, config), "Returned passive subscription status; advice never dispatches work."); }
+        catch (error) { return failure(error); }
       },
     },
     {

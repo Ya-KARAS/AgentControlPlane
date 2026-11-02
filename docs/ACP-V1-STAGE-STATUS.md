@@ -114,3 +114,24 @@ Current conversation code does not finish the overall plan or automate ordinary
 Chat. It creates no token, account, permission, persistent runner or model request.
 Exact minimal real configurations and browser failure evidence are documented in
 [CONVERSATIONS.md](CONVERSATIONS.md).
+
+## Unified candidate after PR32
+
+The follow-on [complete offline candidate](ACP-V1-CANDIDATE.md) now includes all
+PR20–32 heads as ancestors, including the formerly separate PR22/24/25 artifacts.
+Earlier rows describe their historical branch boundaries. This supersedes any
+statement that subscription/handoff/isolated-entry artifacts are absent from the
+latest candidate; it does not turn their synthetic/offline tests into production
+or ordinary Chat acceptance. The full current matrix and merge caveats are there.
+
+## Independent synthetic browser receipt and remaining code gaps
+
+Coordinator cloud fixture browser acceptance at244ac31 passed 2026-11-02
+11:04–11:12UTC; this supersedes older statements that synthetic page interaction
+remains unpassed. No sandbox settings changed, but independent sandbox
+configuration inspection was not permitted and is not claimed. Real ACP auth,
+persistence, execution, vendors and ordinary Chat remain separate.
+The [acceptance/gap audit](ACP-V1-ACCEPTANCE-GAPS.md) distinguishes actual missing
+PR3 host/storage/decision composition and PR4 measured adapters/write enforcement
+from real configuration/acceptance, and gives one definite bounded offline next PR.
+No code feature or main merge is initiated by this documentation update.

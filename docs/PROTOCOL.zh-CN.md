@@ -183,3 +183,11 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 See [offline project conversations](CONVERSATIONS.md) for protected scoped message,
 continuation and safe stop interfaces, default-off authorization and browser limits.
 The original single queue and human approval boundary remain authoritative.
+## 被动订阅观测（PR2）
+
+可选订阅记录复用 TaskStore 状态和审计，不与任务 token 或现金支出混合。仅离线
+operator 命令导入 manual/user_reported 快照，不调用模型、CLI 或浏览器探测额度。
+GET `/v1/subscriptions`、只读 MCP `subscription_status` 和本地面板展示有界、精确
+范围的观测；到期降为 unknown，null 不代表0。由 operator 配置兼容能力的路由建议
+始终需要手工批准，不改变实际派发或默认关闭的自动 reroute；没有新增网络修改
+入口。详见 [契约、操作及回滚](SUBSCRIPTIONS.md)。
