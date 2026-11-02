@@ -58,3 +58,5 @@ its original path so release notes and development handoffs keep stable links.
 
 - [Stage reconciliation and remaining acceptance gates](ACP-V1-STAGE-STATUS.md)
 - [Optional execution-node preflight (PR4a)](EXECUTION-NODES.md)
+
+- [Offline node checkpoint, fencing and recovery](NODE-RECOVERY.md)

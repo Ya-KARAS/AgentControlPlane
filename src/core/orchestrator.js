@@ -1,3 +1,4 @@
+import { assertNodeFence, isNodeAdmission } from "./node-recovery.js";
 import { resolveControllerActor } from "../controllers/registry.js";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
@@ -401,9 +402,11 @@ export class Orchestrator extends EventEmitter {
     executors = null,
     defaultProvider = null,
     projectRegistry = null,
+    executionNodeId = null,
   }) {
     super();
     this.config = config;
+    this.executionNodeId = executionNodeId;
     this.store = store;
     this.executors =
       executors ?? new Map([[defaultProvider ?? "codex", codex]]);
@@ -431,6 +434,37 @@ export class Orchestrator extends EventEmitter {
         this.emit("diagnostic", { source: executor.id ?? "executor", text }),
       );
     }
+  }
+
+  #assertNodeExecution(taskId) {
+    const task = this.store.getTask(taskId);
+    if(!task)throw new ControlPlaneError('task_not_found','Task no longer exists');
+    assertNodeFence(task, this.running.get(taskId)?.nodeFence);
+    if(task?.node_recovery&&!['queued','running'].includes(task.status))throw new ControlPlaneError('node_generation_mismatch','Execution is no longer admitted');
+  }
+
+  #updateTask(taskId, patch, controllerContext = undefined) {
+    return this.store.updateTask(taskId, patch, controllerContext, this.running.get(taskId)?.nodeFence);
+  }
+
+  validateNodeRecoveryTask(task) {
+    if(task.executor_checkpoint||!this.executors.has(task.executor)||this.executors.get(task.executor).recoveryEnabled===true)throw new ControlPlaneError('node_native_checkpoint_unsupported','Native executor checkpoint recovery needs a node-bound adapter');
+  }
+
+  wakeNodeQueue() { queueMicrotask(()=>this.#drain()); }
+
+  enqueueNodeRecovery(taskId, ticket) {
+    const task = this.store.getTask(taskId);
+    if (!isNodeAdmission(ticket,task)) throw new ControlPlaneError('node_admission_required','A durable host admission is required');
+    this.validateNodeRecoveryTask(task);
+    if (this.executionNodeId !== ticket.nodeId) throw new ControlPlaneError('node_runtime_mismatch','Runtime does not own this admission');
+    const existing=this.running.get(taskId)??this.queue.find(entry=>entry.taskId===taskId);
+    if(existing){
+      if(existing.nodeFence?.nodeId===ticket.nodeId&&existing.nodeFence?.generation===ticket.generation)return;
+      throw new ControlPlaneError('node_runtime_conflict','An older runtime entry is still active');
+    }
+    this.queue.push({taskId,followUp:true,nodeFence:ticket});
+    queueMicrotask(()=>this.#drain());
   }
 
   #orderedProviders(profileName = null) {
@@ -751,7 +785,7 @@ export class Orchestrator extends EventEmitter {
       ...history[history.length - 1],
       ...patch,
     };
-    return this.store.updateTask(taskId, { executor_history: history });
+    return this.#updateTask(taskId, { executor_history: history });
   }
 
   #selectRerouteCandidate(task) {
@@ -821,7 +855,7 @@ export class Orchestrator extends EventEmitter {
       });
     }
     if (reroutesUsed >= Number(reroute.max_reroutes ?? 2)) {
-      this.store.updateTask(taskId, {
+      this.#updateTask(taskId, {
         status: "blocked",
         continuation,
         reroute_reason: reason,
@@ -843,7 +877,7 @@ export class Orchestrator extends EventEmitter {
 
     const { candidate, candidates } = this.#selectRerouteCandidate(task);
     if (!candidate) {
-      this.store.updateTask(taskId, {
+      this.#updateTask(taskId, {
         status: "blocked",
         continuation,
         reroute_reason: reason,
@@ -898,7 +932,7 @@ export class Orchestrator extends EventEmitter {
       attempts: 1,
       usage: zeroUsage(),
     });
-    this.store.updateTask(taskId, {
+    this.#updateTask(taskId, {
       status: "queued",
       executor: candidate.executor,
       policy: candidate.policy,
@@ -1242,7 +1276,7 @@ export class Orchestrator extends EventEmitter {
       requestFingerprint,
     });
     if (!sessionChanged) {
-      this.store.updateTask(task.id, { threadId: parent.threadId });
+      this.#updateTask(task.id, { threadId: parent.threadId });
     }
     if (workspaceRelinked) {
       this.store.addEvent(task.id, {
@@ -1453,7 +1487,7 @@ export class Orchestrator extends EventEmitter {
       freshSession,
     });
     if (!freshSession && !sessionChanged && parent.threadId) {
-      this.store.updateTask(task.id, { threadId: parent.threadId });
+      this.#updateTask(task.id, { threadId: parent.threadId });
     }
     this.store.addEvent(task.id, {
       type: "task.handoff",
@@ -1489,7 +1523,7 @@ export class Orchestrator extends EventEmitter {
         });
       }
     }
-    this.store.updateTask(taskId, {
+    this.#updateTask(taskId, {
       status: "cancelled",
       completedAt: new Date().toISOString(),
     });
@@ -1511,12 +1545,15 @@ export class Orchestrator extends EventEmitter {
       );
       const index = this.queue.findIndex((entry) => {
         const task = this.store.getTask(entry.taskId);
-        return task && !activeWorkspaces.has(task.workspace);
+        return task && !activeWorkspaces.has(task.workspace) && !this.store.nodeWorkspaceReserved(task.id);
       });
       if (index === -1) break;
       const [queued] = this.queue.splice(index, 1);
       const task = this.store.getTask(queued.taskId);
       if (!task || task.status !== "queued") continue;
+      if (task.node_recovery && (!isNodeAdmission(queued.nodeFence,task) || this.executionNodeId!==queued.nodeFence.nodeId)) {
+        this.store.quarantineNodeRecovery(task.id); continue;
+      }
       this.running.set(queued.taskId, {
         ...queued,
         workspace: task.workspace,
@@ -1560,7 +1597,7 @@ export class Orchestrator extends EventEmitter {
         this.config.workspaceRoots,
       );
       const executor = this.#executorFor(task);
-      this.store.updateTask(taskId, {
+      this.#updateTask(taskId, {
         status: "running",
         startedAt: new Date().toISOString(),
         ...(executor.usageEvidenceMode ? { usage: null, usage_state: "unknown", execution_outcome: "unknown" } : {}),
@@ -1570,7 +1607,8 @@ export class Orchestrator extends EventEmitter {
       }
 
       if (!executor.ready) {
-        await executor.start();
+        this.#assertNodeExecution(taskId);
+      await executor.start();
       }
       if (executor.requiresWindowsSandbox && process.platform === "win32") {
         const readiness = await executor.getSandboxReadiness({});
@@ -1603,7 +1641,8 @@ export class Orchestrator extends EventEmitter {
 
       if (threadId) {
         try {
-          await executor.resumeThread({
+          this.#assertNodeExecution(taskId);
+      await executor.resumeThread({
             threadId,
             historyMode: "paginated",
           });
@@ -1618,7 +1657,8 @@ export class Orchestrator extends EventEmitter {
       }
 
       if (!threadId) {
-        const started = await executor.startThread({
+        this.#assertNodeExecution(taskId);
+      const started = await executor.startThread({
           cwd: workspace,
           model: task.policy.model,
           approvalPolicy: executor.executionPolicy?.approvalPolicy ?? this.config.codex.approvalPolicy,
@@ -1653,11 +1693,12 @@ export class Orchestrator extends EventEmitter {
         }
       }
 
-      this.store.updateTask(taskId, { threadId });
+      this.#updateTask(taskId, { threadId });
       if (executor.executionPolicy) {
         this.store.addEvent(taskId, { type: "thread.execution_policy", policy: executor.executionPolicy });
       }
       this.#updateCurrentExecutorHistory(taskId, { thread_id: threadId });
+      this.#assertNodeExecution(taskId);
       await executor.setGoal({
         threadId,
         objective: task.brief.objective,
@@ -1665,6 +1706,7 @@ export class Orchestrator extends EventEmitter {
         tokenBudget: task.policy.tokenBudget,
       });
 
+      this.#assertNodeExecution(taskId);
       const response = await executor.startTurn({
         threadId,
         input: [
@@ -1672,6 +1714,7 @@ export class Orchestrator extends EventEmitter {
             type: "text",
             text:
               buildEngineeringPrompt(task.brief, task.policy, followUp) +
+              (task.node_recovery?.checkpoint ? `\n\nExecution-node checkpoint (host verified; no credentials):\n${JSON.stringify(task.node_recovery.checkpoint)}` : "") +
               (task.continuation
                 ? `\n\nContinuation package (structured):\n${JSON.stringify(task.continuation)}`
                 : ""),
@@ -1722,11 +1765,11 @@ export class Orchestrator extends EventEmitter {
         active.turnId = turnId;
         const pendingUsage = active.pendingUsage?.get(turnId);
         if (pendingUsage) {
-          this.store.updateTask(taskId, { usage: mapUsage(pendingUsage) });
+          this.#updateTask(taskId, { usage: mapUsage(pendingUsage) });
         }
         active.pendingUsage = null;
       }
-      this.store.updateTask(taskId, { turnId });
+      this.#updateTask(taskId, { turnId });
       this.#updateCurrentExecutorHistory(taskId, { turn_id: turnId });
       this.store.addEvent(taskId, {
         method: "turn/started",
@@ -1737,7 +1780,7 @@ export class Orchestrator extends EventEmitter {
       await this.#waitForTerminalNotification(taskId);
     } catch (error) {
       if (this.#attemptReroute(taskId, error)) return;
-      this.store.updateTask(taskId, {
+      this.#updateTask(taskId, {
         status: "failed",
         error: asErrorPayload(error),
         completedAt: new Date().toISOString(),
@@ -1765,6 +1808,7 @@ export class Orchestrator extends EventEmitter {
     return new Promise((resolve) => {
       active.resolve = resolve;
       active.timer = setTimeout(async () => {
+        try { this.#assertNodeExecution(taskId); } catch { resolve(); return; }
         const task = this.store.getTask(taskId);
         if (task?.status === "running") {
           let interruptionError = null;
@@ -1779,7 +1823,8 @@ export class Orchestrator extends EventEmitter {
           } catch (error) {
             interruptionError = asErrorPayload(error);
           }
-          this.store.updateTask(taskId, {
+          try { this.#assertNodeExecution(taskId); } catch { resolve(); return; }
+          this.#updateTask(taskId, {
             status: "interrupted",
             error: {
               code: "task_runtime_exceeded",
@@ -1833,6 +1878,7 @@ export class Orchestrator extends EventEmitter {
   }
 
   async #refreshGoalUsage(taskId, { enforceBudget = true } = {}) {
+    this.#assertNodeExecution(taskId);
     const active = this.running.get(taskId);
     const task = this.store.getTask(taskId);
     if (!active || !task?.threadId) return null;
@@ -1848,6 +1894,7 @@ export class Orchestrator extends EventEmitter {
         { threadId: task.threadId },
         10000,
       );
+      this.#assertNodeExecution(taskId);
       const goal = response?.goal;
       if (!goal) return null;
       const currentUsage = this.store.getTask(taskId)?.usage;
@@ -1856,7 +1903,7 @@ export class Orchestrator extends EventEmitter {
         !currentUsage ||
         usage.total_tokens >= Number(currentUsage.total_tokens ?? 0)
       ) {
-        this.store.updateTask(taskId, { usage });
+        this.#updateTask(taskId, { usage });
       }
 
       const latest = this.store.getTask(taskId);
@@ -1909,6 +1956,7 @@ export class Orchestrator extends EventEmitter {
   async #recoverInterruptedTasks() {
     const stale = this.store.listByStatus(["queued", "running"]);
     for (const task of stale) {
+      if (task.node_recovery) { this.store.quarantineNodeRecovery(task.id); continue; }
       if (task.status === "queued") {
         const initialHandoff = task.handoff === true && task.reroute_reason == null;
         this.queue.push({
@@ -1941,7 +1989,7 @@ export class Orchestrator extends EventEmitter {
                   : "completed"
                 : lastTurn.status;
             const completedAt = new Date().toISOString();
-            this.store.updateTask(task.id, {
+            this.#updateTask(task.id, {
               status,
               turnId: lastTurn.id,
               result: report,
@@ -1982,7 +2030,7 @@ export class Orchestrator extends EventEmitter {
       }
 
       if (!recovered) {
-        this.store.updateTask(task.id, {
+        this.#updateTask(task.id, {
           status: "interrupted",
           error: {
             code: "control_plane_restarted",
@@ -2001,10 +2049,12 @@ export class Orchestrator extends EventEmitter {
     const turnId = params.turnId ?? params.turn?.id;
     if (turnId) {
       for (const [taskId, active] of this.running.entries()) {
+        try { this.#assertNodeExecution(taskId); } catch { continue; }
         if (active.turnId === turnId) return taskId;
       }
       const threadMatches = [];
       for (const [taskId, active] of this.running.entries()) {
+        try { this.#assertNodeExecution(taskId); } catch { continue; }
         const task = this.store.getTask(taskId);
         if (task && params.threadId && task.threadId === params.threadId) {
           threadMatches.push(taskId);
@@ -2014,6 +2064,7 @@ export class Orchestrator extends EventEmitter {
     }
     const matches = [];
     for (const [taskId, active] of this.running.entries()) {
+        try { this.#assertNodeExecution(taskId); } catch { continue; }
       const task = this.store.getTask(taskId);
       if (!task) continue;
       if (params.threadId && task.threadId === params.threadId) {
@@ -2097,7 +2148,7 @@ export class Orchestrator extends EventEmitter {
         return;
       }
       const usage = mapUsage(params.tokenUsage);
-      this.store.updateTask(taskId, { usage });
+      this.#updateTask(taskId, { usage });
       const task = this.store.getTask(taskId);
       if (
         !active.budgetInterruptRequested &&
@@ -2145,7 +2196,7 @@ export class Orchestrator extends EventEmitter {
             status: item.agentsStates?.[threadId]?.status ?? item.status,
           });
         }
-        this.store.updateTask(taskId, {
+        this.#updateTask(taskId, {
           subagents: [...known.values()],
         });
       }
@@ -2159,7 +2210,7 @@ export class Orchestrator extends EventEmitter {
     if (message.method === "turn/completed") {
       this.#completeTask(taskId, params).catch((error) => {
         this.executors.get(executor.id)?.quarantineRecovery?.();
-        try { this.store.updateTask(taskId, {
+        try { this.#updateTask(taskId, {
           status: "failed",
           error: asErrorPayload(error),
           completedAt: new Date().toISOString(),
@@ -2204,7 +2255,7 @@ export class Orchestrator extends EventEmitter {
     const evidenceMode = this.executors.get(current.executor)?.usageEvidenceMode === true;
     const evidence = evidenceMode ? executorUsageEvidence(params.turn.usageEvidence) : null;
     if (evidenceMode) {
-      this.store.updateTask(taskId, { usage: evidence.usage, usage_state: evidence.state,
+      this.#updateTask(taskId, { usage: evidence.usage, usage_state: evidence.state,
         usage_evidence: evidence, execution_outcome: params.turn.executionOutcome ?? "unknown" });
       if (evidence.state !== "complete") report.summary += " Token usage unknown: no complete native run total.";
     }
@@ -2262,7 +2313,7 @@ export class Orchestrator extends EventEmitter {
       if (!receipt || receipt.taskId !== taskId) throw new ControlPlaneError("checkpoint_identity_mismatch", "Missing executor checkpoint receipt", { safeToReroute: false });
       this.store.commitExecutorCheckpoint(taskId, receipt.attemptId, receipt, { ...terminalPatch,
         usage: evidence?.usage ?? null, usage_state: evidence?.state ?? "unknown", execution_outcome: params.turn.executionOutcome ?? "unknown" });
-    } else this.store.updateTask(taskId, terminalPatch);
+    } else this.#updateTask(taskId, terminalPatch);
     const completedTask = this.store.getTask(taskId);
     this.#updateCurrentExecutorHistory(taskId, {
       ended_at: completedTask.completedAt,

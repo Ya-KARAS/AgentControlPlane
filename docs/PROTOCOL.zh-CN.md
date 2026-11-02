@@ -149,3 +149,9 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 释放保留 `owner: null` 和最后的 generation，重领必须递增以避免 ABA。释放后的
 `controller.id` 是最后的 actor，不代表活跃所有者；当前控制权以 lease 为准。
 配置、模式及边界详见 [控制器说明](CONTROLLERS.md)。
+
+## 仅主机内部的节点恢复
+
+受管理任务增加可选 `execution_node_id` / `node_recovery`，旧记录默认为 null。
+恢复写入和准入凭证仅供主机内部使用，不增加 MCP 写工具；客户端自称停止不能
+授予新执行权。[状态转移、故障和依赖顺序](NODE-RECOVERY.md)。
