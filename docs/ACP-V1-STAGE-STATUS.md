@@ -139,3 +139,13 @@ No code feature or main merge is initiated by this documentation update.
 ## Follow-on private decision code
 
 See [private delivery decisions](PRIVATE-DELIVERY-DECISIONS.md): bounded existing-store credential read/insert/revision-CAS, branded decision journal and explicit host composition are now implemented in the next stacked increment. Default off, no network approval surface/real user enrollment; PR4 production measurement/write fencing and real acceptance remain incomplete. Earlier gap rows describe their historical candidate.
+
+## Subsequent bounded inventory increment
+
+The PR34 stack now adds default-off local Git/workspace inventory and composition
+with independent measured source/target facts; see [limits](NODE-RECOVERY.md#bounded-local-inventory-adapter).
+Temporary-repository tests cover deletion, dirty/untracked files, scope/links,
+concurrent changes and stale proofs. This closes the inventory collector code gap,
+not the actual runner stop/write-fence or distributed recovery acceptance gap.
+The protected review surface is the next offline increment; real identity
+registration, configured trust and live acceptance remain separate gates.
