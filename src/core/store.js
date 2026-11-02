@@ -842,7 +842,7 @@ export class TaskStore {
       const verified=readDailyReport(this.stateDir,current.report_date).entries.find(entry=>entry.id===current.id);
       if(!verified||reportEntryHash(verified)!==entryHash)fail('workflow_report_unavailable');
       workflow={...workflow,current:{...workflow.current,phase:'archived',archived_at:new Date(clock()).toISOString()}};
-      this.#workflowCommit(id,workflow,'workflow.archived');
+      this.#workflowCommit(id,workflow,'workflow.archive_intent');
       return this.getTask(id);
     }finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
   }
@@ -852,20 +852,24 @@ export class TaskStore {
     this.#deliveryHost=createDeliveryHostService({adapter,authorizeUser,clock,
       healthy:()=>epoch === this.#deliveryHostEpoch && !this.checkpointFaulted,
       read:(id)=>Object.hasOwn(this.state.tasks,id) ? {delivery:safeDelivery(this.state.tasks[id].delivery),journal:this.state.tasks[id]._delivery_evidence} : null,
-      commit:(id,journal,expected,merge)=>this.#persistDeliveryEvidence(id,journal,expected,epoch,merge),
+      commit:(id,journal,expected,merge,decision)=>this.#persistDeliveryEvidence(id,journal,expected,epoch,merge,decision),
     });
     return this.#deliveryHost;
   }
 
-  #persistDeliveryEvidence(id,journal,expected,epoch,merge) {
+  #persistDeliveryEvidence(id,journal,expected,epoch,merge,decision) {
     const task=this.state.tasks[id];
     if (epoch !== this.#deliveryHostEpoch || !task || JSON.stringify(safeDelivery(task.delivery)) !== expected) throw new ControlPlaneError("delivery_conflict", "Delivery binding changed");
     const wasLocked=Boolean(this.checkpointLeaseToken);
     this.acquireExecutorLease();
     let persisted=false;
     try {
-      if (isDeepStrictEqual(task._delivery_evidence,journal)) return;
-      this.state.tasks[id]={...task,_delivery_evidence:structuredClone(journal)};
+      const current=task._workflow?.current;
+      const invalidate=!!current&&current.binding===workflowFingerprint(task)&&decision&&['revoked','changes_requested'].includes(decision.decision)&&decision.repository===task.delivery?.repository&&decision.pull_request_number===task.delivery?.pull_request_number&&decision.head_sha===task.delivery?.head_sha;
+      const invalidation=invalidate?workflowHash([decision.repository,decision.pull_request_number,decision.head_sha,decision.user_id,decision.event_id,decision.decision]):null;
+      if (isDeepStrictEqual(task._delivery_evidence,journal)&&(!invalidate||current.invalidation_hash===invalidation)) return;
+      const workflow=invalidate?{...task._workflow,current:{...current,phase:'needs_review',invalidation_hash:invalidation,invalidated_at:now()}}:task._workflow;
+      this.state.tasks[id]={...task,_delivery_evidence:structuredClone(journal),...(workflow?{_workflow:workflow}:{})};
       this.persist(); persisted=true;
       this.audit("task.delivery_evidence",{taskId:id,repository:task.delivery.repository,pull_request_number:task.delivery.pull_request_number,head_sha:task.delivery.head_sha,...(merge ? {merged:merge.merged,merge_commit_sha:merge.merge_commit_sha,merge_event_id:merge.event_id,merge_source:merge.source} : {})});
     } catch(error) {

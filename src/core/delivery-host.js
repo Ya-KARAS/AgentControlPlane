@@ -36,7 +36,7 @@ export function createDeliveryHostService({ adapter, authorizeUser, clock = Date
           const result=await evaluator.evaluate(target);
           if (!result.candidate || !healthy() || stamp(read(id)?.delivery) !== stamp(delivery)) return status(id);
           const journal={version:1,history:evaluator.exportHistory()};
-          commit(id,journal,stamp(delivery),result.candidate.merge); // No async yield between binding and persist.
+          commit(id,journal,stamp(delivery),result.candidate.merge,result.candidate); // No async yield between binding and persist.
           const now=clock(), observed=Date.parse(result.validity.observed_at), until=Date.parse(result.validity.valid_until);
           if (!Number.isSafeInteger(now) || now < observed || now >= until || !healthy()) return status(id);
           projections.set(id,{stamp:stamp(delivery),observed,until,checks:result.candidate.checks,merge:result.candidate.merge,decision:result.candidate,

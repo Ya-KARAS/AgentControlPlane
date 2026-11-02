@@ -40,12 +40,15 @@ that is not actual human authentication or production acceptance.
    or credentials. A strict machine-readable block permits exact idempotent retry.
    File is synced and atomically renamed/read back before proceeding.
 4. Persist report receipt, recheck source decision/task binding, verify report row,
-   then commit archive metadata. Only now exclude the task from the active view.
+   then commit archive metadata. A synced archive-intent audit entry precedes that
+   state commit; it never falsely declares a failed state write completed. Only now exclude the task from the active view.
 
 A failed report write keeps the task active and can retry without a duplicate row.
 A state/audit failure faults the existing writer and retains its lock/evidence;
 operator inspection/clean restart is needed, not a retry loop or stale-lock deletion.
-Source HEAD/revocation/expiry races cannot complete archive. A report already
+Source HEAD/revocation/expiry races cannot complete archive. Verified revocation or
+changes requested persistently invalidates the receipt, so expiry/restart cannot
+resurrect it. A fresh reapproval requires a new acceptance/report transition. A report already
 written during a later failure remains a historical snapshot, not new approval.
 
 Reports are <=1MiB and <=2048 unique rows per day; histories per task <=64 prior

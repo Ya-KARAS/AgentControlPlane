@@ -55,3 +55,17 @@ Review focus: approved is never inferred from prose/CI; decisions exact-head
 bound and race checked; acceptance/report precede archive; failed/replayed/restarted
 attempts don't lose active work/history or duplicate reports; node fences and
 single queue preserved; no sensitive report/response fields; default-off behavior.
+
+
+## Final review evidence
+
+Pre-review complete verify939tests/938passed/0failed/1Windows-onlyskip; targeted24.
+One P2: verified revocation only affected the live projection and could be lost on
+expiry/restart. Reproduced RED with actual evaluator, then persisted receipt
+invalidation with the checked host evidence transaction. Both revoked and
+changes_requested stay active through expiry/restart; fresh reapproval adds a new
+report row and receipt. Historical reports remain. No deferred findings.
+Archive-intent audit label distinguishes pre-commit attempt from final state.
+Final code verification: npm run verify exit0,941tests/940passed/0failed/1Windows-onlyskip;
+check PASS. Workflow targeted26/26; no deferred review findings. Final documentation
+only evidence changes passed links/whitespace checks; remote CI receipt is in PR.

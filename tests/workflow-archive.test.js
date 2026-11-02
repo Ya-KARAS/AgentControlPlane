@@ -57,7 +57,7 @@ for(const phase of ['accepted','reported','archived'])test(`${phase} state-write
 
 test('archive audit failure stays active and retry after verified clean restart reuses report',async t=>{
  const f=setup(t);const audit=f.store.audit.bind(f.store);
- t.mock.method(f.store,'audit',(type,payload)=>{if(type==='workflow.archived')throw new Error('private-audit-error');return audit(type,payload);});
+ t.mock.method(f.store,'audit',(type,payload)=>{if(type==='workflow.archive_intent')throw new Error('private-audit-error');return audit(type,payload);});
  await assert.rejects(f.service.archive(f.task.id));assert.equal(f.service.active({}).tasks.length,1);assert.equal(f.store.checkpointFaulted,true);
  f.store.releaseExecutorLease(); // Test knows this local owner never started an executor; no stale-lock deletion.
  const restarted=new TaskStore(f.dir);restarted.createDeliveryHost(f.options);const service=new ArchiveService({store:restarted,orchestrator:new Orchestrator({config:{limits:{maxConcurrentTasks:1}},store:restarted,executors:new Map([['codex',new RecordingExecutor('codex')]]),defaultProvider:'codex'}),enabled:true,timeZone:'UTC',clock:()=>f.clock});
@@ -97,7 +97,7 @@ test('approval expiry during report write cannot complete archive',async t=>{
 
 test('concurrent archive calls produce one acceptance and one dated row',async t=>{
  const f=setup(t);await Promise.all([f.service.archive(f.task.id),f.service.archive(f.task.id)]);assert.equal(f.service.report('2026-11-02').entries.length,1);
- const events=fs.readFileSync(f.store.auditPath,'utf8').trim().split('\n').map(JSON.parse);assert.equal(events.filter(e=>e.type==='workflow.archived').length,1);assert.equal(events.filter(e=>e.type==='workflow.accepted').length,1);
+ const events=fs.readFileSync(f.store.auditPath,'utf8').trim().split('\n').map(JSON.parse);assert.equal(events.filter(e=>e.type==='workflow.archive_intent').length,1);assert.equal(events.filter(e=>e.type==='workflow.accepted').length,1);
 });
 
 import { NodeRecoveryCoordinator } from '../src/core/node-recovery.js';
@@ -127,4 +127,14 @@ test('workflow-enabled capacity cannot prune unaccepted active work before its r
 test('corrupt audit evidence blocks archival before any new acceptance is persisted',async t=>{
  const f=setup(t);fs.appendFileSync(f.store.auditPath,'broken private-audit-marker\n');const before=fs.readFileSync(f.store.auditPath,'utf8');
  await rejected(f.service.archive(f.task.id),'checkpoint_audit_invalid');assert.equal(f.service.active({}).tasks.length,1);assert.equal(f.store.checkpointFaulted,true);assert.equal(fs.readFileSync(f.store.auditPath,'utf8'),before);assert.equal(fs.existsSync(f.reportPath),false);
+});
+
+for(const negativeState of ['revoked','changes_requested'])test(`verified ${negativeState} stays active after expiry and restart until new acceptance is reported`,async t=>{
+ const f=setup(t);const initial=(await f.options.adapter.readObservation()).decisions[0];await f.service.archive(f.task.id);
+ f.advance(200);const revoked={...initial,event_id:'revocation-2',state:negativeState,occurred_at:new Date(f.clock-150).toISOString()};f.setDecisions([initial,revoked]);await f.host.refresh(f.task.id);
+ assert.equal(f.service.active({}).tasks.length,1);f.advance(30001);assert.equal(f.service.active({}).tasks.length,1);
+ const store=new TaskStore(f.dir),executor=new RecordingExecutor('codex'),orchestrator=new Orchestrator({config:{limits:{maxConcurrentTasks:1}},store,executors:new Map([['codex',executor]]),defaultProvider:'codex'}),service=new ArchiveService({store,orchestrator,enabled:true,timeZone:'UTC',clock:()=>f.clock});
+ assert.equal(service.active({}).tasks.length,1);await rejected(service.archive(f.task.id),'workflow_approval_required');assert.equal(service.report('2026-11-02').entries.length,1);
+ store.createDeliveryHost(f.options);f.advance(200);f.setDecisions([initial,revoked,{...initial,event_id:'reapproved-3',occurred_at:new Date(f.clock-150).toISOString()}]);
+ await service.archive(f.task.id);assert.equal(service.active({}).tasks.length,0);assert.equal(service.report('2026-11-02').entries.length,2);
 });
