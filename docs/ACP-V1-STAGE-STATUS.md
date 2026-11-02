@@ -149,3 +149,13 @@ concurrent changes and stale proofs. This closes the inventory collector code ga
 not the actual runner stop/write-fence or distributed recovery acceptance gap.
 The protected review surface is the next offline increment; real identity
 registration, configured trust and live acceptance remain separate gates.
+
+## Subsequent protected review surface increment
+
+The PR35-based protected review handler/page now composes the real persistent
+approval host behind explicit host-only capabilities. Node loopback/temporary-
+store tests and exact page-script DOM seams cover binding/replay/CSRF/policy races.
+See [host and actual acceptance boundary](PROTECTED-DELIVERY-REVIEW.md). Ordinary
+startup remains off; no actual authenticated session service or user enrollment
+is claimed. Production source-specific session adapter/mounting, runner stop and
+write-fence adapters and real pilot tests remain unfinished where not selected.
