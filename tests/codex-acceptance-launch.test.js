@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {CodexAppServerClient} from '../src/core/codex-client.js';
+test('optional launch capability cannot be supplied as JSON',()=>{assert.throws(()=>new CodexAppServerClient({launch:{cwd:'/not/read',args:[]}}),/launch/i);});
+test('a broken launch capability fails closed before using legacy cwd or arguments',async()=>{const c=new CodexAppServerClient({command:process.execPath,requestTimeoutMs:500,launch:()=>null});c.on('error',()=>{});try{await assert.rejects(c.start(),/launch/i);assert.equal(c.process,null);}finally{await c.stop();}});

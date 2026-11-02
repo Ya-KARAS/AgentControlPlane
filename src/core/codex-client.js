@@ -9,11 +9,14 @@ export class CodexAppServerClient extends EventEmitter {
     command = "codex",
     requestTimeoutMs = 30000,
     disabledFeatures = [],
+    launch = undefined,
   } = {}) {
     super();
     this.command = command;
     this.requestTimeoutMs = requestTimeoutMs;
     this.disabledFeatures = disabledFeatures;
+    if (launch !== undefined && typeof launch !== "function") throw new TypeError("launch must be a trusted host function");
+    this.launch = launch;
     this.process = null;
     this.nextId = 1;
     this.pending = new Map();
@@ -28,12 +31,15 @@ export class CodexAppServerClient extends EventEmitter {
     for (const feature of this.disabledFeatures) {
       args.push("--disable", feature);
     }
+    const override = this.launch?.();
+    if (this.launch && (!override || !Array.isArray(override.args) || override.args.length > 64 || override.args.some(value => typeof value !== "string" || value.length > 2048) || typeof override.cwd !== "string")) throw new TypeError("Invalid launch capability");
     this.process = spawn(
       this.command,
-      args,
+      override?.args ?? args,
       {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
+        ...(override ? {cwd: override.cwd, detached: override.detached === true} : {}),
         env: {
           PATH: process.env.PATH ?? "",
           SystemRoot: process.env.SystemRoot ?? "",
