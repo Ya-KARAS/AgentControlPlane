@@ -298,7 +298,7 @@ export class TaskStore {
     task.updatedAt = now();
     this.persist();
     this.audit("task.kind", { taskId, kind: task.kind });
-    return structuredClone(task);
+    return normalizeTaskRecord(task);
   }
 
   persist() {
@@ -423,7 +423,7 @@ export class TaskStore {
         c.resultHash !== checkpointResultHash(task) || task.policy.model !== c.model || task.policy.effort !== c.effort ||
         ["executor", "runtimeFingerprint", "profileProofHash", "canonicalWorkspace", "clientHomeReference", "model", "effort"].some((key) => c[key] !== binding[key]))
       throw checkpointError("checkpoint_not_adoptable");
-    return structuredClone({ task, checkpoint: c });
+    return structuredClone({ task: normalizeTaskRecord(task), checkpoint: c });
   }
 
   audit(type, payload) {
