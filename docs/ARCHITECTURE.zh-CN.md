@@ -80,3 +80,21 @@ Codex 具有显式的 workspace-write 沙箱路径。CLI 和兼容端点适配�
 [执行节点预检](EXECUTION-NODES.md) 默认关闭，通过 MCP 展示本地/云节点登记和
 主机缓存观测的只读建议。不修改调度、不启动执行器、不获取执行权，也不跨节点
 共享任务状态。PR4 真实 runner 与安全恢复验收仍待完成。
+
+## 可选的单进程控制器所有权
+
+PR1 在既有 TaskStore 中增加默认关闭的 registry 和任务控制 lease，不新增队列、
+存储或执行器生命周期。由本地 operator 配置的私有 principal 绑定只用于可信进程内
+actor；公开描述符不包含绑定。当前传输仅明确绑定 `local-operator`，不宣称已经
+认证 Dot/Grok/Muse 等独立 Agent。
+
+纯 lease 转换使用服务端时间、有界 TTL 和递增 generation。释放保留 generation
+墓碑；每次存储转换同步比较期望 generation，并复用既有 writer lock、状态漂移
+检查、持久化和审计链。`single` 和 `cooperative` 不允许其他 owner 自动接管过期
+lease；`failover` 允许可信 actor 在过期后领取。协作参与者可提案/审阅，但不新增
+并发 writer 或提案队列。无自动接管调度器或心跳。控制器接管不会启动、取消或
+reroute 执行器；既有执行 checkpoint lease 的含义不变。
+
+唯一新增网络接口是只读 `list_controllers`。进程内以控制器身份修改任务须带可信
+actor 和有效 generation；原有可信执行器/内部更新 API 保持兼容。没有单独 Agent
+的网络修改入口，也不提供分布式所有权保证。详见 [控制器说明及回滚](CONTROLLERS.md)。
