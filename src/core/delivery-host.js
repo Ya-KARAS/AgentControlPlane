@@ -16,6 +16,11 @@ export function createDeliveryHostService({ adapter, authorizeUser, clock = Date
     return { ...state.delivery, checks:projection.checks, review_state:projection.review, source:'verified_host', verification:'verified', verified_until:new Date(projection.until).toISOString(), approval_supported:typeof authorizeUser === 'function',merged:projection.merge?.merged ?? null,merge_commit_sha:projection.merge?.merge_commit_sha ?? null,merge_source:projection.merge?.source ?? null,merge_event_id:projection.merge?.event_id ?? null };
   }
   return Object.freeze({ status,
+    acceptance(id) {
+      const view=status(id),projection=projections.get(id),decision=projection?.decision;
+      if(view?.source!=='verified_host'||view.review_state!=='approved'||view.checks!=='passed'||view.approval_supported!==true||decision?.decision!=='approved'||!decision.user_id||!decision.event_id)return null;
+      return Object.freeze({repository:decision.repository,pull_request_number:decision.pull_request_number,head_sha:decision.head_sha,user_id:decision.user_id,event_id:decision.event_id,observed_at:new Date(projection.observed).toISOString(),valid_until:new Date(projection.until).toISOString()});
+    },
     async refresh(id) {
       projections.delete(id); // No cached approval across any failed refresh.
       const previous=pending.get(id) ?? Promise.resolve();
@@ -31,10 +36,10 @@ export function createDeliveryHostService({ adapter, authorizeUser, clock = Date
           const result=await evaluator.evaluate(target);
           if (!result.candidate || !healthy() || stamp(read(id)?.delivery) !== stamp(delivery)) return status(id);
           const journal={version:1,history:evaluator.exportHistory()};
-          commit(id,journal,stamp(delivery),result.candidate.merge); // No async yield between binding and persist.
+          commit(id,journal,stamp(delivery),result.candidate.merge,result.candidate); // No async yield between binding and persist.
           const now=clock(), observed=Date.parse(result.validity.observed_at), until=Date.parse(result.validity.valid_until);
           if (!Number.isSafeInteger(now) || now < observed || now >= until || !healthy()) return status(id);
-          projections.set(id,{stamp:stamp(delivery),observed,until,checks:result.candidate.checks,merge:result.candidate.merge,
+          projections.set(id,{stamp:stamp(delivery),observed,until,checks:result.candidate.checks,merge:result.candidate.merge,decision:result.candidate,
             review:result.candidate.decision === 'approved' ? 'approved' : result.candidate.decision === 'changes_requested' ? 'changes_requested' : result.candidate.decision === 'revoked' ? 'pending_review' : 'unknown'});
           return status(id);
         } catch { projections.delete(id); return status(id); }

@@ -63,3 +63,5 @@ its original path so release notes and development handoffs keep stable links.
 - [Offline node checkpoint, fencing and recovery](NODE-RECOVERY.md)
 
 - [Unified foreground/background local messages](MESSAGES.md)
+
+- [Verified acceptance, daily report and archive lifecycle](WORKFLOW-ARCHIVE.md)

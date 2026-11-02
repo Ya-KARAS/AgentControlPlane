@@ -1,3 +1,5 @@
+import { ArchiveService, workflowTaskSchema } from "./core/workflow.js";
+import { z } from "zod";
 import { MessageHub, messageDispatchSchema } from "./core/messages.js";
 import http from "node:http";
 import crypto from "node:crypto";
@@ -269,11 +271,12 @@ export async function createApplication(overrides = {}) {
       projectRegistry,
     });
   }
+  const archiveService=new ArchiveService({store,orchestrator,enabled:config.workflow?.enabled??false,timeZone:config.workflow?.timeZone??'UTC'});
   if (overrides.startCodex !== false) {
     await orchestrator.start();
   }
   const messageHub = new MessageHub({store,orchestrator,enabled:config.messages?.enabled??false,maxMessages:config.messages?.maxStoredMessages??1024});
-  const handleMcp = createMcpHandler({ orchestrator, store, config, messageHub,
+  const handleMcp = createMcpHandler({ orchestrator, store, config, messageHub, archiveService,
     executionNodeObserver: overrides.executionNodeObserver });
   const pairingManager =
     overrides.pairingManager ??
@@ -524,7 +527,7 @@ export async function createApplication(overrides = {}) {
         const query = url.searchParams.get("query") ?? "";
         const status = url.searchParams.get("status") ?? null;
         sendJson(response, 200, {
-          tasks: store.findTasks({ query, status, limit }),
+          tasks: config.workflow?.enabled===true&&url.searchParams.get("view")==="active" ? archiveService.active({query,status,limit}).tasks : store.findTasks({ query, status, limit }),
         });
         return;
       }
@@ -592,6 +595,16 @@ export async function createApplication(overrides = {}) {
         const task = await orchestrator.cancel(parts[2]);
         sendJson(response, 200, { task });
         return;
+      }
+
+      if(request.method==='POST'&&parts.length===4&&parts[0]==='v1'&&parts[1]==='tasks'&&parts[3]==='archive'){
+        const body=await readJson(request,4096),target=workflowTaskSchema.safeParse({task_id:parts[2]});
+        if(!z.object({}).strict().safeParse(body).success||!target.success)throw new ControlPlaneError('workflow_request_invalid','Invalid workflow request');
+        const id=store.resolveTaskId(target.data.task_id);if(!id)throw new ControlPlaneError('task_not_found','Task not found');
+        sendJson(response,200,{task:await archiveService.archive(id)});return;
+      }
+      if(request.method==='GET'&&parts.length===3&&parts[0]==='v1'&&parts[1]==='reports'){
+        sendJson(response,200,{report:archiveService.report(parts[2])});return;
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/messages') {

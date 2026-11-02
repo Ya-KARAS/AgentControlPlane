@@ -156,3 +156,10 @@ metadata from verified state, which remains unknown. No authenticated human
 approval channel exists, so approved/merged ingestion is closed by default;
 no bearer, TTY or model assertion substitutes for user approval. This does not
 authorize merging or deployment. See [delivery boundaries](DELIVERY.md).
+
+## Acceptance and archive bookkeeping
+
+[Workflow archive](WORKFLOW-ARCHIVE.md) reuses PR23 trusted delivery evidence and
+the existing store/writer boundary. It persists acceptance and a synced dated
+report before marking inactive. Active work is a filtered view, not a queue;
+history and existing APIs remain. Default off; no approval/merge or real runner.
