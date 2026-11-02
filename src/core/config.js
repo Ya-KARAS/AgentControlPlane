@@ -342,6 +342,10 @@ export function loadConfig(configPath = process.env.AGENT_CONTROL_CONFIG) {
   config.stateDir = path.resolve(
     process.env.AGENT_CONTROL_STATE_DIR ?? defaultStateDir,
   );
+  const messageOptions = config.messages ?? {};
+  if(typeof messageOptions!=='object'||Array.isArray(messageOptions)||Object.keys(messageOptions).some(key=>!['enabled','maxStoredMessages'].includes(key)))throw new ControlPlaneError('invalid_config','Invalid messages configuration');
+  config.messages = {enabled:false,maxStoredMessages:1024,...messageOptions};
+  if(typeof config.messages.enabled!=='boolean'||!Number.isInteger(config.messages.maxStoredMessages)||config.messages.maxStoredMessages<1||config.messages.maxStoredMessages>4096)throw new ControlPlaneError('invalid_config','Invalid messages configuration');
   config.executionNodes = normalizeExecutionNodes(config.executionNodes);
   config.version = readPackageVersion();
   if (

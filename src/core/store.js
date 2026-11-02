@@ -661,6 +661,11 @@ export class TaskStore {
     return this.#commitMessage(key,{...message,execution_task_id:taskId,logical_task_id:task.logical_task_id??task.id,state:'dispatched'},'task_bound');
   }
 
+  isMessageTaskBound(taskId,key) {
+    const message=this.state.messages?.[key];
+    return message?.kind==='execution_request'&&message.execution_task_id===taskId&&messageOperationKey(message)===key;
+  }
+
   listMessages(query={}) {
     const {conversation_id,channel,limit}=normalizeMessageQuery(query);
     return Object.values(this.state.messages??{}).filter(message=>(!conversation_id||message.conversation_id===conversation_id)&&(!channel||message.channels.includes(channel))).sort((a,b)=>a.sequence-b.sequence).slice(-limit).map(m=>structuredClone(m));

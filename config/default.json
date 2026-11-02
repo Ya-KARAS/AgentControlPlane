@@ -7,6 +7,10 @@
     "mcpSessionIdleMinutes": 30
   },
   "workspaceRoots": [],
+  "messages": {
+    "enabled": false,
+    "maxStoredMessages": 1024
+  },
   "executionNodes": {
     "enabled": false,
     "nodes": []

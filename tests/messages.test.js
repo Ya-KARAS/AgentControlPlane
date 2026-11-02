@@ -14,7 +14,7 @@ function setup(t,{maxMessages=1024,maxTasks=2000}={}){
  const config={workspaceRoots:[workspace],executor:{provider:'codex',routing:{order:['codex']}},codex:{approvalPolicy:'never',sandbox:'workspace-write',networkAccess:false},profiles:{economy:{model:'fake',effort:'low',maxSubagents:0,tokenBudget:30000,summary:'concise'}},limits:{maxBriefCharacters:24000,maxConcurrentTasks:1,maxQueuedTasks:10,maxTokenBudget:250000,maxStoredEventsPerTask:30,maxTaskRuntimeMinutes:1,discoveryRefreshMs:0}};
  const orchestrator=new Orchestrator({config,store,executors:new Map([['codex',executor]]),defaultProvider:'codex'});
  const hub=new MessageHub({store,orchestrator,enabled:true,maxMessages});
- return {dir,workspace,store,executor,orchestrator,hub,request:{workspace,objective:'one message task',profile:'economy'}};
+ return {dir,workspace,store,executor,orchestrator,hub,config,request:{workspace,objective:'one message task',profile:'economy'}};
 }
 const message=(patch={})=>({message_id:'message-1',conversation_id:'group-1',channel:'foreground',kind:'discussion',text:'Reviewed local discussion',...patch});
 const fails=(fn,code)=>assert.throws(fn,e=>e.code===code);
@@ -37,7 +37,7 @@ test('one operation key deduplicates explicit dispatch across channels and cold 
  const s=setup(t);const input=message({kind:'execution_request'});
  const first=s.hub.dispatch(input,s.request);const again=s.hub.dispatch({...input,channel:'background'},s.request);assert.equal(again.task.id,first.task.id);
  await until(()=>s.store.getTask(first.task.id).status==='completed');assert.equal(s.executor.turnStarts.length,1);
- const fresh=new TaskStore(s.store.stateDir);const hub=new MessageHub({store:fresh,orchestrator:s.orchestrator,enabled:true});
+ const fresh=new TaskStore(s.store.stateDir);const restarted=new Orchestrator({config:s.config,store:fresh,executors:new Map([["codex",new RecordingExecutor("codex")]]),defaultProvider:"codex"});const hub=new MessageHub({store:fresh,orchestrator:restarted,enabled:true});
  assert.equal(hub.dispatch(input,s.request).task.id,first.task.id);assert.equal(fresh.listTasks(100).length,1);
  fails(()=>s.hub.dispatch(input,{...s.request,objective:'different work'}),'idempotency_conflict');
 });
@@ -79,4 +79,11 @@ test('task pruning cannot discard an unresolved execution-node reservation',t=>{
  recovery.bind(task.id);recovery.checkpoint(task.id,1);
  fails(()=>s.store.createTask({workspace:s.workspace,brief:task.brief,policy:task.policy,executor:'codex'}),'task_capacity_reached');
  assert.equal(s.store.getTask(task.id).node_recovery.phase,'checkpointed');
+});
+
+test('retry queues a durable task when task-created audit failed before queue insertion',async t=>{
+ const s=setup(t);const audit=s.store.audit.bind(s.store);let failed=false;
+ t.mock.method(s.store,'audit',(type,payload)=>{if(type==='task.created'&&!failed){failed=true;throw new Error('simulated task-created audit gap');}return audit(type,payload);});
+ const input=message({kind:'execution_request'});assert.throws(()=>s.hub.dispatch(input,s.request));const original=s.store.listTasks()[0];assert.equal(s.orchestrator.queue.length,0);
+ assert.equal(s.hub.dispatch(input,s.request).task.id,original.id);await until(()=>s.store.getTask(original.id).status==='completed');assert.equal(s.executor.turnStarts.length,1);
 });

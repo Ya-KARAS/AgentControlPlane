@@ -155,3 +155,9 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 受管理任务增加可选 `execution_node_id` / `node_recovery`，旧记录默认为 null。
 恢复写入和准入凭证仅供主机内部使用，不增加 MCP 写工具；客户端自称停止不能
 授予新执行权。[状态转移、故障和依赖顺序](NODE-RECOVERY.md)。
+
+## 统一本地消息（可选）
+
+`post_message` / `list_messages` 与受保护的 `/v1/messages` 共用日志；显式
+`POST /v1/messages/dispatch` 使用服务器消息键调用原派单/续作，跨通道重放
+不会重复执行。[边界、身份、重试与生命周期](MESSAGES.md)。不自动消费消息。

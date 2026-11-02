@@ -60,3 +60,5 @@ its original path so release notes and development handoffs keep stable links.
 - [Optional execution-node preflight (PR4a)](EXECUTION-NODES.md)
 
 - [Offline node checkpoint, fencing and recovery](NODE-RECOVERY.md)
+
+- [Unified foreground/background local messages](MESSAGES.md)

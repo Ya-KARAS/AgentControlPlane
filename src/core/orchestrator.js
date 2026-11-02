@@ -447,6 +447,17 @@ export class Orchestrator extends EventEmitter {
     return this.store.updateTask(taskId, patch, controllerContext, this.running.get(taskId)?.nodeFence);
   }
 
+  ensureMessageTaskQueued(taskId,key) {
+    const task=this.store.getTask(taskId);
+    if(this.store.checkpointFaulted)throw new ControlPlaneError('checkpoint_store_faulted','Task store needs recovery');
+    if(!task||task.idempotency_key!==key||!/^message:[a-f0-9]{64}$/.test(key)||!this.store.isMessageTaskBound(taskId,key))throw new ControlPlaneError('message_conflict','Message task binding is not confirmed');
+    if(task.status!=='queued')return;
+    if(task.node_recovery)throw new ControlPlaneError('node_recovery_required','Managed node tasks require explicit host admission');
+    if(this.running.has(taskId)||this.queue.some(entry=>entry.taskId===taskId))return;
+    this.queue.push({taskId,followUp:Boolean(task.parentTaskId||task.continuation),rerouted:Boolean(task.continuation)});
+    queueMicrotask(()=>this.#drain());
+  }
+
   validateNodeRecoveryTask(task) {
     if(task.executor_checkpoint||!this.executors.has(task.executor)||this.executors.get(task.executor).recoveryEnabled===true)throw new ControlPlaneError('node_native_checkpoint_unsupported','Native executor checkpoint recovery needs a node-bound adapter');
   }
