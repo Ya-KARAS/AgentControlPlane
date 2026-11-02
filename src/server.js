@@ -268,7 +268,8 @@ export async function createApplication(overrides = {}) {
   if (overrides.startCodex !== false) {
     await orchestrator.start();
   }
-  const handleMcp = createMcpHandler({ orchestrator, store, config });
+  const handleMcp = createMcpHandler({ orchestrator, store, config,
+    executionNodeObserver: overrides.executionNodeObserver });
   const pairingManager =
     overrides.pairingManager ??
     new PairingManager({

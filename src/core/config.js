@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ControlPlaneError } from "./errors.js";
 import { resolveRerouteConfig } from "./reroute.js";
+import { normalizeExecutionNodes } from "./execution-node-config.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, "..", "..");
@@ -328,6 +329,7 @@ export function loadConfig(configPath = process.env.AGENT_CONTROL_CONFIG) {
   config.stateDir = path.resolve(
     process.env.AGENT_CONTROL_STATE_DIR ?? defaultStateDir,
   );
+  config.executionNodes = normalizeExecutionNodes(config.executionNodes);
   config.version = readPackageVersion();
   if (
     [...config.workspaceRoots, ...config.projectDiscoveryRoots].some(

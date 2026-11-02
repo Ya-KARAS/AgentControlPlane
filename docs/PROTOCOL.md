@@ -144,3 +144,12 @@ Codex exposes a live thread goal and can be polled while running. CLI adapters
 may report cumulative usage only in their final event, so their budget is also
 sent as policy guidance but cannot always be enforced at the same granularity.
 Providers can consume additional tokens between measurements.
+
+## Execution-node planning (optional)
+
+`execution_nodes({requested_node_id?,executor_id?})` reads registered local/cloud
+nodes and fresh host-cached preconditions. Default disabled; missing observations
+are unknown. Explicit unavailable nodes never silently fall back. The response
+always has `advisory_only:true` and `execution_authorized:false`; it does not
+assign a task or authorize execution. No client-supplied observations/approvals.
+See [configuration, trust and PR4 gates](EXECUTION-NODES.md).

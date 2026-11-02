@@ -7,6 +7,10 @@
     "mcpSessionIdleMinutes": 30
   },
   "workspaceRoots": [],
+  "executionNodes": {
+    "enabled": false,
+    "nodes": []
+  },
   "companion": {
     "enabled": true,
     "pairingTtlMinutes": 10,

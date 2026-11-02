@@ -101,3 +101,10 @@ adapters execute with the host user's privileges and are therefore restricted
 to allowlisted, trusted workspaces. A hosted relay requires a separate
 multi-tenant authentication and device-trust design; the local server must not
 be exposed directly to the public Internet.
+
+## Optional execution-node preflight
+
+[Execution-node preflight](EXECUTION-NODES.md) adds disabled-by-default local/cloud
+node descriptors and host-cached readiness advice through MCP. It never changes
+the scheduler, starts an executor, acquires execution ownership or shares task
+state across nodes. PR4 actual runner/recovery acceptance remains outstanding.

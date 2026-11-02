@@ -13,6 +13,13 @@ import { publicModels } from "../core/profiles.js";
 import { readPackageVersion } from "../core/config.js";
 import { usageDimensions, reconcileUsage } from "../core/usage-dimensions.js";
 import { usageEventsToCsv } from "../core/usage-events.js";
+import { normalizeExecutionNodes, executionNodeView } from "../core/execution-nodes.js";
+
+const executionNodeFields = {
+  requested_node_id: z.string().min(1).max(64).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).optional(),
+  executor_id: z.string().min(1).max(64).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).optional(),
+};
+const executionNodeArgs = z.object(executionNodeFields).strict();
 
 const SERVER_INFO = { name: "agent-control-plane" };
 
@@ -92,9 +99,31 @@ function toJsonSchema(shape) {
   });
 }
 
-function buildToolSpecs({ orchestrator, store, config }) {
+function buildToolSpecs({ orchestrator, store, config, executionNodeObserver, executionNodeClock = Date.now }) {
+  const nodeConfig = normalizeExecutionNodes(config.executionNodes);
   const networkAccess = Boolean(config.codex?.networkAccess);
   return [
+    {
+      name: "execution_nodes",
+      title: "Execution-node planning advice",
+      description: "Read cached host observations and local-first node advice. Never assigns a task, acquires ownership or authorizes execution.",
+      inputSchema: executionNodeFields,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+      async handler(args) {
+        let observations = [], nowMs;
+        if (nodeConfig.enabled && typeof executionNodeObserver === 'function') {
+          try {
+            const cached = executionNodeObserver();
+            if (Array.isArray(cached)) observations = cached;
+            else if (cached && typeof cached.then === 'function') Promise.resolve(cached).catch(() => {});
+          } catch { /* Host failure is unavailable, never raw diagnostic output. */ }
+        }
+        try { nowMs = executionNodeClock(); } catch { nowMs = NaN; }
+        const view = executionNodeView({ config: nodeConfig, observations, nowMs,
+          requestedNodeId: args.requested_node_id ?? null, executorId: args.executor_id ?? null });
+        return result(view, "Read-only execution-node advice; execution is not authorized.");
+      },
+    },
     {
       name: "dispatch_project",
       title: "Dispatch engineering project",
@@ -674,10 +703,10 @@ function buildToolSpecs({ orchestrator, store, config }) {
   ];
 }
 
-export function createMcpHandler({ orchestrator, store, config }) {
+export function createMcpHandler({ orchestrator, store, config, executionNodeObserver, executionNodeClock }) {
   const transports = new Map();
   const idleTimeoutMs = config.server.mcpSessionIdleMinutes * 60 * 1000;
-  const toolSpecs = buildToolSpecs({ orchestrator, store, config });
+  const toolSpecs = buildToolSpecs({ orchestrator, store, config, executionNodeObserver, executionNodeClock });
   const serverInfo = {
     ...SERVER_INFO,
     version: config.version ?? readPackageVersion(),
@@ -755,6 +784,16 @@ export function createMcpHandler({ orchestrator, store, config }) {
           result: discoverResult(),
         }),
       );
+      return;
+    }
+
+    // Validate this read tool before SDK parsing so unknown host-evidence fields
+    // are rejected without reflecting caller keys/values in framework errors.
+    if (parsedBody?.method === 'tools/call' && parsedBody.params?.name === 'execution_nodes' &&
+        !executionNodeArgs.safeParse(parsedBody.params.arguments === undefined ? {} : parsedBody.params.arguments).success) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: parsedBody.id ?? null,
+        error: { code: -32602, message: 'Invalid execution-node query' } }));
       return;
     }
 
