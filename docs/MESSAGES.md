@@ -90,7 +90,8 @@ keep it active/retryable and history retrievable. Implement that as a separate P
 PR24 document-handoff validation remains its existing separate artifact; this
 short-message journal does not replace or copy its version/hash/parent checker.
 
-Real foreground group UI and vendor transports/identities remain unimplemented.
+The follow-on [offline conversation page](CONVERSATIONS.md) now supplies a local
+foreground group view. Actual vendor transports/identities remain unimplemented.
 The shared API is runnable offline with real MCP/HTTP and fake executors; that
 proves neither a callable Grok/Dot/Muse service nor automatic ordinary Chat return.
 No new paid API, Notion, credential, permission or account installation is needed.

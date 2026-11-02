@@ -1512,6 +1512,33 @@ export class Orchestrator extends EventEmitter {
     return this.store.getTask(task.id);
   }
 
+  // A UI stop request is not proof that an executor has stopped. Keep the
+  // running workspace reservation until its existing terminal notification path.
+  async requestStop(taskId) {
+    const task = this.store.getTask(taskId);
+    if (!task) throw new ControlPlaneError("task_not_found", "Task not found");
+    const active = this.running.get(taskId);
+    if (!active) {
+      if (task.status === "queued" && this.queue.some(entry => entry.taskId === taskId)) return this.cancel(taskId);
+      if (["completed","partial","blocked","failed","cancelled","interrupted"].includes(task.status)) return task;
+      throw new ControlPlaneError("stop_not_ready", "Executor stop cannot yet be confirmed");
+    }
+    if (active.stopPending) return active.stopPending;
+    if (active.stopRequested) return task;
+    if (!task.threadId || !active.turnId || active.completing) throw new ControlPlaneError("stop_not_ready", "Executor stop cannot yet be confirmed");
+    active.stopPending = Promise.resolve().then(async () => {
+      try {
+        this.store.audit("task.stop_requested", {taskId, threadId:task.threadId, turnId:active.turnId});
+        await this.#executorFor(task).interruptTurn({threadId:task.threadId, turnId:active.turnId});
+        if (this.running.get(taskId) === active) active.stopRequested = true;
+        return this.store.getTask(taskId);
+      } catch {
+        throw new ControlPlaneError("stop_unconfirmed", "Executor stop was not confirmed; refresh before retrying");
+      } finally { active.stopPending = null; }
+    });
+    return active.stopPending;
+  }
+
   async cancel(taskId) {
     const task = this.store.getTask(taskId);
     if (!task) {

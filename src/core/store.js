@@ -714,8 +714,8 @@ export class TaskStore {
   }
 
   listMessages(query={}) {
-    const {conversation_id,channel,limit}=normalizeMessageQuery(query);
-    return Object.values(this.state.messages??{}).filter(message=>(!conversation_id||message.conversation_id===conversation_id)&&(!channel||message.channels.includes(channel))).sort((a,b)=>a.sequence-b.sequence).slice(-limit).map(m=>structuredClone(m));
+    const {conversation_id,channel,limit,before_sequence}=normalizeMessageQuery(query);
+    return Object.values(this.state.messages??{}).filter(message=>(!conversation_id||message.conversation_id===conversation_id)&&(!channel||message.channels.includes(channel))&&(!before_sequence||message.sequence<before_sequence)).sort((a,b)=>a.sequence-b.sequence).slice(-limit).map(m=>structuredClone(m));
   }
 
   applyNodeRecovery(id, command) {

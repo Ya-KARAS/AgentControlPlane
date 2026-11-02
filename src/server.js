@@ -1,5 +1,7 @@
 import { ArchiveService, workflowTaskSchema } from "./core/workflow.js";
 import { z } from "zod";
+import { ConversationService } from "./core/conversations.js";
+import { conversationHtml } from "./conversation-page.js";
 import { MessageHub, messageDispatchSchema } from "./core/messages.js";
 import http from "node:http";
 import crypto from "node:crypto";
@@ -276,6 +278,7 @@ export async function createApplication(overrides = {}) {
     await orchestrator.start();
   }
   const messageHub = new MessageHub({store,orchestrator,enabled:config.messages?.enabled??false,maxMessages:config.messages?.maxStoredMessages??1024});
+  const conversations = new ConversationService({store,orchestrator,messageHub,agents:config.controllers?.agents??[]});
   const handleMcp = createMcpHandler({ orchestrator, store, config, messageHub, archiveService,
     executionNodeObserver: overrides.executionNodeObserver });
   const pairingManager =
@@ -400,7 +403,7 @@ export async function createApplication(overrides = {}) {
       const isHealth = request.method === "GET" && url.pathname === "/health";
       const isDashboard =
         request.method === "GET" &&
-        (url.pathname === "/" || url.pathname === "/dashboard");
+        (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/conversations");
       const isProtectedResourceMetadata =
         request.method === "GET" &&
         [
@@ -471,7 +474,7 @@ export async function createApplication(overrides = {}) {
       }
 
       if (isDashboard) {
-        sendHtml(response, 200, dashboardHtml(config));
+        sendHtml(response, 200, url.pathname === "/conversations" ? conversationHtml() : dashboardHtml(config));
         return;
       }
 
@@ -607,9 +610,26 @@ export async function createApplication(overrides = {}) {
         sendJson(response,200,{report:archiveService.report(parts[2])});return;
       }
 
+      if(parts[0]==='v1'&&parts[1]==='conversations'&&!config.server.authToken)throw new ControlPlaneError('conversation_auth_required','Conversation access requires configured application authorization');
+      if(request.method==='GET' && url.pathname==='/v1/conversations') {
+        if(url.searchParams.size)throw new ControlPlaneError('invalid_conversation_request','Invalid conversation request');
+        sendJson(response,200,conversations.list());return;
+      }
+      if(request.method==='GET' && url.pathname==='/v1/conversations/view') {
+        const query=Object.fromEntries(url.searchParams);if(query.before_sequence!==undefined)query.before_sequence=Number(query.before_sequence);
+        sendJson(response,200,conversations.snapshot(query));return;
+      }
+      if(request.method==='POST' && parts.length===3 && parts[0]==='v1' && parts[1]==='conversations') {
+        const body=await readJson(request,16*1024);
+        if(parts[2]==='post'){sendJson(response,201,conversations.post(body));return;}
+        if(parts[2]==='follow-up'){sendJson(response,202,conversations.followUp(body));return;}
+        if(parts[2]==='stop'){sendJson(response,200,await conversations.stop(body));return;}
+      }
+
       if (request.method === 'GET' && url.pathname === '/v1/messages') {
         const query=Object.fromEntries(url.searchParams);
         if(query.limit!==undefined)query.limit=Number(query.limit);
+        if(query.before_sequence!==undefined)query.before_sequence=Number(query.before_sequence);
         sendJson(response,200,messageHub.list(query));return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/messages') {

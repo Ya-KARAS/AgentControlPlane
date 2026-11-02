@@ -212,3 +212,9 @@ existing trusted user decision, passed checks and inactive runtime are required.
 `list_active_tasks` / `GET /v1/tasks?view=active` filter committed report/archive
 receipts; original task lists stay historical. `daily_report` / dated report GET
 read safe local report rows. [Ordering, retry, retention and live gates](WORKFLOW-ARCHIVE.md).
+
+## Offline conversation routes
+
+See [offline project conversations](CONVERSATIONS.md) for protected scoped message,
+continuation and safe stop interfaces, default-off authorization and browser limits.
+The original single queue and human approval boundary remain authoritative.

@@ -427,7 +427,7 @@ footer { padding: 10px 20px 18px; color: var(--muted); font-size: 12px; max-widt
 }
 </style>
 </head>
-<body>
+<body><nav style="padding:12px"><a href="/conversations">项目对话 / Conversations</a></nav>
 <header>
   <div class="brand">
     <span class="dot" id="healthDot"></span>
