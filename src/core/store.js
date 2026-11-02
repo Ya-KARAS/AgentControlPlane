@@ -1,3 +1,5 @@
+import { createDeliveryHostService } from "./delivery-host.js";
+import { safeDelivery, transitionDelivery } from "./delivery.js";
 import { normalizeMessage, normalizeMessageQuery, messageOperationKey, messageFingerprint } from "./messages.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -88,7 +90,8 @@ function executorThreads(project) {
 function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
-    ...structuredClone(task),
+    ...structuredClone(Object.fromEntries(Object.entries(task).filter(([key])=>key!=="_delivery_evidence"))),
+    delivery:safeDelivery(task.delivery),
     execution_node_id: task.execution_node_id ?? null,
     node_recovery: task.node_recovery ? structuredClone(task.node_recovery) : null,
     controller: task.controller ? { id: task.controller.id, kind: task.controller.kind, mode: task.controller.mode } : null,
@@ -114,6 +117,8 @@ function normalizeTaskRecord(task) {
 }
 
 export class TaskStore {
+  #deliveryHost = null;
+  #deliveryHostEpoch = 0;
   constructor(
     stateDir,
     maxEvents = 500,
@@ -744,9 +749,69 @@ export class TaskStore {
     return Object.values(this.state.tasks).some(other => other.id !== taskId && sameRecoveryWorkspace(other.workspace,task?.workspace) && (other.node_recovery && other.node_recovery.phase !== 'completed' || task?.node_recovery && other.status === 'running'));
   }
 
+  createDeliveryHost({adapter, authorizeUser, clock} = {}) {
+    const epoch=++this.#deliveryHostEpoch;
+    this.#deliveryHost=createDeliveryHostService({adapter,authorizeUser,clock,
+      healthy:()=>epoch === this.#deliveryHostEpoch && !this.checkpointFaulted,
+      read:(id)=>Object.hasOwn(this.state.tasks,id) ? {delivery:safeDelivery(this.state.tasks[id].delivery),journal:this.state.tasks[id]._delivery_evidence} : null,
+      commit:(id,journal,expected,merge)=>this.#persistDeliveryEvidence(id,journal,expected,epoch,merge),
+    });
+    return this.#deliveryHost;
+  }
+
+  #persistDeliveryEvidence(id,journal,expected,epoch,merge) {
+    const task=this.state.tasks[id];
+    if (epoch !== this.#deliveryHostEpoch || !task || JSON.stringify(safeDelivery(task.delivery)) !== expected) throw new ControlPlaneError("delivery_conflict", "Delivery binding changed");
+    const wasLocked=Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease();
+    let persisted=false;
+    try {
+      if (isDeepStrictEqual(task._delivery_evidence,journal)) return;
+      this.state.tasks[id]={...task,_delivery_evidence:structuredClone(journal)};
+      this.persist(); persisted=true;
+      this.audit("task.delivery_evidence",{taskId:id,repository:task.delivery.repository,pull_request_number:task.delivery.pull_request_number,head_sha:task.delivery.head_sha,...(merge ? {merged:merge.merged,merge_commit_sha:merge.merge_commit_sha,merge_event_id:merge.event_id,merge_source:merge.source} : {})});
+    } catch(error) {
+      if (!persisted) this.state.tasks[id]=task;
+      this.checkpointFaulted=true;
+      throw error;
+    } finally { if (!wasLocked && !this.checkpointFaulted) this.releaseExecutorLease(); }
+  }
+
+  getDelivery(id) {
+    if (this.#deliveryHost) return this.#deliveryHost.status(id);
+    return Object.hasOwn(this.state.tasks,id) ? safeDelivery(this.state.tasks[id].delivery) : null;
+  }
+
+  // Offline operator observation, never an approval/merge operation.
+  recordDelivery(id, input) {
+    if (!Object.hasOwn(this.state.tasks, id)) throw new ControlPlaneError("task_not_found", "Task not found");
+    const task = this.state.tasks[id];
+    const current = safeDelivery(task.delivery) ? task.delivery : null;
+    const delivery = transitionDelivery(current, input);
+    const wasLocked = Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease();
+    let persisted = false;
+    try {
+      if (isDeepStrictEqual(current, delivery)) return safeDelivery(delivery);
+      this.state.tasks[id] = { ...task, delivery, updatedAt: now() };
+      this.persist();
+      persisted = true;
+      this.audit("task.delivery_observed", { taskId: id, repository: delivery.repository,
+        pull_request_number: delivery.pull_request_number, head_sha: delivery.head_sha });
+      return safeDelivery(delivery);
+    } catch (error) {
+      if (!persisted) this.state.tasks[id] = task;
+      this.checkpointFaulted = true;
+      throw error;
+    } finally {
+      if (!wasLocked && !this.checkpointFaulted) this.releaseExecutorLease();
+    }
+  }
+
   updateTask(id, patch, controllerContext = undefined, nodeContext = undefined) {
     const task = this.state.tasks[id];
     if (!task) return null;
+    if (Object.hasOwn(patch,"_delivery_evidence") || (Object.hasOwn(patch,"delivery") && !isDeepStrictEqual(patch.delivery,this.getDelivery(id)) && !isDeepStrictEqual(patch.delivery,safeDelivery(task.delivery))))throw new ControlPlaneError('delivery_update_required','Delivery observations require the checked operation');
     for (const field of ['execution_node_id','node_recovery']) {
       if (Object.hasOwn(patch,field) && !isDeepStrictEqual(patch[field],task[field]??null)) throw new ControlPlaneError('node_recovery_update_required','Execution ownership requires a checked host operation');
     }
@@ -759,7 +824,7 @@ export class TaskStore {
     }
     // Legacy callers may write a full unchanged record; never assign ownership
     // fields from that patch, even when they compare equal.
-    const { controller: ignoredController, control_lease: ignoredLease, execution_node_id: ignoredNode, node_recovery: ignoredRecovery, ...safePatch } = patch;
+    const { controller: ignoredController, control_lease: ignoredLease, execution_node_id: ignoredNode, node_recovery: ignoredRecovery, delivery: ignoredDelivery, ...safePatch } = patch;
     // Executor/internal writes remain compatible. Any controller-authored patch
     // must carry a verified actor and the live fencing generation.
     if (controllerContext !== undefined) {
@@ -812,6 +877,7 @@ export class TaskStore {
     const task = this.state.tasks[id];
     if (!task) return null;
     const copy = normalizeTaskRecord(task);
+    copy.delivery=this.getDelivery(id);
     if (!includeEvents) delete copy.events;
     return copy;
   }
@@ -822,6 +888,7 @@ export class TaskStore {
       .slice(0, limit)
       .map((task) => {
         const copy = normalizeTaskRecord(task);
+        copy.delivery=this.getDelivery(task.id);
         delete copy.events;
         return copy;
       });
@@ -862,6 +929,7 @@ export class TaskStore {
     matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return matches.slice(0, Math.min(100, Math.max(1, Number(limit) || 20))).map((task) => {
       const copy = normalizeTaskRecord(task);
+      copy.delivery=this.getDelivery(task.id);
       delete copy.events;
       return copy;
     });

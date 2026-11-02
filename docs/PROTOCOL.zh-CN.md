@@ -161,3 +161,12 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 `post_message` / `list_messages` 与受保护的 `/v1/messages` 共用日志；显式
 `POST /v1/messages/dispatch` 使用服务器消息键调用原派单/续作，跨通道重放
 不会重复执行。[边界、身份、重试与生命周期](MESSAGES.md)。不自动消费消息。
+
+## 交付观测（PR3）
+
+只读 `delivery_status(task_id)` 和 GET `/v1/tasks/:id/delivery` 返回任务的可选
+交付元数据，与执行 `status` 分开；缺失或损坏数据返回 null。手工报告单列为
+`reported_checks` / `reported_review_state`，已验证 `checks` / `review_state`
+保持 `unknown`。`approval_supported` 为 false；客户端自称用户、模型建议或
+绿色 CI 均不能设置 approved/merged。既有认证不变，无修改交付的工具或路由。
+详见 [交付契约与离线操作](DELIVERY.md)。

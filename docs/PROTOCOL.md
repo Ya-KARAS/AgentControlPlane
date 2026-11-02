@@ -194,3 +194,13 @@ See [state transitions, failure handling and stack order](NODE-RECOVERY.md).
 journal. Explicit `POST /v1/messages/dispatch` uses a server message key for
 original dispatch/continuation, so cross-channel replay does not duplicate work.
 See [bounds, identity, retry and lifecycle limits](MESSAGES.md). No auto-consumer.
+
+## Delivery observations (PR3)
+
+Read-only `delivery_status(task_id)` and GET `/v1/tasks/:id/delivery` expose
+optional task-specific metadata, separately from execution `status`. Missing or
+malformed delivery returns null. Manual reports use `reported_checks` and
+`reported_review_state`; verified `checks`/`review_state` remain `unknown`.
+`approval_supported` is false: approved/merged cannot be asserted by a client,
+CI or model. Existing authentication is unchanged; no mutating delivery tool or
+route exists. See [delivery contract and offline operations](DELIVERY.md).

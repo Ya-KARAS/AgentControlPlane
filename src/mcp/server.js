@@ -212,6 +212,19 @@ function buildToolSpecs({ orchestrator, store, config, messageHub, executionNode
       },
     },
     {
+      name: "delivery_status",
+      title: "Read task delivery observations",
+      description: "Read unverified manual PR metadata separately from execution status. No approval or GitHub action is supported.",
+      inputSchema: { task_id: z.string().min(4) },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+      async handler({ task_id }) {
+        const id = store.resolveTaskId(task_id);
+        if (!id) return failure(new Error("Unknown or ambiguous task id"));
+        const delivery = store.getDelivery(id);
+        return result({ delivery, approval_supported: delivery?.approval_supported === true }, "Delivery status; manual reports never authorize approval or merge.");
+      },
+    },
+    {
       name: "task_status",
       title: "Read engineering task status",
       description:

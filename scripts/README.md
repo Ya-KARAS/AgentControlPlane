@@ -49,3 +49,5 @@ script execution is useful when a command needs additional arguments.
 | `npm run check:relay` | `check-relay.js` | Check a configured relay with local credentials. |
 | `npm run key:fingerprint` | `key-fingerprint.js` | Print a key fingerprint prefix for operator comparison. |
 | `npm run verify:audit` | `verify-audit.js` | Verify persisted audit evidence. |
+
+- `npm run delivery:import -- --offline TASK_ID FILE`: import bounded unverified PR metadata with ACP stopped; see [delivery operations](../docs/DELIVERY.md). No approval or GitHub action.
