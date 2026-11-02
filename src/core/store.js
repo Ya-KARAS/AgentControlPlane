@@ -911,7 +911,7 @@ export class TaskStore {
     if(enabled!==true)return createPrivateDeliveryStorage();
     const binding=identityBinding({rpID,expectedOrigin}),epoch=++this.#deliveryIdentityEpoch;
     this.#deliveryHost?.invalidate?.();
-    return createPrivateDeliveryStorage({enabled:true,binding,clock,decisionTtlMs,access:(b,operation)=>this.#identityAccess(b,epoch,operation)});
+    return createPrivateDeliveryStorage({enabled:true,binding,clock,decisionTtlMs,revoke:()=>{if(epoch===this.#deliveryIdentityEpoch){this.#deliveryIdentityEpoch++;this.#deliveryHost?.invalidate?.();}},access:(b,operation)=>this.#identityAccess(b,epoch,operation)});
   }
 
   #identityAccess(binding,epoch,operation) {

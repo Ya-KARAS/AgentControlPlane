@@ -96,7 +96,8 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       } else {
         credential=rows.find(row=>row.id===response.id);
         if(!credential)throw unavailable();
-        result=await library.verifyAuthenticationResponse({...verificationOptions,credential});
+        const {revision:privateRevision,...wireCredential}=credential;
+        result=await library.verifyAuthenticationResponse({...verificationOptions,credential:wireCredential});
         const info=result?.authenticationInfo;
         if(result?.verified!==true||info?.userVerified!==true||info.credentialID!==credential.id||info.origin!==expectedOrigin||info.rpID!==rpID||
             !Number.isSafeInteger(info.newCounter)||info.newCounter<0||

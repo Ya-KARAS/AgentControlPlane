@@ -20,10 +20,11 @@ function normalized(input,binding){
  const ids=new Set(),users=new Map();for(const c of d.credentials){const bytes=Buffer.from(c.public_key,'base64');if(bytes.length<1||bytes.length>8192||bytes.toString('base64')!==c.public_key||ids.has(c.id))throw identityError();ids.add(c.id);users.set(c.principalId,(users.get(c.principalId)??0)+1);}if(users.size>32||[...users.values()].some(n=>n>16))throw identityError();const events=new Set();for(const row of d.decisions){const at=Date.parse(row.event.occurred_at);if(events.has(row.proof_id)||row.event.event_id!=='uv-'+row.proof_id||at>d.lastSeen||row.expiresAt<=at||row.expiresAt-at>600000||!d.credentials.some(c=>c.principalId===row.event.user_id&&hash(c.id)===row.credential_hash))throw identityError();events.add(row.proof_id);}return d;
 }
 // Private host storage capabilities only, not a task/public response or identity API.
-export function createPrivateDeliveryStorage({enabled=false,binding,clock=Date.now,access,decisionTtlMs=120000}={}){
+export function createPrivateDeliveryStorage({enabled=false,binding,clock=Date.now,access,revoke,decisionTtlMs=120000}={}){
  const run=async fn=>{try{if(!enabled||typeof access!=='function'||!Number.isInteger(decisionTtlMs)||decisionTtlMs<30000||decisionTtlMs>600000)throw identityError();return access(binding,raw=>{const d=normalized(raw,binding),now=clock();if(!Number.isSafeInteger(now)||now<d.lastSeen)throw identityError();return fn(d,now);});}catch{throw identityError();}};
  const update=(d,now,action,result)=>({next:normalized({...d,revision:d.revision+1,lastSeen:now},binding),action,result});
- const api=Object.freeze({enabled:enabled===true,
+ const api=Object.freeze({enabled:enabled===true,close:()=>revoke?.(),
+  currentRevision:()=>{try{if(!enabled)throw identityError();return access(binding,raw=>{const d=normalized(raw,binding),now=clock();if(!Number.isSafeInteger(now)||now<d.lastSeen)throw identityError();return {result:d.revision};});}catch{throw identityError();}},
   recordDecision:receipt=>{
    const proof=verifiedDeliveryCeremony(receipt);let now;
    try{now=clock();if(!proof||proof.storage!==api||proof.rpID!==binding.rpID||proof.expectedOrigin!==binding.expectedOrigin||!Number.isSafeInteger(now)||now<proof.createdAt||now>=proof.expiresAt)throw identityError();}catch{return Promise.reject(identityError());}
@@ -31,7 +32,6 @@ export function createPrivateDeliveryStorage({enabled=false,binding,clock=Date.n
     const duplicate=d.decisions.find(r=>r.proof_id===proof.proofId);if(duplicate)return {result:{recorded:true,duplicate:true,event:structuredClone(duplicate.event)}};
     const c=d.credentials.find(c=>c.id===proof.credentialId&&c.principalId===proof.principalId);
     if(!c||c.revision!==proof.credentialRevision||now<proof.createdAt||now>=proof.expiresAt||now+decisionTtlMs>=8.64e15||d.decisions.length>=256)throw identityError();
-    if(d.decisions.some(r=>r.repository===proof.target.repository&&r.pull_request_number===proof.target.pull_request_number&&r.event.head_sha===proof.target.head_sha&&r.event.user_id===proof.principalId&&Date.parse(r.event.occurred_at)>=now))return {result:{recorded:false}};
     const event={event_id:'uv-'+proof.proofId,user_id:proof.principalId,head_sha:proof.target.head_sha,state:proof.target.decision,occurred_at:new Date(now).toISOString()};
     d.decisions.push({repository:proof.target.repository,pull_request_number:proof.target.pull_request_number,event,proof_id:proof.proofId,credential_hash:hash(proof.credentialId),expiresAt:now+decisionTtlMs,expired:false});
     return {...update(d,now,'decision_recorded',{recorded:true,duplicate:false,event:structuredClone(event)}),decision:{...proof.target,user_id:proof.principalId,event_id:event.event_id}};
@@ -41,8 +41,8 @@ export function createPrivateDeliveryStorage({enabled=false,binding,clock=Date.n
    const parsed=targetSchema.safeParse(input);if(!parsed.success)return Promise.reject(identityError());const target=parsed.data;
    return run((d,now)=>{
     let changed=false;for(const r of d.decisions)if(r.event.state==='approved'&&!r.expired&&now>=r.expiresAt){r.expired=true;changed=true;}
-    const latest=new Map();for(const r of d.decisions)if(r.repository===target.repository&&r.pull_request_number===target.pull_request_number&&r.event.head_sha===target.head_sha){const old=latest.get(r.event.user_id);if(!old||old.event.occurred_at<r.event.occurred_at)latest.set(r.event.user_id,r);}
-    const complete=![...latest.values()].some(r=>r.expired&&r.event.state==='approved'),result={complete,decisions:complete?[...latest.values()].map(r=>structuredClone(r.event)):[]};
+    const latest=new Map();for(const r of d.decisions)if(r.repository===target.repository&&r.pull_request_number===target.pull_request_number&&r.event.head_sha===target.head_sha){const old=latest.get(r.event.user_id);if(!old||old.event.occurred_at<=r.event.occurred_at)latest.set(r.event.user_id,r);}
+    const complete=![...latest.values()].some(r=>r.expired&&r.event.state==='approved'),result={complete,revision:d.revision+(changed?1:0),valid_until:Math.min(...[...latest.values()].filter(r=>r.event.state==='approved'&&!r.expired).map(r=>r.expiresAt)),decisions:complete?[...latest.values()].map(r=>structuredClone(r.event)):[]};
     return changed?update(d,now,'decision_expired',result):{result};
    });
   },

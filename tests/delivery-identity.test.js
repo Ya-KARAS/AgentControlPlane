@@ -45,3 +45,6 @@ test('credential capacity is bounded and private identity-shaped task fields can
  const f=setup(t);for(let i=0;i<16;i++)assert.equal(await insert(f.storage,{credential:{...credential,id:'fake-'+i}}),true);assert.equal(await insert(f.storage,{credential:{...credential,id:'overflow'}}),false);
  const task=f.store.createTask({workspace:f.dir,brief:{objective:'synthetic'},policy:{name:'economy'}});assert.throws(()=>f.store.updateTask(task.id,{_delivery_identity:{secret:'private-marker'}}));f.store.state.tasks[task.id]._delivery_identity={secret:'private-marker'};assert.equal(JSON.stringify(f.store.getTask(task.id)).includes('private-marker'),false);
 });
+test('another stale TaskStore cannot overwrite private credentials or counters from a different writer',async t=>{
+ const f=setup(t),other=new TaskStore(f.dir),stale=other.createDeliveryIdentityStorage({...options,clock:()=>2000});await insert(f.storage);await assert.rejects(stale.insertCredential({principalId:'other-user',credential:{...credential,id:'different'},expectedAbsent:true}),unavailable);assert.equal((await f.storage.readCredentials('private-test-user')).length,1);assert.equal((await f.storage.readCredentials('other-user')).length,0);
+});

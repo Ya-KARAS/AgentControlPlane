@@ -24,3 +24,6 @@ test('expired and replaced-storage proofs cannot be attached, decision persisten
 test('decision journal write/audit failure never reports recorded success or readable approval',async t=>{
  const f=privateDeliveryFixture(t);await f.enroll();const proof=await f.verify();f.store.audit=()=>{throw Error('private-error-marker');};await assert.rejects(f.storage.recordDecision(proof),bad);await assert.rejects(f.storage.decisionSnapshot(target),bad);assert.equal(f.store.checkpointFaulted,true);
 });
+test('private CAS revision is not sent into the standard library credential wire object',async t=>{
+ const f=privateDeliveryFixture(t);await f.enroll();const verify=f.library.verifyAuthenticationResponse;f.library.verifyAuthenticationResponse=async options=>{assert.equal(Object.hasOwn(options.credential,'revision'),false);return verify(options);};assert.equal((await f.verify()).verified,true);
+});
