@@ -1,3 +1,5 @@
+import { workflowHash, workflowFingerprint } from "./workflow.js";
+import { readDailyReport, writeDailyReport, reportEntryHash, reportDate } from "./daily-report.js";
 import { createDeliveryHostService } from "./delivery-host.js";
 import { safeDelivery, transitionDelivery } from "./delivery.js";
 import { normalizeMessage, normalizeMessageQuery, messageOperationKey, messageFingerprint } from "./messages.js";
@@ -90,8 +92,9 @@ function executorThreads(project) {
 function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
-    ...structuredClone(Object.fromEntries(Object.entries(task).filter(([key])=>key!=="_delivery_evidence"))),
+    ...structuredClone(Object.fromEntries(Object.entries(task).filter(([key])=>key!=="_delivery_evidence"&&key!=="_workflow"))),
     delivery:safeDelivery(task.delivery),
+    workflow:null,
     execution_node_id: task.execution_node_id ?? null,
     node_recovery: task.node_recovery ? structuredClone(task.node_recovery) : null,
     controller: task.controller ? { id: task.controller.id, kind: task.controller.kind, mode: task.controller.mode } : null,
@@ -749,6 +752,80 @@ export class TaskStore {
     return Object.values(this.state.tasks).some(other => other.id !== taskId && sameRecoveryWorkspace(other.workspace,task?.workspace) && (other.node_recovery && other.node_recovery.phase !== 'completed' || task?.node_recovery && other.status === 'running'));
   }
 
+  async refreshDeliveryForWorkflow(id) { return this.#deliveryHost?.refresh(id)??null; }
+
+  #workflowArchived(task,cache=new Map()) {
+    const current=task?._workflow?.current;
+    if(this.checkpointFaulted||!current||current.phase!=='archived'||current.binding!==workflowFingerprint(task))return false;
+    const delivery=this.getDelivery(task.id);
+    if(delivery?.source==='verified_host'&&delivery.review_state!=='approved')return false;
+    try{
+      if(!cache.has(current.report_date))cache.set(current.report_date,readDailyReport(this.stateDir,current.report_date));
+      const row=cache.get(current.report_date).entries.find(row=>row.id===current.id);
+      return !!row&&reportEntryHash(row)===current.entry_hash;
+    }catch{return false;}
+  }
+
+  getWorkflowStatus(id) {
+    const task=this.state.tasks[id],current=task?._workflow?.current;if(!current)return null;
+    const archived=this.#workflowArchived(task);
+    return {phase:archived?'archived':current.phase==='archived'?'needs_review':current.phase,active:!archived,report_date:current.report_date,report_id:current.id,archived_at:archived?current.archived_at:null,historical_acceptance:true};
+  }
+
+  listActiveTasks(limit=20) {
+    const cache=new Map();return Object.values(this.state.tasks).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).filter(task=>!this.#workflowArchived(task,cache)).slice(0,limit).map(task=>this.getTask(task.id));
+  }
+
+  #workflowCommit(id,workflow,type) {
+    const previous=this.state.tasks[id];let persisted=false;
+    try{
+      this.audit(type,{taskId:id,reportId:workflow.current.id,date:workflow.current.report_date});
+      const fd=fs.openSync(this.auditPath,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      this.state.tasks[id]={...previous,_workflow:workflow,updatedAt:now()};this.persist();persisted=true;
+    }catch(error){if(!persisted)this.state.tasks[id]=previous;this.checkpointFaulted=true;throw error;}
+  }
+
+  archiveVerifiedTask(id,{timeZone='UTC',clock=Date.now,isActive=()=>true}={}) {
+    if(this.checkpointFaulted)throw checkpointError('checkpoint_store_faulted');
+    const fail=code=>{throw new ControlPlaneError(code,'Archive prerequisites are not confirmed');};
+    const task=this.state.tasks[id];if(!task)fail('task_not_found');
+    if(this.#workflowArchived(task))return this.getTask(id);
+    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+    try{
+      const nowMs=clock();if(!Number.isSafeInteger(nowMs)||nowMs<0)fail('workflow_binding_changed');
+      const binding=workflowFingerprint(task);
+      const decision=()=>{
+        if(isActive()!==false||!['completed','partial'].includes(this.state.tasks[id]?.status)||this.state.tasks[id]?.node_recovery&&this.state.tasks[id].node_recovery.phase!=='completed')fail('workflow_task_active');
+        const proof=this.#deliveryHost?.acceptance(id);
+        if(!proof)fail('workflow_approval_required');
+        if(workflowFingerprint(this.state.tasks[id])!==binding||proof.repository!==task.delivery?.repository||proof.pull_request_number!==task.delivery?.pull_request_number||proof.head_sha!==task.delivery?.head_sha)fail('workflow_binding_changed');
+        return proof;
+      };
+      const proof=decision(),decisionHash=workflowHash([proof.repository,proof.pull_request_number,proof.head_sha,proof.user_id,proof.event_id]);
+      let workflow=this.state.tasks[id]._workflow??{version:1,current:null,history:[]};
+      if(workflow.version!==1||!Array.isArray(workflow.history)||workflow.history.length>64)fail('workflow_capacity_reached');
+      if(!workflow.current||workflow.current.binding!==binding||workflow.current.decision_hash!==decisionHash){
+        if(workflow.current&&workflow.history.length>=64)fail('workflow_capacity_reached');
+        const date=reportDate(nowMs,timeZone),reportId=workflowHash([id,binding,decisionHash,date]);
+        workflow={version:1,history:workflow.current?[...workflow.history,workflow.current]:workflow.history,current:{id:reportId,binding,decision_hash:decisionHash,accepted_at:new Date(nowMs).toISOString(),report_date:date,time_zone:timeZone,phase:'accepted',entry_hash:null,archived_at:null}};
+        this.#workflowCommit(id,workflow,'workflow.accepted');
+      }
+      decision();
+      const current=workflow.current,row={id:current.id,task_id:id,logical_task_id:task.logical_task_id??id,repository:proof.repository,pull_request_number:proof.pull_request_number,head_sha:proof.head_sha,task_status:task.status,accepted_at:current.accepted_at};
+      const entryHash=writeDailyReport(this.stateDir,current.report_date,current.time_zone,row);
+      decision();
+      if(current.entry_hash!==entryHash||current.phase==='accepted'){
+        workflow={...workflow,current:{...current,entry_hash:entryHash,phase:'reported'}};this.#workflowCommit(id,workflow,'workflow.reported');
+      }
+      decision();
+      const verified=readDailyReport(this.stateDir,current.report_date).entries.find(entry=>entry.id===current.id);
+      if(!verified||reportEntryHash(verified)!==entryHash)fail('workflow_report_unavailable');
+      workflow={...workflow,current:{...workflow.current,phase:'archived',archived_at:new Date(clock()).toISOString()}};
+      this.#workflowCommit(id,workflow,'workflow.archived');
+      return this.getTask(id);
+    }finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
   createDeliveryHost({adapter, authorizeUser, clock} = {}) {
     const epoch=++this.#deliveryHostEpoch;
     this.#deliveryHost=createDeliveryHostService({adapter,authorizeUser,clock,
@@ -812,6 +889,7 @@ export class TaskStore {
     const task = this.state.tasks[id];
     if (!task) return null;
     if (Object.hasOwn(patch,"_delivery_evidence") || (Object.hasOwn(patch,"delivery") && !isDeepStrictEqual(patch.delivery,this.getDelivery(id)) && !isDeepStrictEqual(patch.delivery,safeDelivery(task.delivery))))throw new ControlPlaneError('delivery_update_required','Delivery observations require the checked operation');
+    if(Object.hasOwn(patch,'_workflow')||Object.hasOwn(patch,'workflow')&&!isDeepStrictEqual(patch.workflow,this.getWorkflowStatus(id)))throw new ControlPlaneError('workflow_update_required','Workflow records require checked reporting transitions');
     for (const field of ['execution_node_id','node_recovery']) {
       if (Object.hasOwn(patch,field) && !isDeepStrictEqual(patch[field],task[field]??null)) throw new ControlPlaneError('node_recovery_update_required','Execution ownership requires a checked host operation');
     }
@@ -824,7 +902,7 @@ export class TaskStore {
     }
     // Legacy callers may write a full unchanged record; never assign ownership
     // fields from that patch, even when they compare equal.
-    const { controller: ignoredController, control_lease: ignoredLease, execution_node_id: ignoredNode, node_recovery: ignoredRecovery, delivery: ignoredDelivery, ...safePatch } = patch;
+    const { controller: ignoredController, control_lease: ignoredLease, execution_node_id: ignoredNode, node_recovery: ignoredRecovery, delivery: ignoredDelivery, workflow: ignoredWorkflow, ...safePatch } = patch;
     // Executor/internal writes remain compatible. Any controller-authored patch
     // must carry a verified actor and the live fencing generation.
     if (controllerContext !== undefined) {
@@ -878,6 +956,7 @@ export class TaskStore {
     if (!task) return null;
     const copy = normalizeTaskRecord(task);
     copy.delivery=this.getDelivery(id);
+    copy.workflow=this.getWorkflowStatus(id);
     if (!includeEvents) delete copy.events;
     return copy;
   }
@@ -889,6 +968,7 @@ export class TaskStore {
       .map((task) => {
         const copy = normalizeTaskRecord(task);
         copy.delivery=this.getDelivery(task.id);
+        copy.workflow=this.getWorkflowStatus(task.id);
         delete copy.events;
         return copy;
       });
@@ -930,6 +1010,7 @@ export class TaskStore {
     return matches.slice(0, Math.min(100, Math.max(1, Number(limit) || 20))).map((task) => {
       const copy = normalizeTaskRecord(task);
       copy.delivery=this.getDelivery(task.id);
+      copy.workflow=this.getWorkflowStatus(task.id);
       delete copy.events;
       return copy;
     });
@@ -1042,7 +1123,7 @@ export class TaskStore {
       "interrupted",
     ]);
     const removable = tasks
-      .filter((task) => terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()) && !/^message:[a-f0-9]{64}$/.test(task.idempotency_key??'') && !(task.node_recovery&&task.node_recovery.phase!=='completed'))
+      .filter((task) => terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()) && !/^message:[a-f0-9]{64}$/.test(task.idempotency_key??'') && !(task.node_recovery&&task.node_recovery.phase!=='completed') && !task._workflow)
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     const removeCount = tasks.length - this.maxTasks + 1;
     if (removable.length < removeCount) {
