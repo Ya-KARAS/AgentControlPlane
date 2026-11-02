@@ -42,3 +42,24 @@ checkpoint ownership fields cannot be patched; target dirty edits preserved;
 no concurrent workspace writer; duplicate/restart never starts a second turn;
 source task and usage/continuation/controller remain intact; no distributed/live
 claim; injected adapters are host trust, not a network identity mechanism.
+
+
+## Evidence and review resolution
+
+- Integration baseline verify742tests/741passed/1skip, CI41411408780success.
+- Real-store missing-module RED→GREEN; actual scheduler missing admission and
+  restart/reservation RED→GREEN. Bound observations, source history, bounded
+  checkpoint prompt and competing workspace tests have recorded RED→GREEN.
+- Final independent review found five actionable issues: uncertain interruption
+  releasing reservations, workspace aliases, native checkpoint incompatibility,
+  source usage snapshot, stale runtime swallowing new admission. All five were
+  reproduced with failing tests, then fixed in one pass. Measured host stop now
+  gates reservation release; canonicalization precedes admission; native checkpoint
+  modes explicitly fail closed; source usage/session history preserved; conflicting
+  runtime entries quarantine new admission. No findings declined or deferred.
+- Additional typed-adapter-error and late-timeout-acknowledgement tests reproduced
+  failures before sanitization/fencing fixes. Targeted recovery suite33passed.
+- No deployment, model call, new credential/permission or real runner test.
+- Final code verification exit0:775tests,774passed,0failed,1Windows-onlyskip;
+  check passed. Recovery regressions33/33. Final documentation evidence changes
+  checked with doc-links and git diff --check; exact pushed-head CI follows in PR.

@@ -438,18 +438,31 @@ export class Orchestrator extends EventEmitter {
 
   #assertNodeExecution(taskId) {
     const task = this.store.getTask(taskId);
+    if(!task)throw new ControlPlaneError('task_not_found','Task no longer exists');
     assertNodeFence(task, this.running.get(taskId)?.nodeFence);
+    if(task?.node_recovery&&!['queued','running'].includes(task.status))throw new ControlPlaneError('node_generation_mismatch','Execution is no longer admitted');
   }
 
   #updateTask(taskId, patch, controllerContext = undefined) {
     return this.store.updateTask(taskId, patch, controllerContext, this.running.get(taskId)?.nodeFence);
   }
 
+  validateNodeRecoveryTask(task) {
+    if(task.executor_checkpoint||!this.executors.has(task.executor)||this.executors.get(task.executor).recoveryEnabled===true)throw new ControlPlaneError('node_native_checkpoint_unsupported','Native executor checkpoint recovery needs a node-bound adapter');
+  }
+
+  wakeNodeQueue() { queueMicrotask(()=>this.#drain()); }
+
   enqueueNodeRecovery(taskId, ticket) {
     const task = this.store.getTask(taskId);
     if (!isNodeAdmission(ticket,task)) throw new ControlPlaneError('node_admission_required','A durable host admission is required');
+    this.validateNodeRecoveryTask(task);
     if (this.executionNodeId !== ticket.nodeId) throw new ControlPlaneError('node_runtime_mismatch','Runtime does not own this admission');
-    if (this.running.has(taskId) || this.queue.some(entry=>entry.taskId===taskId)) return;
+    const existing=this.running.get(taskId)??this.queue.find(entry=>entry.taskId===taskId);
+    if(existing){
+      if(existing.nodeFence?.nodeId===ticket.nodeId&&existing.nodeFence?.generation===ticket.generation)return;
+      throw new ControlPlaneError('node_runtime_conflict','An older runtime entry is still active');
+    }
     this.queue.push({taskId,followUp:true,nodeFence:ticket});
     queueMicrotask(()=>this.#drain());
   }
@@ -1795,6 +1808,7 @@ export class Orchestrator extends EventEmitter {
     return new Promise((resolve) => {
       active.resolve = resolve;
       active.timer = setTimeout(async () => {
+        try { this.#assertNodeExecution(taskId); } catch { resolve(); return; }
         const task = this.store.getTask(taskId);
         if (task?.status === "running") {
           let interruptionError = null;
@@ -1809,6 +1823,7 @@ export class Orchestrator extends EventEmitter {
           } catch (error) {
             interruptionError = asErrorPayload(error);
           }
+          try { this.#assertNodeExecution(taskId); } catch { resolve(); return; }
           this.#updateTask(taskId, {
             status: "interrupted",
             error: {
@@ -1863,6 +1878,7 @@ export class Orchestrator extends EventEmitter {
   }
 
   async #refreshGoalUsage(taskId, { enforceBudget = true } = {}) {
+    this.#assertNodeExecution(taskId);
     const active = this.running.get(taskId);
     const task = this.store.getTask(taskId);
     if (!active || !task?.threadId) return null;
@@ -1878,6 +1894,7 @@ export class Orchestrator extends EventEmitter {
         { threadId: task.threadId },
         10000,
       );
+      this.#assertNodeExecution(taskId);
       const goal = response?.goal;
       if (!goal) return null;
       const currentUsage = this.store.getTask(taskId)?.usage;

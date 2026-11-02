@@ -24,14 +24,19 @@ Source requires measured `stopped:true`. Target requires ready/idle, persistence
 for cloud, and matching branch, HEAD and all dirty relative-file SHA256 entries.
 No missing/changed user edit is overwritten. If project registry relinking is
 needed, a different target path is blocked until that separate registry change
-is verified. Target path is still checked by the existing workspace allowlist
-before execution. No arbitrary paths, URLs, tokens or commands enter telemetry.
+is verified. Target paths are canonicalized with the existing workspace allowlist before
+admission/reservation; matching physical workspaces cannot bypass exclusion through
+trailing slashes or symlink aliases. Supply explicit trusted `workspaceRoots` for
+a new allowed location; omission permits only the original task workspace. This
+offline coordinator requires locally visible directories, not guessed remote
+canonical paths. No arbitrary paths, URLs, tokens or commands enter telemetry.
 
 Source checkpoint has bounded branch/HEAD, <=256 unique relative file/hash
 entries and <=16 allowlisted npm test/check summaries; serialized package <=8KiB.
 A digest binds lineage, original brief/policy, project revision, executor/history,
 session, usage, result and existing continuation without copying those into the
-recovery record or audit. Existing continuation is preserved; target prompt gets
+recovery record or audit. Source executor usage, session IDs and stopped end reason
+are snapshotted in the existing history before the target history is appended. Existing continuation is preserved; target prompt gets
 the bounded checkpoint too. No raw file contents or credentials are transferred.
 
 ## Durable protocol
@@ -50,7 +55,14 @@ the bounded checkpoint too. No raw file contents or credentials are transferred.
 5. Admission receipt is in-memory branded and matched to the runtime's explicitly
    constructed `executionNodeId`. Repeating a resume key returns current task
    without enqueuing another turn. The target runtime must be explicitly supplied;
-   no normal startup gains this binding from a client argument.
+   no normal startup gains this binding from a client argument. Conflicting older
+   runtime entries reject admission instead of silently swallowing it; only an
+   identical active receipt is deduplicated.
+6. Terminal task status alone does not release a workspace. Managed completion,
+   cancellation, timeout or failure enters `awaiting_stop`; failed/unknown
+   interruption retains the reservation. Host `complete(taskId,generation,
+   orchestrator?)` requires a fresh measured stopped observation from the current
+   owner before releasing that reservation. No client completion flag can do it.
 
 TaskStore reuses its existing executor-checkpoint writer lock, disk-drift check,
 atomic rename and audit chain. Changed ownership fields are rejected by ordinary
@@ -59,6 +71,11 @@ scheduler captures the fence on its active entry and checks before asynchronous
 execution side effects and late notification association. Controller lease
 changes are independent and cannot authorize a node transfer. Existing legacy
 records have null defaults and retain old behavior.
+
+Existing executor-native recovery/checkpoint modes (including retained native
+checkpoint records) are explicitly unsupported for this node transfer and fail
+closed before admission. Their existing unmanaged local behavior is unchanged; a
+future node-bound native-checkpoint adapter needs separate tests.
 
 ## Failure/restart behavior
 

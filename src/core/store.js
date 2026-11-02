@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { ControlPlaneError } from "./errors.js";
 import { claimControlLease, renewControlLease, releaseControlLease } from "./controller-lease.js";
 import { isTrustedControllerActor } from "../controllers/registry.js";
-import { isNodeRecoveryCommand, nodeRecoveryTransition, assertNodeFence } from "./node-recovery.js";
+import { isNodeRecoveryCommand, nodeRecoveryTransition, assertNodeFence, sameRecoveryWorkspace } from "./node-recovery.js";
 
 import {
   adaptV1Event,
@@ -633,7 +633,7 @@ export class TaskStore {
     if (!task) throw new ControlPlaneError('task_not_found', 'Task not found');
     if (['bind','admit'].includes(command.action)) {
       const targetWorkspace = command.workspace ?? task.workspace;
-      if (Object.values(this.state.tasks).some(other => other.id !== id && other.workspace === targetWorkspace &&
+      if (Object.values(this.state.tasks).some(other => other.id !== id && sameRecoveryWorkspace(other.workspace,targetWorkspace) &&
           (other.status === 'running' || other.node_recovery && other.node_recovery.phase !== 'completed'))) {
         throw new ControlPlaneError('node_workspace_busy','Another task reserves this workspace');
       }
@@ -669,7 +669,7 @@ export class TaskStore {
 
   nodeWorkspaceReserved(taskId) {
     const task = this.state.tasks[taskId];
-    return Object.values(this.state.tasks).some(other => other.id !== taskId && other.workspace === task?.workspace && (other.node_recovery && other.node_recovery.phase !== 'completed' || task?.node_recovery && other.status === 'running'));
+    return Object.values(this.state.tasks).some(other => other.id !== taskId && sameRecoveryWorkspace(other.workspace,task?.workspace) && (other.node_recovery && other.node_recovery.phase !== 'completed' || task?.node_recovery && other.status === 'running'));
   }
 
   updateTask(id, patch, controllerContext = undefined, nodeContext = undefined) {
@@ -679,6 +679,7 @@ export class TaskStore {
       if (Object.hasOwn(patch,field) && !isDeepStrictEqual(patch[field],task[field]??null)) throw new ControlPlaneError('node_recovery_update_required','Execution ownership requires a checked host operation');
     }
     assertNodeFence(task,nodeContext);
+    if(['awaiting_stop','completed'].includes(task.node_recovery?.phase)&&patch.status!==undefined&&patch.status!==task.status)throw new ControlPlaneError('node_generation_mismatch','A stopped host receipt is required before another transition');
     for (const field of ["controller", "control_lease"]) {
       if (Object.hasOwn(patch, field) && !isDeepStrictEqual(patch[field], task[field] ?? null)) {
         throw new ControlPlaneError("control_lease_update_required", "Controller ownership must use the checked lease operation");
@@ -696,7 +697,7 @@ export class TaskStore {
     }
     Object.assign(task, safePatch, { updatedAt: now() });
     if (task.node_recovery && safePatch.status) {
-      task.node_recovery = {...task.node_recovery,phase:safePatch.status==='running'?'running':['completed','failed','cancelled','partial','blocked','interrupted'].includes(safePatch.status)?'completed':task.node_recovery.phase};
+      task.node_recovery = {...task.node_recovery,phase:safePatch.status==='running'?'running':['completed','failed','cancelled','partial','blocked','interrupted'].includes(safePatch.status)?'awaiting_stop':task.node_recovery.phase};
     }
     this.persist();
     return normalizeTaskRecord(task);

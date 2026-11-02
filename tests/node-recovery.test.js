@@ -22,13 +22,13 @@ const checkpoint=s=>s.coordinator.checkpoint(s.task.id,1);
 const release=s=>s.coordinator.release(s.task.id,1);
 
 test('same task checkpoint release and target admission survive cold restart',t=>{
- const s=setup(t);const old=s.store.getTask(s.task.id);bind(s);checkpoint(s);release(s);
+ const s=setup(t);const old=s.store.getTask(s.task.id);bind(s);checkpoint(s);release(s);const stoppedHistory=s.store.getTask(s.task.id).executor_history;
  let received=0;const orchestrator={enqueueNodeRecovery(id,ticket){received++;assert.equal(id,old.id);assert.equal(ticket.nodeId,'cloud');}};
  const admitted=s.coordinator.resume(old.id,1,'resume:test-1',orchestrator);
  assert.equal(admitted.node_recovery.generation,2);assert.equal(admitted.execution_node_id,'cloud');assert.equal(received,1);
  assert.equal(s.coordinator.resume(old.id,1,'resume:test-1',orchestrator).id,old.id);assert.equal(received,1);
  const restarted=new TaskStore(s.store.stateDir);const restored=restarted.getTask(old.id);
- assert.deepEqual(restored.executor_history.slice(0,-1),old.executor_history);assert.equal(restored.executor_history.at(-1).execution_node_id,'cloud');
+ assert.deepEqual(restored.executor_history.slice(0,-1),stoppedHistory);assert.equal(restored.executor_history.at(-1).execution_node_id,'cloud');
  assert.equal(restored.logical_task_id,old.logical_task_id);assert.deepEqual(restored.usage,old.usage);assert.equal(restored.node_recovery.generation,2);
  assert.equal(fs.readFileSync(path.join(s.workspace,'edit.txt'),'utf8'),'uncommitted user edit');
  assert.equal(restored.threadId,null);assert.equal(restored.fresh_session,true);
@@ -102,7 +102,9 @@ test('recovery uses the same logical task and existing queue once with fresh tar
  s.coordinator.resume(s.task.id,1,'resume:one-turn',orchestrator);
  await until(()=>s.store.getTask(s.task.id).status==='completed');
  assert.equal(executor.turnStarts.length,1);assert.equal(executor.turnStarts[0].input[0].text.includes('a'.repeat(40)),true);assert.equal(executor.turnStarts[0].input[0].text.includes('edit.txt'),true);assert.equal(executor.resumedThreads.length,0);assert.equal(s.store.listTasks(100).length,1);
- const completed=s.store.getTask(s.task.id);assert.equal(completed.logical_task_id,s.task.logical_task_id);assert.equal(completed.node_recovery.phase,'completed');
+ const completed=s.store.getTask(s.task.id);assert.equal(completed.logical_task_id,s.task.logical_task_id);assert.equal(completed.node_recovery.phase,'awaiting_stop');
+ const stop=new NodeRecoveryCoordinator({store:s.store,config:s.config,sourceNodeId:'cloud',targetNodeId:'desktop',inspectSource:task=>({...s.source,node_id:'cloud',task_id:task.id,generation:task.node_recovery.generation})});
+ stop.complete(s.task.id,2,orchestrator);assert.equal(s.store.getTask(s.task.id).node_recovery.phase,'completed');
  s.coordinator.resume(s.task.id,1,'resume:one-turn',orchestrator);await new Promise(r=>setTimeout(r,20));assert.equal(executor.turnStarts.length,1);
  await executor.stop();
 });
@@ -183,4 +185,70 @@ test('controller ownership changes leave the execution generation and checkpoint
 test('checkpoint package is bounded before persistence and never copies file contents',t=>{
  const s=setup(t);bind(s);s.source.files=Array.from({length:40},(_,i)=>({path:`f${i}${'x'.repeat(220)}.txt`,sha256:'b'.repeat(64)}));
  assert.throws(()=>checkpoint(s));assert.equal(s.store.getTask(s.task.id).node_recovery.checkpoint,null);
+});
+
+test('failed interruption keeps workspace reserved until host measures stop',async t=>{
+ const s=setup(t);bind(s);checkpoint(s);release(s);const {executor,orchestrator}=runtime(s);
+ executor.startTurn=async params=>{executor.turnStarts.push(params);return {turn:{id:'held-turn'}};};
+ executor.interruptTurn=async()=>{throw new Error('still running');};
+ s.coordinator.resume(s.task.id,1,'resume:held',orchestrator);await until(()=>s.store.getTask(s.task.id).turnId==='held-turn');
+ await orchestrator.cancel(s.task.id);await until(()=>orchestrator.running.size===0);
+ assert.equal(s.store.getTask(s.task.id).node_recovery.phase,'awaiting_stop');
+ orchestrator.dispatch({workspace:s.workspace,objective:'must remain queued',profile:'economy'});await new Promise(r=>setTimeout(r,20));
+ assert.equal(executor.turnStarts.length,1);
+});
+
+test('canonical target aliases cannot bypass existing workspace reservation',t=>{
+ const s=setup(t);const other=s.store.createTask({workspace:s.workspace,brief:s.task.brief,policy:s.task.policy,executor:'codex'});bind(s);checkpoint(s);release(s);
+ s.store.updateTask(other.id,{status:'running'});s.target.workspace=s.workspace+path.sep;let starts=0;
+ fail(()=>s.coordinator.resume(s.task.id,1,'resume:alias',{enqueueNodeRecovery(){starts++;}}),'node_workspace_busy');assert.equal(starts,0);
+});
+
+test('native checkpoint modes fail closed before admission and keep unmanaged route intact',t=>{
+ const s=setup(t);bind(s);checkpoint(s);release(s);const {executor,orchestrator}=runtime(s);executor.recoveryEnabled=true;
+ fail(()=>s.coordinator.resume(s.task.id,1,'resume:native',orchestrator),'node_native_checkpoint_unsupported');
+ assert.equal(s.store.getTask(s.task.id).node_recovery.phase,'released');assert.equal(executor.turnStarts.length,0);
+ const s2=setup(t);s2.store.updateTask(s2.task.id,{executor_checkpoint:{phase:'intent'}});fail(()=>bind(s2),'node_native_checkpoint_unsupported');
+});
+
+test('source usage and session evidence are snapshotted before target history is appended',t=>{
+ const s=setup(t);s.store.updateTask(s.task.id,{usage:{input_tokens:100,output_tokens:68,total_tokens:168},threadId:'source-thread',turnId:'source-turn'});
+ bind(s);checkpoint(s);release(s);s.coordinator.resume(s.task.id,1,'resume:usage',{enqueueNodeRecovery(){}});
+ const history=s.store.getTask(s.task.id).executor_history;
+ assert.equal(history[0].usage.total_tokens,168);assert.equal(history[0].thread_id,'source-thread');assert.equal(history[0].turn_id,'source-turn');assert.ok(history[0].ended_at);assert.equal(history[0].ended_reason,'node_checkpointed');
+});
+
+test('stale running runtime entry rejects newer admission instead of silently dropping it',t=>{
+ const s=setup(t);bind(s);checkpoint(s);release(s);const {executor,orchestrator}=runtime(s);
+ orchestrator.running.set(s.task.id,{workspace:s.workspace,nodeFence:{nodeId:'desktop',generation:1}});
+ fail(()=>s.coordinator.resume(s.task.id,1,'resume:conflict',orchestrator),'node_recovery_uncertain');
+ assert.equal(s.store.getTask(s.task.id).node_recovery.phase,'uncertain');assert.equal(executor.turnStarts.length,0);
+});
+
+import { ControlPlaneError } from '../src/core/errors.js';
+test('host adapter typed errors are not reused as public recovery errors',t=>{
+ const s=setup(t);bind(s);s.coordinator.inspectSource=()=>{throw new ControlPlaneError('adapter_error','private-adapter-marker');};
+ assert.throws(()=>checkpoint(s),e=>e.code==='node_observation_unavailable'&&!e.message.includes('private-adapter-marker'));
+});
+
+test('late timeout acknowledgement after quarantine cannot overwrite the newer state',async t=>{
+ const s=setup(t);bind(s);checkpoint(s);release(s);const {executor,orchestrator}=runtime(s);
+ const timeout=globalThis.setTimeout;t.mock.method(globalThis,'setTimeout',(fn,ms,...args)=>timeout(fn,ms===60000?5:ms,...args));
+ executor.startTurn=async params=>{executor.turnStarts.push(params);return {turn:{id:'timed-turn'}};};let acknowledged;
+ executor.interruptTurn=()=>new Promise(r=>{acknowledged=r;});
+ s.coordinator.resume(s.task.id,1,'resume:timeout',orchestrator);await until(()=>typeof acknowledged==='function');
+ s.coordinator.quarantine(s.task.id,2);acknowledged();await until(()=>orchestrator.running.size===0);
+ assert.equal(s.store.getTask(s.task.id).node_recovery.phase,'uncertain');assert.equal(executor.turnStarts.length,1);
+});
+
+for(const outcome of ['failed','interrupted'])test(`uncertain ${outcome} does not release workspace ownership`,async t=>{
+ const s=setup(t);bind(s);checkpoint(s);release(s);const {executor,orchestrator}=runtime(s);
+ if(outcome==='interrupted'){
+  const timeout=globalThis.setTimeout;t.mock.method(globalThis,'setTimeout',(fn,ms,...args)=>timeout(fn,ms===60000?5:ms,...args));
+  executor.startTurn=async params=>{executor.turnStarts.push(params);return {turn:{id:'unknown-stop'}};};executor.interruptTurn=async()=>{throw new Error('still running');};
+ }else executor.startTurn=async params=>{executor.turnStarts.push(params);throw new Error('execution outcome unknown');};
+ s.coordinator.resume(s.task.id,1,`resume:${outcome}`,orchestrator);await until(()=>s.store.getTask(s.task.id).status===outcome);await until(()=>orchestrator.running.size===0);
+ assert.equal(s.store.getTask(s.task.id).node_recovery.phase,'awaiting_stop');
+ const next=orchestrator.dispatch({workspace:s.workspace,objective:'keep queued',profile:'economy'});await new Promise(r=>setTimeout(r,20));
+ assert.equal(s.store.getTask(next.id).status,'queued');assert.equal(executor.turnStarts.length,1);
 });
