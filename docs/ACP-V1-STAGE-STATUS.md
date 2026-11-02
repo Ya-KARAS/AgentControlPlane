@@ -159,3 +159,15 @@ See [host and actual acceptance boundary](PROTECTED-DELIVERY-REVIEW.md). Ordinar
 startup remains off; no actual authenticated session service or user enrollment
 is claimed. Production source-specific session adapter/mounting, runner stop and
 write-fence adapters and real pilot tests remain unfinished where not selected.
+
+## Windows first marker pilot preparation
+
+The PR36-based [isolated single-Codex marker host](WINDOWS-MARKER-ACCEPTANCE.md)
+now reuses actual adapter/queue/store with an empty private temp repository/state,
+bounded one-shot task, loopback read-only status and measured own-process cleanup.
+Cloud evidence is a protocol-speaking child fixture, not a live Windows/model run.
+The separate authorized Windows task must verify exact head, subscription-only
+settings, actual native client/sandbox/protocol and receipt/port/process lifecycle.
+Human resolveSession/enrollment is still separate and unselected. No production
+config/oldqueue/worker is loaded; no real cloud/remote fencing acceptance follows
+from this local pilot. Original checkout edits and all draft PRs remain preserved.
