@@ -179,3 +179,5 @@ show bounded exact-scope observations; expiry becomes unknown, null never means0
 Operator-configured capability-gated advice always requires approval for manual
 input and never changes dispatch or disabled-by-default reroute. No import/takeover
 network mutation is added. See [contract and rollback](SUBSCRIPTIONS.md).
+
+- [Private delivery decisions / 私有可信决定](PRIVATE-DELIVERY-DECISIONS.md): host-only credential revision-CAS, verified event journal and default-off composition; no new HTTP/MCP approval route.

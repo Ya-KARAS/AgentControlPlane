@@ -1,3 +1,4 @@
+import { createPrivateDeliveryStorage, identityBinding, identityError } from "./delivery-identity.js";
 import { workflowHash, workflowFingerprint } from "./workflow.js";
 import { readDailyReport, writeDailyReport, reportEntryHash, reportDate } from "./daily-report.js";
 import { createDeliveryHostService } from "./delivery-host.js";
@@ -93,7 +94,7 @@ function executorThreads(project) {
 function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
-    ...structuredClone(Object.fromEntries(Object.entries(task).filter(([key])=>key!=="_delivery_evidence"&&key!=="_workflow"))),
+    ...structuredClone(Object.fromEntries(Object.entries(task).filter(([key])=>key!=="_delivery_evidence"&&key!=="_workflow"&&key!=="_delivery_identity"))),
     delivery:safeDelivery(task.delivery),
     workflow:null,
     execution_node_id: task.execution_node_id ?? null,
@@ -123,6 +124,7 @@ function normalizeTaskRecord(task) {
 export class TaskStore {
   #deliveryHost = null;
   #deliveryHostEpoch = 0;
+  #deliveryIdentityEpoch = 0;
   constructor(
     stateDir,
     maxEvents = 500,
@@ -372,7 +374,7 @@ export class TaskStore {
       this.#requireExecutorLease();
       const temporary = `${this.statePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
       const bytes = JSON.stringify(this.state, null, 2);
-      const fd = fs.openSync(temporary, "wx");
+      const fd = fs.openSync(temporary, "wx", 0o600);
       try { fs.writeFileSync(fd, bytes, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(temporary, this.statePath);
       this.persistedStateHash = sha256(bytes);
@@ -905,6 +907,42 @@ export class TaskStore {
     }finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
   }
 
+  createDeliveryIdentityStorage({enabled=false,rpID,expectedOrigin,clock=Date.now,decisionTtlMs=120000}={}) {
+    if(enabled!==true)return createPrivateDeliveryStorage();
+    const binding=identityBinding({rpID,expectedOrigin}),epoch=++this.#deliveryIdentityEpoch;
+    this.#deliveryHost?.invalidate?.();
+    return createPrivateDeliveryStorage({enabled:true,binding,clock,decisionTtlMs,revoke:()=>{if(epoch===this.#deliveryIdentityEpoch){this.#deliveryIdentityEpoch++;this.#deliveryHost?.invalidate?.();}},access:(b,operation)=>this.#identityAccess(b,epoch,operation)});
+  }
+
+  #identityAccess(binding,epoch,operation) {
+    if(epoch!==this.#deliveryIdentityEpoch||this.checkpointFaulted)throw identityError();
+    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+    const previous=this.state._delivery_identity;
+    try {
+      for(const file of [this.stateDir,this.statePath,this.auditPath,this.auditArchivePath])if(fs.existsSync(file)&&fs.lstatSync(file).isSymbolicLink())throw identityError();
+      this.#validateRetainedAudit(true);
+      let anchor=null;
+      for(const file of [this.auditArchivePath,this.auditPath])if(fs.existsSync(file))for(const line of fs.readFileSync(file,'utf8').split('\n').filter(Boolean)){const event=JSON.parse(line);if(event.type==='delivery.identity_commit')anchor=event;}
+      if(previous?(previous.pending!==false||anchor?.revision!==previous.revision||anchor?.identity_hash!==workflowHash(previous)):anchor!==null)throw identityError();
+      const change=operation(structuredClone(previous));
+      if(!change.next)return change.result;
+      if(change.next.rpID!==binding.rpID||change.next.expectedOrigin!==binding.expectedOrigin)throw identityError();
+      this.#deliveryHost?.invalidate?.();
+      if(change.decision&&['revoked','changes_requested'].includes(change.decision.decision)){
+        const e=change.decision;
+        for(const task of Object.values(this.state.tasks))if(task._workflow?.current&&task.delivery?.repository===e.repository&&task.delivery?.pull_request_number===e.pull_request_number&&task.delivery?.head_sha===e.head_sha){
+          task._workflow={...task._workflow,current:{...task._workflow.current,phase:'needs_review',invalidation_hash:workflowHash([e.repository,e.pull_request_number,e.head_sha,e.user_id,e.event_id,e.decision]),invalidated_at:new Date(change.next.lastSeen).toISOString()}};
+        }
+      }
+      this.state._delivery_identity={...change.next,pending:true};this.persist();
+      this.audit('delivery.identity_commit',{revision:change.next.revision,identity_hash:workflowHash(change.next),action:change.action});
+      const fd=fs.openSync(this.auditPath,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      this.state._delivery_identity=change.next;this.persist();return change.result;
+    } catch {
+      this.checkpointFaulted=true;throw identityError();
+    } finally {if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
   createDeliveryHost({adapter, authorizeUser, clock} = {}) {
     const epoch=++this.#deliveryHostEpoch;
     this.#deliveryHost=createDeliveryHostService({adapter,authorizeUser,clock,
@@ -971,7 +1009,7 @@ export class TaskStore {
   updateTask(id, patch, controllerContext = undefined, nodeContext = undefined) {
     const task = this.state.tasks[id];
     if (!task) return null;
-    if (Object.hasOwn(patch,"_delivery_evidence") || (Object.hasOwn(patch,"delivery") && !isDeepStrictEqual(patch.delivery,this.getDelivery(id)) && !isDeepStrictEqual(patch.delivery,safeDelivery(task.delivery))))throw new ControlPlaneError('delivery_update_required','Delivery observations require the checked operation');
+    if (Object.hasOwn(patch,"_delivery_identity") || Object.hasOwn(patch,"_delivery_evidence") || (Object.hasOwn(patch,"delivery") && !isDeepStrictEqual(patch.delivery,this.getDelivery(id)) && !isDeepStrictEqual(patch.delivery,safeDelivery(task.delivery))))throw new ControlPlaneError('delivery_update_required','Delivery observations require the checked operation');
     if(Object.hasOwn(patch,'_workflow')||Object.hasOwn(patch,'workflow')&&!isDeepStrictEqual(patch.workflow,this.getWorkflowStatus(id)))throw new ControlPlaneError('workflow_update_required','Workflow records require checked reporting transitions');
     for (const field of ['execution_node_id','node_recovery']) {
       if (Object.hasOwn(patch,field) && !isDeepStrictEqual(patch[field],task[field]??null)) throw new ControlPlaneError('node_recovery_update_required','Execution ownership requires a checked host operation');

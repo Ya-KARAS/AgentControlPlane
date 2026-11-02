@@ -191,3 +191,5 @@ GET `/v1/subscriptions`、只读 MCP `subscription_status` 和本地面板展示
 范围的观测；到期降为 unknown，null 不代表0。由 operator 配置兼容能力的路由建议
 始终需要手工批准，不改变实际派发或默认关闭的自动 reroute；没有新增网络修改
 入口。详见 [契约、操作及回滚](SUBSCRIPTIONS.md)。
+
+- [Private delivery decisions / 私有可信决定](PRIVATE-DELIVERY-DECISIONS.md): host-only credential revision-CAS, verified event journal and default-off composition; no new HTTP/MCP approval route.

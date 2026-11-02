@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
 
+const evidenceGuards=new WeakMap();
+export function deliveryEvidenceCurrent(result){try{return evidenceGuards.get(result)?.()===true;}catch{return false;}}
+
 const fail = () => { throw new Error('Invalid delivery evidence'); };
 const ownKeys = (value, allowed) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => allowed.includes(key));
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(value);
@@ -154,8 +157,10 @@ export function createDeliveryEvidenceEvaluator({ adapter, authorizeUser, clock 
         observations.set(scope,{ observed, hash });
         if (merge?.merged) { merges.set(revision,merge); events.set(mergeKey,mergeHash); }
         if (latestByUser.size > 0) latestDecisions.set(revision,latestByUser);
-        return { ...unknown('preview_only'), validity: {observed_at:evidence.observed_at,valid_until:evidence.valid_until}, candidate: { ...target, checks:evidence.checks, decision:decision?.state ?? 'unknown',
+        const result={ ...unknown('preview_only'), validity: {observed_at:evidence.observed_at,valid_until:evidence.valid_until}, candidate: { ...target, checks:evidence.checks, decision:decision?.state ?? 'unknown',
           user_id:decision?.user_id ?? null, event_id:decision?.event_id ?? null,...(merge ? {merge} : {}) } };
+        evidenceGuards.set(result,typeof adapter.validateCurrent==='function'?()=>adapter.validateCurrent(target)===true:()=>true);
+        return result;
       } catch {
         return unknown('evidence_unavailable'); // Never expose arbitrary adapter errors.
       }

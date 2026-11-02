@@ -73,3 +73,5 @@ its original path so release notes and development handoffs keep stable links.
 - [Offline project conversations / 离线项目对话](CONVERSATIONS.md): scoped shared history, explicit modification/stop, authorization and actual-browser limits.
 
 - [Complete offline candidate / 统一离线候选树](ACP-V1-CANDIDATE.md) and [credential-free browser fixture](CONVERSATION-FIXTURE.md).
+
+- [Private delivery decisions / 私有可信决定](PRIVATE-DELIVERY-DECISIONS.md): host-only credential revision-CAS, verified event journal and default-off composition; no new HTTP/MCP approval route.

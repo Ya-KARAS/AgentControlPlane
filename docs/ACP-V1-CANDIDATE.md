@@ -111,3 +111,7 @@ checklist](ACP-V1-ACCEPTANCE-GAPS.md). PR3 production credential storage/decisio
 composition and PR4 measured adapters/write enforcement remain development gaps;
 they must not be called configuration-only. Original §9 permits manual ordinary
 Chat participation and does not make unattended automation a shipping blocker.
+
+## Follow-on private decision code
+
+See [private delivery decisions](PRIVATE-DELIVERY-DECISIONS.md): bounded existing-store credential read/insert/revision-CAS, branded decision journal and explicit host composition are now implemented in the next stacked increment. Default off, no network approval surface/real user enrollment; PR4 production measurement/write fencing and real acceptance remain incomplete. Earlier gap rows describe their historical candidate.
