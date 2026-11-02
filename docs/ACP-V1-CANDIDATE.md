@@ -74,7 +74,9 @@ shared bearer, user-like label, fixture or green CI cannot approve a PR.
 ## Browser environment and minimum real inputs
 
 Current CI has only Node22 `ubuntu-latest`/`windows-latest` matrix jobs. No existing
-Playwright dependency, browser installation or browser job was found. No new
+Playwright dependency, explicit browser installation or browser job is configured
+in the project. Hosted images may include browsers, but these Node jobs do not
+establish their sandbox or interaction readiness. No new
 browser/dependency workflow is silently introduced. Cloud Chromium's existing
 SUID sandbox configuration remains blocked; no new retry, permission change or
 sandbox disabling was attempted in this round. See the credential-free fixture

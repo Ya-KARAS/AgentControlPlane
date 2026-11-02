@@ -25,6 +25,10 @@ No main merge/force push, no real ACP deployment, credentials, user enrollment, 
 ## Tasks
 
 - [x] Compare remote feature SHAs and merge PR22, PR0, PR24 and PR25 in ordinary commits; resolve additive conflicts; run existing targeted tests.
-- [ ] Add regression tests for subscription/message/workflow coexistence and combined HTTP/MCP surfaces; verify original design hash and ancestor inventory.
-- [ ] Inspect existing CI browser support. If absent, add minimal credential-free loopback fixture launcher and contract tests RED→GREEN plus exact manual browser steps/resources. Do not invent a Playwright-ready CI environment.
-- [ ] Independent whole-candidate review, important fixes RED→GREEN, final npm run verify, normal push, independent draft based on PR32 and exact-head CI readback.
+- [x] Add regression tests for subscription/message/workflow coexistence and combined HTTP/MCP surfaces; verify original design hash and ancestor inventory.
+- [x] Inspect existing CI browser support. If absent, add minimal credential-free loopback fixture launcher and contract tests RED→GREEN plus exact manual browser steps/resources. Do not invent a Playwright-ready CI environment.
+- [x] Independent whole-candidate review, important fixes RED→GREEN, final npm run verify, normal push, independent draft based on PR32 and exact-head CI readback.
+
+Independent review: one Important fixture connection cap/deadline issue reproduced RED then fixed GREEN with absolute deadlines and max16 pre-header connections. No Critical/minor/deferred findings. Initial whole-suite startup-signal race was reproduced and fixed before review. Final evidence and exact remote CI are in the PR receipt.
+
+Final Cloud npm run verify exit0:1024tests/1023passed/0failed/1Windows-onlyskip; checkPASS. New combined/fixture targeted9/9. Original PR0/22/24/25 core artifacts remain byte-identical; source heads PR20–32 are all ancestors. Exact remote CI receipt is recorded in the draft PR.

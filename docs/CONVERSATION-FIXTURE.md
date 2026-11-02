@@ -62,7 +62,7 @@ Authorization is rejected with a fixed error; the actual page's empty `Bearer`
 placeholder is not authentication and conveys no authority.
 
 Fixed loopback Host/Origin checks, bounded JSON input16KiB, eight concurrent requests,
-five-second deadlines, fixed route/scope/target allowlists and max100 in-memory
+16 connections including unfinished headers, absolute five-second connection/request deadlines, fixed route/scope/target allowlists and max100 in-memory
 message operations apply. Unknown routes including `/mcp`, `/v1/tasks`, `.env` and
 production paths fail. No raw errors/body/headers are logged, no persistence or
 remote request occurs. The only simulated actions are discussion, synthetic child
