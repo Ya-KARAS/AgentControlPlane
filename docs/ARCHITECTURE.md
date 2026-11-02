@@ -146,3 +146,13 @@ restart blocks replay; actual distributed writer fencing remains a live gate.
 foreground HTTP and background MCP. Posts/reads are data; only the explicit
 execution bridge uses original dispatch/continuation idempotency and queue.
 Default disabled; no vendor identity or acceptance is inferred from message text.
+
+## Delivery metadata and human approval
+
+PR3 adds optional manual delivery observations to existing task records, without
+a new queue or GitHub client. Rejection/revision does not replace logical task
+identity or alter executor state. Read views explicitly separate reported PR
+metadata from verified state, which remains unknown. No authenticated human
+approval channel exists, so approved/merged ingestion is closed by default;
+no bearer, TTY or model assertion substitutes for user approval. This does not
+authorize merging or deployment. See [delivery boundaries](DELIVERY.md).
