@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ControlPlaneError } from "./errors.js";
 import { resolveRerouteConfig } from "./reroute.js";
-import { normalizeExecutionNodes } from "./execution-nodes.js";
+import { normalizeExecutionNodes } from "./execution-node-config.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, "..", "..");

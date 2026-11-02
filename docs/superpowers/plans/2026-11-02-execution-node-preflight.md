@@ -48,11 +48,27 @@ No subscription-balance inference and no readiness imported from task prompts.
 - [x] Record PR20–25 head/CI/dependency/completion matrix and exact live blockers.
 - [x] Document config, host trust, advisory-only limits, rollback and PR4b gates;
   preserve English/Chinese architecture/protocol parity.
-- [ ] Run npm run verify; independent whole-branch read-only review; fix important
-  issues RED→GREEN then final verification. Push feature branch, read remote SHA,
-  create draft PR and check exact-head CI. Do not merge.
+- [x] Run npm run verify; independent whole-branch read-only review; fix important
+  issues RED→GREEN then final verification.
+- [ ] Push feature branch, read remote SHA, create draft PR and check exact-head CI.
+  This delivery receipt is recorded in the PR body, without a self-referential SHA. Do not merge.
 
 Review focus: caller cannot supply host observations; arbitrary extra fields do
 not leak; clock/TTL boundaries; explicit unavailable cloud never silently routes;
 no second queue, task or executor; this feature does not claim execution fencing,
 cloud acceptance, subscriptions or ordinary Chat automation.
+
+
+## Verification record
+
+- Baseline main: npm run verify exit0, 650 tests / 649 passed / 1 skipped.
+- Core RED missing implementation, then GREEN 15/15; MCP absent-tool RED, then
+  GREEN; host composition disconnected-wiring negative control RED, then GREEN.
+- 20 node/MCP tests passed, with no real executor or remote service.
+- First full verify exposed one existing clone-diagnostic compatibility failure.
+  Independent review confirmed config's new static Zod dependency. A fixture
+  including the new module still reproduced ERR_MODULE_NOT_FOUND(zod).
+- Extracted strict dependency-free configuration normalization; the real
+  no-dependencies subprocess and node/MCP tests passed 27/27. No skipped guard.
+- Final npm run verify exit0: 670 tests, 669 passed, 0 failed, 1 Windows-only skip;
+  check passed. No deferred minor findings. No dependency/lockfile change.

@@ -1,26 +1,13 @@
 import { z } from 'zod';
-import { ControlPlaneError } from './errors.js';
+import { normalizeExecutionNodes } from './execution-node-config.js';
+export { normalizeExecutionNodes } from './execution-node-config.js';
 
 const id = z.string().min(1).max(64).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/);
-const nodeSchema = z.object({
-  id, kind: z.enum(['local', 'cloud']), authorized: z.boolean().default(false),
-  executor_ids: z.array(id).max(16).refine(ids => new Set(ids).size === ids.length),
-}).strict();
-const configSchema = z.object({
-  enabled: z.boolean().default(false), nodes: z.array(nodeSchema).max(64).default([]),
-}).strict().refine(value => new Set(value.nodes.map(node => node.id)).size === value.nodes.length);
 const observationSchema = z.object({
   node_id: id, observed_at: z.string().datetime(), valid_until: z.string().datetime(),
   online: z.boolean(), runtime_ready: z.boolean(), workspace_ready: z.boolean(),
   authentication_ready: z.boolean(), persistent: z.boolean(),
 }).strict();
-
-export function normalizeExecutionNodes(config = {}) {
-  const parsed = configSchema.safeParse(config);
-  if (!parsed.success) throw new ControlPlaneError('invalid_config', 'Invalid executionNodes configuration');
-  return Object.freeze({ enabled: parsed.data.enabled, nodes: Object.freeze(parsed.data.nodes.map(node =>
-    Object.freeze({ ...node, executor_ids: Object.freeze([...node.executor_ids]) }))) });
-}
 
 // Host-supplied cached observations are advisory, never an ownership lease or
 // permission to start a process. No I/O, clocks, background polling or task writes.
