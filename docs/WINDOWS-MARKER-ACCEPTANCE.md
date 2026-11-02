@@ -16,8 +16,8 @@ It creates a fresh private `%TEMP%\acp-marker-*` root, empty ACP state and a tin
 new Git repository (README/AGENTS baseline). It never accepts an existing workspace,
 state directory, prompt, task ID, production config or queue. No loadConfig,
 createApplication, RemoteRelayWorker, Companion or old ACP state is started/read.
-AGENT_CONTROL_CONFIG/STATE_DIR/HOST/PORT do not configure this entry. Only one
-Codex executor is constructed; periodic discovery/reconciliation are disabled.
+AGENT_CONTROL_CONFIG/STATE_DIR/HOST/PORT do not configure this entry. One Codex adapter is reused; at most one passive app-server restart is allowed
+for process-scoped MCP isolation, never overlapping execution; periodic discovery/reconciliation are disabled.
 One fixed task, one queue and idempotent run promise; no automatic live retry.
 
 Codex starts in that new workspace using its installed native executable and
@@ -33,7 +33,9 @@ Acceptance-only launch uses documented stdio transport, disables multi-agent,
 apps/plugins/browser/computer/image/hooks/memories, hosted search and notifications,
 forces ChatGPT login and built-in OpenAI provider. The existing ordinary launch is
 unchanged. Passive account/config/rate-limit RPCs run before dispatch. API login,
-non-OpenAI provider, enabled MCP, inline hooks or disabled-feature overrides block.
+non-OpenAI provider, inline hooks or disabled-feature overrides block. Enabled user
+MCP entries require the process-only isolation described below; zero enabled MCP
+entries must be verified before any task/thread/turn.
 Missing/unknown credit policy, funded/unlimited credits and unknown/exhausted
 subscription windows block instead of silently using a paid route. No credit
 purchase/reset/login API is called. These signals are not a billing audit or a
@@ -41,6 +43,45 @@ cash-spend measurement: receipt cash_spend stays unknown. The Windows operator
 must verify automatic paid usage/top-up remains off; no paid setting is changed.
 If a client omits required credit/config fields, stop with its fixed reason and
 report the compatibility gap; do not bypass the guard or invent quota.
+
+### Process-scoped MCP isolation (Codex0.165 compatibility)
+
+The passive probe uses initialize/account/config/rate-limit RPCs only. It does not
+call thread/start, model inference, MCP discovery/status, resources or tools. If
+user MCP entries are enabled, ACP reads only their names/enablement from the
+already returned config in memory. It creates a bounded `-c mcp_servers={...}`
+inline-table value with each quoted name set to `enabled=false`; commands, URLs,
+headers and credential values are never copied into argv. Names are not logged or
+included in status/receipts. Names remain visible to OS process inspection as
+ordinary argv metadata; do not share command-line dumps. This is not secret storage.
+
+ACP first proves the passive process's observed tree gone, then restarts the same
+adapter once with that additional native argv override. It repeats account/quota
+and full effective-config checks before the existing single queue may dispatch.
+Unknown/new enabled entries, ignored overrides, malformed/oversized names, or an
+uncertain stop block with zero tasks. Only the host's explicit measured launch path
+can spawn: an unexpected exit never permits the ordinary adapter to start an
+untracked replacement, even during orchestrator discovery/startup. Cancellation/deadline cannot trigger a retry.
+No config write RPC/file edit, login-file copy, new credential or global MCP disable
+occurs. There is no automatic retry of the model task. Ordinary user Codex launch
+and persistent MCP configuration remain unchanged. Discovery uses existing Codex
+configuration/login, not a new CODEX_HOME. This is application-level preflight;
+it does not claim an OS network isolation container around the passive process.
+
+The receipt adds bounded `mcp_isolation` state/count and, when restarted, the
+`probe_process` stop evidence separately from the final task process. Both must be
+confirmed; a process restart is not a second executor turn. Existing process proof
+limits below still apply. The startup command stays unchanged.
+
+Implementation follows the official tagged source: [CLI value parsing](https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/utils/cli/src/config_override.rs),
+[dot-separated override keys](https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/config/src/overrides.rs)
+and [recursive table merging](https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/config/src/merge.rs).
+Therefore an empty table cannot clear the inherited entries, and a quoted dotted
+name must be a key inside the parsed table value rather than part of the override
+path. [Passive config handler](https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/app-server/src/request_processors/config_processor.rs)
+reads effective configuration; this entry never invokes the separate MCP handlers.
+The actual installed client's effective response remains the final guard; fixture
+success does not prove Windows compatibility or a real marker pass.
 
 The requested model must be advertised by that actual app-server and support low
 reasoning. Use a current subscribed inexpensive model already available; this

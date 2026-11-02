@@ -21,3 +21,49 @@ test('unknown credit or overage signal cannot silently authorize the live route'
 
 test('cancellation wait surfaces finished preflight rather than polling indefinitely',async()=>{let reads=0;await assert.rejects(waitForStarted({status:()=>{if(++reads>5)throw Error('unexpected extra polling');return {task_started:false,finished:true};}},50),/preflight finished/);});
 test('unavailable process probe blocks before starting the app-server and cannot claim a stopped tree',async t=>{const app=await fixture(t,'complete',{processTreeFactory:()=>({prepare:async()=>{throw Error('private-probe');},capture:async()=>assert.fail('must not capture'),stop:async()=>assert.fail('no owned executor')})}),r=await app.run();assert.equal(r.outcome,'blocked');assert.equal(r.task_count,0);assert.equal(r.process.state,'not_started');assert.equal(r.process.spawn_event_seen,false);assert.equal(r.reason,'process_measurement_unavailable');});
+
+function isolatedFactory(mode,events){return ({workspace,mcpOverride})=>{
+ let starts=0;const executor=new CodexExecutor({command:process.execPath,requestTimeoutMs:5000,launch:()=>{
+  if(starts++)assert.equal(executor.client.process,null,'old process must be gone before restart');
+  const override=typeof mcpOverride==='function'?mcpOverride():null;
+  events.push({kind:'launch',override});return {args:[script,mode,...(override?[override]:[])],cwd:workspace,detached:process.platform!=='win32'};
+ }});
+ const request=executor.client.request.bind(executor.client);executor.client.request=(method,...args)=>{events.push({kind:'request',method,pid:executor.client.process?.pid});return request(method,...args);};return executor;
+};}
+test('process-only MCP overrides stop passive probe before one isolated adapter turn, without secret evidence',async t=>{
+ const events=[],app=await fixture(t,'mcp-isolated',{executorFactory:isolatedFactory('mcp-isolated',events)}),r=await app.run();
+ assert.equal(r.outcome,'passed',JSON.stringify(r));assert.equal(r.task_count,1);
+ const launches=events.filter(e=>e.kind==='launch');assert.equal(launches.length,2);assert.equal(launches[0].override,null);assert.match(launches[1].override,/^mcp_servers=\{/);
+ const firstPid=events.find(e=>e.kind==='request').pid;
+ assert.deepEqual([...new Set(events.filter(e=>e.kind==='request'&&e.pid===firstPid).map(e=>e.method))].sort(),['account/rateLimits/read','account/read','config/read','initialize'].sort());
+ assert.equal(events.filter(e=>e.method==='turn/start').length,1);assert.equal(r.mcp_isolation.state,'verified_disabled');assert.equal(r.mcp_isolation.configured_count,3);assert.equal(r.probe_process.state,'confirmed_observed_tree');assert.equal(r.probe_process.exit_event_seen,true);assert.notEqual(r.probe_process.root_pid,r.process.root_pid);
+ for(const secret of ['private-name','quote','private-endpoint','private-credential'])assert.equal(JSON.stringify(r).includes(secret),false);
+});
+test('ignored process override and newly enabled entry block without retries or any thread',async t=>{
+ for(const mode of ['mcp-ignored','mcp-new']){const events=[],app=await fixture(t,mode,{executorFactory:isolatedFactory(mode,events)}),r=await app.run();
+ assert.equal(r.outcome,'blocked');assert.equal(r.task_count,0);assert.equal(events.filter(e=>e.kind==='launch').length,2);assert.equal(events.some(e=>e.method==='thread/start'||e.method==='turn/start'),false);assert.equal(r.reason,'unsupported_codex_configuration');}
+});
+test('uncertain probe stop forbids isolated restart and retains runtime',async t=>{
+ const events=[];const app=await fixture(t,'mcp-isolated',{executorFactory:isolatedFactory('mcp-isolated',events),processTreeFactory:()=>({capture:async()=>{},stop:async()=>({state:'unconfirmed',root_pid:null,observed_processes:0})})}),r=await app.run();
+ assert.equal(r.outcome,'cleanup_unconfirmed');assert.equal(r.task_count,0);assert.equal(r.runtime_removed,false);assert.equal(events.filter(e=>e.kind==='launch').length,1);
+});
+test('cancellation during measured probe stop cannot start isolated process',async t=>{
+ const {createOwnedProcessTree}=await import('../src/core/owned-process-tree.js');const events=[];let app;
+ app=await fixture(t,'mcp-isolated',{executorFactory:isolatedFactory('mcp-isolated',events),processTreeFactory:options=>{const tree=createOwnedProcessTree(options);return {prepare:tree.prepare,capture:tree.capture,async stop(){const r=await tree.stop();void app.close();return r;}};}});
+ const r=await app.run();assert.equal(r.outcome,'cancelled');assert.equal(r.task_count,0);assert.equal(events.filter(e=>e.kind==='launch').length,1);assert.equal(r.runtime_removed,true);
+});
+
+test('lost preflight process cannot trigger an unmeasured implicit adapter restart',async t=>{
+ for(const mode of ['complete','mcp-isolated']){
+  const events=[];let executor;
+  const app=await fixture(t,mode,{executorFactory:options=>{
+   executor=isolatedFactory(mode,events)(options);
+   executor.probe=async()=>{const child=executor.client.process;const exited=new Promise(resolve=>child.once('exit',resolve));child.kill();await exited;return {available:true,status:'available'};};
+   return executor;
+  }});
+  // RED negative control may leave an untracked third child. Always clean only
+  // the exact ChildProcess created by this fixture, never system-wide processes.
+  t.after(async()=>{const child=executor.client.process;if(child&&child.exitCode===null&&child.signalCode===null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill();await exited;}});
+  const r=await app.run();assert.equal(events.filter(e=>e.kind==='launch').length,mode==='complete'?1:2,'no implicit process launch');assert.equal(r.task_count,0);assert.equal(events.some(e=>e.method==='thread/start'||e.method==='turn/start'),false);assert.notEqual(r.outcome,'passed');assert.equal(r.mcp_isolation.state,'process_lost');assert.equal(r.reason,'unexpected_app_server_restart');
+ }
+});
