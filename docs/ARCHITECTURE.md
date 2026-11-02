@@ -169,3 +169,13 @@ history and existing APIs remain. Default off; no approval/merge or real runner.
 See [offline project conversations](CONVERSATIONS.md) for protected scoped message,
 continuation and safe stop interfaces, default-off authorization and browser limits.
 The original single queue and human approval boundary remain authoritative.
+## Passive subscription observations (PR2)
+
+The optional subscription ledger reuses TaskStore state and audit without mixing
+plan availability with task tokens or cash. Only an offline operator command
+imports manual/user_reported snapshots; no model, CLI or browser polling occurs.
+GET `/v1/subscriptions`, read-only MCP `subscription_status` and the local dashboard
+show bounded exact-scope observations; expiry becomes unknown, null never means0.
+Operator-configured capability-gated advice always requires approval for manual
+input and never changes dispatch or disabled-by-default reroute. No import/takeover
+network mutation is added. See [contract and rollback](SUBSCRIPTIONS.md).

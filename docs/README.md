@@ -25,6 +25,7 @@ its original path so release notes and development handoffs keep stable links.
 ## Development and operations
 
 - [Delivery observations and approval boundary](DELIVERY.md)
+- [Passive subscription status](SUBSCRIPTIONS.md)
 - [Development workflow](DEVELOPMENT.md)
 - [Maintenance scripts](../scripts/README.md)
 - [Offline handoff acceptance](HANDOFF-ACCEPTANCE.md) · [中文](HANDOFF-ACCEPTANCE.zh-CN.md)
