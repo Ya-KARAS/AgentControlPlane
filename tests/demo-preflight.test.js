@@ -147,6 +147,8 @@ test("demo preflight diagnoses a clone without installed dependencies", (t) => {
     "scripts/demo.js", "scripts/demo-preflight.js", "config/default.json",
     "src/core/config.js", "src/core/errors.js", "src/core/reroute.js",
     "src/core/execution-node-config.js",
+
+    "src/controllers/registry.js", "src/controllers/controller.js",
     "src/core/execution-report.js", "src/executors/discovery.js",
     "src/executors/zcode-executor.js", "src/executors/executor.js",
   ]) {

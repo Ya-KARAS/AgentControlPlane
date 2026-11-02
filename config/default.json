@@ -11,6 +11,12 @@
     "enabled": false,
     "nodes": []
   },
+  "controllers": {
+    "enabled": false,
+    "mode": "single",
+    "leaseTtlSeconds": 120,
+    "agents": []
+  },
   "companion": {
     "enabled": true,
     "pairingTtlMinutes": 10,
