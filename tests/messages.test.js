@@ -81,9 +81,24 @@ test('task pruning cannot discard an unresolved execution-node reservation',t=>{
  assert.equal(s.store.getTask(task.id).node_recovery.phase,'checkpointed');
 });
 
-test('retry queues a durable task when task-created audit failed before queue insertion',async t=>{
+test('creation audit failure blocks retry until clean restart reconciles the original task',async t=>{
  const s=setup(t);const audit=s.store.audit.bind(s.store);let failed=false;
  t.mock.method(s.store,'audit',(type,payload)=>{if(type==='task.created'&&!failed){failed=true;throw new Error('simulated task-created audit gap');}return audit(type,payload);});
  const input=message({kind:'execution_request'});assert.throws(()=>s.hub.dispatch(input,s.request));const original=s.store.listTasks()[0];assert.equal(s.orchestrator.queue.length,0);
- assert.equal(s.hub.dispatch(input,s.request).task.id,original.id);await until(()=>s.store.getTask(original.id).status==='completed');assert.equal(s.executor.turnStarts.length,1);
+ assert.equal(s.store.checkpointFaulted,true);fails(()=>s.hub.dispatch(input,s.request),'checkpoint_store_faulted');assert.equal(s.executor.turnStarts.length,0);
+ const store=new TaskStore(s.store.stateDir),executor=new RecordingExecutor('codex');const orchestrator=new Orchestrator({config:s.config,store,executors:new Map([['codex',executor]]),defaultProvider:'codex'});
+ await orchestrator.start();assert.equal(orchestrator.queue.length,0);assert.equal(executor.turnStarts.length,0);
+ const hub=new MessageHub({store,orchestrator,enabled:true});assert.equal(hub.dispatch(input,s.request).task.id,original.id);
+ await until(()=>store.getTask(original.id).status==='completed');assert.equal(executor.turnStarts.length,1);
+ assert.ok(fs.readFileSync(store.auditPath,'utf8').includes('message.queue_recovered'));
+});
+
+
+test('corrupt audit history blocks explicit message queue recovery without another execution',async t=>{
+ const s=setup(t);const real=s.orchestrator.dispatch.bind(s.orchestrator);let queued;
+ t.mock.method(s.orchestrator,'dispatch',request=>{const task=real(request);queued=s.orchestrator.queue.splice(0);return task;});
+ s.hub.dispatch(message({kind:'execution_request'}),s.request);await until(()=>s.store.listTasks()[0].status==='completed');
+ const task=s.store.listTasks()[0];s.store.updateTask(task.id,{status:'queued'});fs.appendFileSync(s.store.auditPath,'broken audit fragment\n');
+ const before=s.executor.turnStarts.length;
+ assert.throws(()=>s.orchestrator.ensureMessageTaskQueued(task.id,task.idempotency_key));assert.equal(s.executor.turnStarts.length,before);assert.equal(s.store.checkpointFaulted,true);
 });

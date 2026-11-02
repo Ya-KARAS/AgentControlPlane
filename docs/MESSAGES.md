@@ -62,8 +62,11 @@ remain authoritative. The journal binds resulting task/logical IDs durably.
 
 Crash after dispatch persistence but before message mapping: replay uses the same
 operation key and returns the existing task. If creation persisted before queue
-insertion, the explicit retry only re-enqueues that same bound queued task after
-mapping succeeds. It never resumes managed-node tasks without their separately
+insertion, audit failure faults the original store and immediate retry cannot run.
+After clean restart, queued message-owned tasks stay staged; an explicit retry
+checks retained audit segments, persists/syncs a recovery event and only then
+re-enqueues the same bound task after mapping succeeds. Corrupt audit history
+blocks recovery and requires operator inspection, never silent reconstruction. It never resumes managed-node tasks without their separately
 branded node admission. Discussion/read operations cannot trigger this repair.
 
 Messages and operation-owned tasks are not silently evicted. Until the subsequent

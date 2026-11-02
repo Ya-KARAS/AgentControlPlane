@@ -39,3 +39,17 @@ Review focus: same message on two channels is one operation; ambiguous restart
 cannot create a second task; arbitrary prose/actor/human fields confer no powers;
 no new task queue/lock; bounded local data, no raw text in audit/errors; preserve
 node fences, task lineage/history and all existing clients.
+
+
+## Recorded verification and review
+
+Core and surfaces have RED→GREEN evidence, including channel replay, actual
+HTTP/MCP, prototype-like unknown tool names, node reservation pruning and queue
+insertion gap. Pre-review full verify791tests/790passed/0failed/1Windows-onlyskip.
+One final-review P2: creation audit failure must fault the store before retry can
+repair queue membership. Reproduced plus corrupt-audit negative control, then
+fixed: immediate fault, no automatic queued-message replay after restart, explicit
+recovery verifies retained audit chain and syncs recovery event before admission.
+Targeted17/17. No deferred findings. No live model/vendor/account operation.
+Final verification: npm run verify exit0,792tests/791passed/0failed/1Windows-onlyskip;
+check passed. Message/retry/HTTP/MCP suite17/17. Exact remote CI recorded in PR.

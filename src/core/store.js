@@ -576,6 +576,7 @@ export class TaskStore {
     };
     this.state.tasks[id] = task;
     this.persist();
+    try {
     this.audit("task.created", {
       taskId: id,
       workspace,
@@ -585,6 +586,7 @@ export class TaskStore {
     if (task.control_lease) this.audit("task.control_lease", {
       taskId: id, action: "claim", owner: task.control_lease.owner, generation: task.control_lease.generation,
     });
+    } catch { this.checkpointFaulted=true; throw checkpointError('checkpoint_audit_failed'); }
     return normalizeTaskRecord(task);
   }
 
@@ -659,6 +661,32 @@ export class TaskStore {
     if(!message||message.kind!=='execution_request'||!task||task.idempotency_key!==key||message.execution_task_id&&message.execution_task_id!==taskId)throw new ControlPlaneError('message_conflict','Message/task binding could not be confirmed');
     if(message.execution_task_id===taskId)return structuredClone(message);
     return this.#commitMessage(key,{...message,execution_task_id:taskId,logical_task_id:task.logical_task_id??task.id,state:'dispatched'},'task_bound');
+  }
+
+  confirmMessageQueueRecovery(taskId,key) {
+    if(this.checkpointFaulted)throw checkpointError('checkpoint_store_faulted');
+    if(!this.isMessageTaskBound(taskId,key))throw new ControlPlaneError('message_conflict','Message binding missing');
+    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+    try {
+      let previous=null,sequence=null,started=false;
+      for(const file of [this.auditArchivePath,this.auditPath]){
+        if(!fs.existsSync(file))continue;
+        if(fs.statSync(file).size>this.maxAuditBytes+1024*1024)throw checkpointError('checkpoint_audit_invalid');
+        for(const line of fs.readFileSync(file,'utf8').split('\n').filter(line=>line.trim())){
+          let entry;try{entry=JSON.parse(line);}catch{throw checkpointError('checkpoint_audit_invalid');}
+          if(!entry||typeof entry!=='object')throw checkpointError('checkpoint_audit_invalid');
+          if(entry.seq===undefined&&entry.h===undefined&&!started)continue;
+          const {h,...payload}=entry;
+          if(!Number.isSafeInteger(entry.seq)||entry.seq<1||typeof h!=='string'||this.#auditDigest(JSON.stringify(payload))!==h||started&&(entry.seq!==sequence||entry.prev!==previous))throw checkpointError('checkpoint_audit_invalid');
+          started=true;previous=h;sequence=entry.seq+1;
+        }
+      }
+      if(!started)throw checkpointError('checkpoint_audit_invalid');
+      this.auditSeq=sequence;this.auditPrev=previous;
+      this.audit('message.queue_recovered',{taskId,messageKey:key});
+      const fd=fs.openSync(this.auditPath,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+    }catch(error){this.checkpointFaulted=true;throw error;}
+    finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
   }
 
   isMessageTaskBound(taskId,key) {

@@ -23,7 +23,7 @@ export class MessageHub{
  }
  #safe(operation){
   try{return operation();}catch(cause){
-   const allowed=['messages_disabled','invalid_message','invalid_message_query','invalid_config','message_conflict','message_capacity_reached','task_not_found','idempotency_conflict','task_capacity_reached','checkpoint_store_faulted','checkpoint_store_drift','checkpoint_store_locked','checkpoint_persist_failed','invalid_workspace','workspace_not_allowed','invalid_profile','no_executor_available','task_not_started','node_recovery_required'];
+   const allowed=['messages_disabled','invalid_message','invalid_message_query','invalid_config','message_conflict','message_capacity_reached','task_not_found','idempotency_conflict','task_capacity_reached','checkpoint_store_faulted','checkpoint_store_drift','checkpoint_store_locked','checkpoint_persist_failed','checkpoint_audit_invalid','checkpoint_audit_failed','invalid_workspace','workspace_not_allowed','invalid_profile','no_executor_available','task_not_started','node_recovery_required'];
    throw error(cause instanceof ControlPlaneError&&allowed.includes(cause.code)?cause.code:'message_operation_failed');
   }
  }
