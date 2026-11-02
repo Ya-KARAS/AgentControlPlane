@@ -145,3 +145,12 @@ Rollback: close host admissions, stop managed work under existing procedure,
 preserve state/audit/decision/report/checkpoint history, then review code revert.
 Do not run old code that silently ignores these credentials/counters/decisions and
 later treat the resulting state as verified. No destructive cleanup or main merge.
+
+## Subsequent protected surface increment
+
+The subsequent PR35-based [protected review surface](PROTECTED-DELIVERY-REVIEW.md)
+now implements the actual page/HTTP handler and explicit real-host composition,
+with no ordinary-startup mount. Earlier absent-surface statements describe PR34.
+Tests remain fake-ceremony/temp-store only. Actual verified-session source,
+origin/RP/policy, mounting, user enrollment and live acceptance remain outstanding;
+missing source-specific authentication code is not magically supplied by config.

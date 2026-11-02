@@ -151,3 +151,26 @@ follow-on. No actual enrollment or network review surface is installed. The
 remaining authenticated user-facing ceremony/host entry surface and real pilot
 are still absent, not merely filled by choosing config. PR4 measured adapters and
 physical write enforcement remain code gaps. No new ordinary Chat shipping gate.
+
+## PR35/36 offline gap closure
+
+The follow-ons implement the bounded [workspace inventory](NODE-RECOVERY.md#bounded-local-inventory-adapter)
+and [protected review handler/page plus private-host composition](PROTECTED-DELIVERY-REVIEW.md).
+Earlier absent-code rows describe the prior candidate. Both are default-off;
+ordinary startup has no added scan or approval route. Temporary repositories,
+real temporary TaskStore/HTTP and fake WebAuthn/provider tests establish offline
+contracts only. No real source/target runner or user identity is selected.
+
+Remaining actual code is tied to the selected real host: a verified-session
+producer/adapter if absent there; source process-stop measurement, target readiness
+and write-boundary fencing/transport adapters for the chosen runner topology.
+Those are not replaced by callbacks returning constants or by configuration.
+No generic unsafe remote lock, implicit session trust or new credential is added
+to disguise the remaining work. Minimum next inputs: one existing user-owned host
+and OS, allowed checkout/private-state paths and authoritative scheduler location;
+actual supported session identity source/user-controlled browser origin; approved
+principal/enrollment/check policy and existing read transport. Mounting, real
+personal enrollment and any missing access/service change need their explicit
+approval. Then run exact-head approval/revoke/new-head/restart acceptance and a
+separately authorized bounded subscribed runner/offline-return pilot. Ordinary
+Chat unattended research remains conditional under original§9, not a release gate.

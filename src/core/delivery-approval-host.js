@@ -38,6 +38,7 @@ export function createDeliveryApprovalHost({enabled=false,store,providerAdapter,
     // provider is unavailable or has moved on. Positive consent rechecks HEAD.
     if(proof.target.decision==='approved'&&!same(target,await providerAdapter.readHead(target)))throw fail();
     if(await authorize({principalId:proof.principalId,purpose:'decision',target:proof.target})!==true||await authorizeUser(proof.principalId,target)!==true)throw fail();
+    if(input?.isCurrent!==undefined&&(typeof input.isCurrent!=='function'||await input.isCurrent()!==true))throw fail();
     const result=await storage.recordDecision(receipt);if(result.recorded!==true)throw fail();return result;
    }),
    refresh:safe(id=>delivery.refresh(id)),status:id=>closed?null:delivery.status(id),

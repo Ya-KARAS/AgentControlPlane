@@ -22,6 +22,8 @@ function validCredential(value) {
 
 // Trusted host composition only. No route, config loader or default principal/RP.
 // Injected library/storage/policy are host capabilities, never request payloads.
+// Optional isCurrent callbacks only restrict an individual host ceremony after
+// asynchronous work; they never replace the configured authorization policy.
 // The result verifies this ceremony; it is not a delivery setter or merge grant.
 export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, authorize, storage,
   clock=Date.now, ttlMs=120_000, maxPending=32, library=standardLibrary } = {}) {
@@ -40,15 +42,15 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
   const pending=new Map();let generating=0,finishing=0;
   function now() { const n=clock();if(!Number.isSafeInteger(n)||n<0)throw unavailable();return n; }
   function live(record) {const n=now();if(n<record.createdAt||n>=record.expiresAt)throw unavailable();}
-  async function authorized(principalId,purpose,target) {
-    if(!configured||!id(principalId)||await authorize({principalId,purpose,target})!==true)throw unavailable();
+  async function authorized(principalId,purpose,target,isCurrent) {
+    if(!configured||!id(principalId)||await authorize({principalId,purpose,target})!==true||isCurrent!==undefined&&(typeof isCurrent!=='function'||await isCurrent()!==true))throw unavailable();
   }
   async function credentials(principalId) {
     const rows=await storage.readCredentials(principalId);
     if(!Array.isArray(rows)||rows.length>64||rows.some(row=>!validCredential(row))||new Set(rows.map(row=>row.id)).size!==rows.length)throw unavailable();
     return structuredClone(rows);
   }
-  async function begin(kind,{principalId,target}={}) {
+  async function begin(kind,{principalId,target,isCurrent}={}) {
     try {
       if(!configured)throw unavailable();
       const binding=targetBinding(target),createdAt=now();
@@ -56,7 +58,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       if(pending.size+generating+finishing>=maxPending)throw unavailable();
       generating++;
       try {
-        await authorized(principalId,kind,binding);
+        await authorized(principalId,kind,binding,isCurrent);
         const rows=await credentials(principalId);
         if(kind==='authentication' && !rows.length)throw unavailable();
         const decisionFence=kind==='authentication'&&typeof storage.readDecisionFence==='function'
@@ -74,7 +76,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       } finally {generating--;}
     } catch {throw unavailable();}
   }
-  async function finish(kind,{challengeId,response,target}={}) {
+  async function finish(kind,{challengeId,response,target,isCurrent}={}) {
     let reserved=false;
     try {
       if(!configured)throw unavailable();
@@ -85,7 +87,7 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       if(record.kind!==kind||JSON.stringify(record.target)!==JSON.stringify(targetBinding(target)))throw unavailable();
       live(record);
       if(!response||typeof response!=='object'||Array.isArray(response)||JSON.stringify(response).length>65536)throw unavailable();
-      await authorized(record.principalId,kind,record.target);
+      await authorized(record.principalId,kind,record.target,isCurrent);
       const rows=await credentials(record.principalId);
       const verificationOptions={response,expectedChallenge:challengeId,expectedOrigin,expectedRPID:rpID,requireUserVerification:true};
       let credential,result;
@@ -105,13 +107,13 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
             !Number.isSafeInteger(info.newCounter)||info.newCounter<0||
             ((credential.counter!==0||info.newCounter!==0)&&info.newCounter<=credential.counter))throw unavailable();
       }
-      await authorized(record.principalId,kind,record.target);
+      await authorized(record.principalId,kind,record.target,isCurrent);
       live(record);
       const committed=kind==='registration'
         ? await storage.insertCredential({principalId:record.principalId,credential:structuredClone(credential),expectedAbsent:true})
         : await storage.compareAndSwapCounter({principalId:record.principalId,credentialId:credential.id,expectedCounter:credential.counter,newCounter:result.authenticationInfo.newCounter,...(credential.revision===undefined?{}:{expectedRevision:credential.revision})});
       if(committed!==true)throw unavailable();
-      await authorized(record.principalId,kind,record.target);
+      await authorized(record.principalId,kind,record.target,isCurrent);
       live(record);
       if(kind==='registration')return {verified:true,registration_only:true,credentialId:credential.id};
       const receipt=Object.freeze({verified:true,ceremony_only:true,principalId:record.principalId,credentialId:credential.id,target:record.target});
