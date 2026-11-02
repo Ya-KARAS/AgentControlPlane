@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { ControlPlaneError } from "./errors.js";
 import { claimControlLease, renewControlLease, releaseControlLease } from "./controller-lease.js";
 import { isTrustedControllerActor } from "../controllers/registry.js";
+import { isNodeRecoveryCommand, nodeRecoveryTransition, assertNodeFence } from "./node-recovery.js";
 
 import {
   adaptV1Event,
@@ -87,6 +88,8 @@ function normalizeTaskRecord(task) {
   if (!task) return null;
   return {
     ...structuredClone(task),
+    execution_node_id: task.execution_node_id ?? null,
+    node_recovery: task.node_recovery ? structuredClone(task.node_recovery) : null,
     controller: task.controller ? { id: task.controller.id, kind: task.controller.kind, mode: task.controller.mode } : null,
     control_lease: task.control_lease ? {
       owner: task.control_lease.owner, generation: task.control_lease.generation, expires_at: task.control_lease.expires_at,
@@ -624,9 +627,58 @@ export class TaskStore {
     }
   }
 
-  updateTask(id, patch, controllerContext = undefined) {
+  applyNodeRecovery(id, command) {
+    if (!isNodeRecoveryCommand(command)) throw new ControlPlaneError('untrusted_node_recovery', 'Host node recovery evidence is required');
+    const task = this.state.tasks[id];
+    if (!task) throw new ControlPlaneError('task_not_found', 'Task not found');
+    if (['bind','admit'].includes(command.action)) {
+      const targetWorkspace = command.workspace ?? task.workspace;
+      if (Object.values(this.state.tasks).some(other => other.id !== id && other.workspace === targetWorkspace &&
+          (other.status === 'running' || other.node_recovery && other.node_recovery.phase !== 'completed'))) {
+        throw new ControlPlaneError('node_workspace_busy','Another task reserves this workspace');
+      }
+    }
+    const transition = nodeRecoveryTransition(normalizeTaskRecord(task), command);
+    if (!transition.patch) return {task:normalizeTaskRecord(task),duplicate:true};
+    const held = Boolean(this.checkpointLeaseToken);
+    this.acquireExecutorLease();
+    let persisted = false;
+    try {
+      const next = {...task,...transition.patch,updatedAt:now()};
+      this.state.tasks[id] = next; this.persist(); persisted = true;
+      this.audit('task.node_recovery', {taskId:id,action:command.action,owner:next.execution_node_id,generation:next.node_recovery.generation,phase:next.node_recovery.phase});
+      return {task:normalizeTaskRecord(next),duplicate:false};
+    } catch(error) {
+      if (!persisted) this.state.tasks[id] = task;
+      this.checkpointFaulted = true; throw error;
+    } finally { if (!held && !this.checkpointFaulted) this.releaseExecutorLease(); }
+  }
+
+  quarantineNodeRecovery(id) {
+    const task = this.state.tasks[id];
+    if (!task?.node_recovery) return;
+    // Host restart cannot prove whether durable admission reached its executor.
+    const old = task; const held = Boolean(this.checkpointLeaseToken); this.acquireExecutorLease(); let persisted = false;
+    try {
+      this.state.tasks[id] = {...task,status:'blocked',node_recovery:{...task.node_recovery,phase:'uncertain'},updatedAt:now()};
+      this.persist(); persisted = true;
+      this.audit('task.node_recovery', {taskId:id,action:'restart_blocked',generation:task.node_recovery.generation});
+    } catch(error) { if(!persisted)this.state.tasks[id]=old;this.checkpointFaulted=true;throw error; }
+    finally {if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
+  nodeWorkspaceReserved(taskId) {
+    const task = this.state.tasks[taskId];
+    return Object.values(this.state.tasks).some(other => other.id !== taskId && other.workspace === task?.workspace && (other.node_recovery && other.node_recovery.phase !== 'completed' || task?.node_recovery && other.status === 'running'));
+  }
+
+  updateTask(id, patch, controllerContext = undefined, nodeContext = undefined) {
     const task = this.state.tasks[id];
     if (!task) return null;
+    for (const field of ['execution_node_id','node_recovery']) {
+      if (Object.hasOwn(patch,field) && !isDeepStrictEqual(patch[field],task[field]??null)) throw new ControlPlaneError('node_recovery_update_required','Execution ownership requires a checked host operation');
+    }
+    assertNodeFence(task,nodeContext);
     for (const field of ["controller", "control_lease"]) {
       if (Object.hasOwn(patch, field) && !isDeepStrictEqual(patch[field], task[field] ?? null)) {
         throw new ControlPlaneError("control_lease_update_required", "Controller ownership must use the checked lease operation");
@@ -634,7 +686,7 @@ export class TaskStore {
     }
     // Legacy callers may write a full unchanged record; never assign ownership
     // fields from that patch, even when they compare equal.
-    const { controller: ignoredController, control_lease: ignoredLease, ...safePatch } = patch;
+    const { controller: ignoredController, control_lease: ignoredLease, execution_node_id: ignoredNode, node_recovery: ignoredRecovery, ...safePatch } = patch;
     // Executor/internal writes remain compatible. Any controller-authored patch
     // must carry a verified actor and the live fencing generation.
     if (controllerContext !== undefined) {
@@ -643,6 +695,9 @@ export class TaskStore {
         generation: controllerContext.generation, nowMs: Date.now(), ttlMs: 30_000 });
     }
     Object.assign(task, safePatch, { updatedAt: now() });
+    if (task.node_recovery && safePatch.status) {
+      task.node_recovery = {...task.node_recovery,phase:safePatch.status==='running'?'running':['completed','failed','cancelled','partial','blocked','interrupted'].includes(safePatch.status)?'completed':task.node_recovery.phase};
+    }
     this.persist();
     return normalizeTaskRecord(task);
   }
