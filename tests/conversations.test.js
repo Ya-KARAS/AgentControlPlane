@@ -37,3 +37,11 @@ test('queued stop removes only original queue entry, repeat is harmless and scop
 test('synchronous interrupt exception allows explicit retry without losing running reservation',async t=>{
  const f=fixture(t);f.store.updateTask(f.task.id,{status:'running',threadId:'codex-thread-1',turnId:'t'});const active={workspace:f.workspace,turnId:'t'};f.orchestrator.running.set(f.task.id,active);f.executor.interruptTurn=()=>{throw Error('sync failure');};await assert.rejects(f.orchestrator.requestStop(f.task.id));f.executor.interruptTurn=async()=>({});await f.orchestrator.requestStop(f.task.id);assert.equal(active.stopRequested,true);assert.equal(f.store.getTask(f.task.id).status,'running');
 });
+test('real terminal notification releases safe-stop reservation before next workspace turn',async t=>{
+ const f=fixture(t);f.executor.startTurn=async params=>{f.executor.turnStarts.push(params);return {turn:{id:`t${f.executor.turnStarts.length}`}};};await f.orchestrator.cancel(f.task.id);await f.orchestrator.start();
+ const run=f.orchestrator.dispatch({workspace:f.workspace,objective:'held turn',profile:'economy'});
+ const wait=async fn=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}throw Error('timed out');};await wait(()=>f.store.getTask(run.id).turnId==='t1');
+ await f.orchestrator.requestStop(run.id);const second=f.orchestrator.dispatch({workspace:f.workspace,objective:'wait for actual stop',profile:'economy'});await new Promise(r=>setTimeout(r,20));assert.equal(f.executor.turnStarts.length,1);assert.equal(f.store.getTask(run.id).status,'running');
+ f.executor.emit('notification',{method:'turn/completed',params:{threadId:f.store.getTask(run.id).threadId,turn:{id:'t1',status:'interrupted',items:[]}}});await wait(()=>f.executor.turnStarts.length===2);assert.equal(f.store.getTask(run.id).status,'interrupted');assert.equal(f.orchestrator.running.has(run.id),false);assert.equal(f.service.snapshot({conversation_id:`task-${run.logical_task_id}`}).tasks.find(t=>t.id===run.id).can_follow_up,true);await f.orchestrator.requestStop(run.id);
+ await f.orchestrator.cancel(second.id);
+});

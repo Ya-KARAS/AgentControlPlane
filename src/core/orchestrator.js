@@ -1520,7 +1520,7 @@ export class Orchestrator extends EventEmitter {
     const active = this.running.get(taskId);
     if (!active) {
       if (task.status === "queued" && this.queue.some(entry => entry.taskId === taskId)) return this.cancel(taskId);
-      if (["completed","partial","blocked","failed","cancelled"].includes(task.status)) return task;
+      if (["completed","partial","blocked","failed","cancelled","interrupted"].includes(task.status)) return task;
       throw new ControlPlaneError("stop_not_ready", "Executor stop cannot yet be confirmed");
     }
     if (active.stopPending) return active.stopPending;
