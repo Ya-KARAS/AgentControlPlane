@@ -138,3 +138,47 @@ Preserve task/checkpoint/history/audit and source edits. Mark every managed queu
 or running record safely blocked before using older code that cannot enforce
 these fences; never simply revert and let an old scheduler replay those tasks.
 No destructive cleanup, credential removal or main merge is automatic.
+
+## Bounded local inventory adapter
+
+`createWorkspaceInventory` is an explicit default-off host capability, paired with
+`createWorkspaceRecoveryInspector` and the existing coordinator. It does not scan
+on normal startup or expose a network/CLI tool. Hosts choose canonical workspace
+roots; tests use only temporary repositories. Only ordinary in-root `.git`
+directories are supported: worktree/gitfile/external metadata, submodules,
+symlinks/hardlinks, sparse/assume-unchanged index flags, configuration includes
+and filter commands fail closed.
+Partial-clone/promisor layouts are rejected before Git runs, with lazy-fetch
+suppression as defense ([Git documentation](https://git-scm.com/docs/git)).
+Global/system Git configuration is excluded; fsmonitor, hooks and external diff
+are disabled. Git-ignore rules remain effective; ignored runtime material stays
+node-local and is never copied. This is source-controlled handoff evidence, not a
+complete disk backup.
+
+Capture returns branch/HEAD and bounded dirty/untracked relative paths with
+SHA256; missing files have `{path,sha256:null,deleted:true}`. Old hash-only entries
+remain valid. Unsupported names, sensitive paths, conflicts, detached HEAD,
+metadata/output/file/time limits and detected changes return one fixed error,
+never partial evidence or raw command/file contents. Defaults: 256 manifest files,
+8MiB per file, 32MiB total inspected tracked or dirty content, 10,000 metadata
+entries/64MiB, 256KiB command output, 5s deadline and 8KiB recovery package. Normal
+checkouts larger than these bounds require an independently reviewed adapter or a
+smaller task workspace; no silent truncation. Reads do not refresh the Git index.
+
+Matching repeated metadata/index/HEAD/status observations and descriptor-checked
+hash passes reject ordinary concurrent changes. This is not an atomic OS snapshot
+or protection against a hostile filesystem administrator/Git executable. Paths
+and hashes are local operational evidence, never external telemetry. No source
+bytes, secrets or remote credentials are returned or transmitted.
+
+The inspector requires separate fresh, task/node/generation-bound measured source
+stop or target ready/idle/persistence observations before and after capture. Each
+proof is checked for freshness independently, so a new inventory timestamp cannot
+refresh an old stop proof. Evidence validity is their intersection, capped by the
+inventory's one-second window. Inventory alone cannot prove a remote writer has
+stopped, authorize takeover or start an executor. Real runner write fencing and
+controlled offline/return acceptance remain outstanding.
+
+Rollback: disable this host capability and retain all checkpoints/audit/user edits;
+restore a proven inspector before resuming managed tasks. Older code cannot read
+explicit deletion entries safely; do not admit such records with an older adapter.
