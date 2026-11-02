@@ -53,3 +53,8 @@ its original path so release notes and development handoffs keep stable links.
 - [v0.4.0 final release record](RELEASE-FINAL-v0.4.0.md)
 - [v0.4.0 real-token comparison](REAL-TOKEN-COMPARISON-RESULTS.md)
 - [Legacy Apache-2.0 notice](LEGACY-LICENSE-APACHE-2.0.md)
+
+## ACP V1 implementation tracking
+
+- [Stage reconciliation and remaining acceptance gates](ACP-V1-STAGE-STATUS.md)
+- [Optional execution-node preflight (PR4a)](EXECUTION-NODES.md)

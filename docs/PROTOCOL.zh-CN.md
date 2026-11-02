@@ -120,3 +120,10 @@ follow-up 提示语义。排队中的 handoff 保留新简报提示，不会恢�
 ## Token 预算
 
 用量测量和中断精度取决于执行器的遥测数据。Codex 暴露实时的线程目标，可以在运行期间轮询。CLI 适配器可能只在最终事件中报告累计用量，因此它们的预算也作为策略指导发送，但无法始终以相同的粒度强制执行。Provider 在两次测量之间可能会消耗额外的 token。
+
+## 执行节点建议（可选）
+
+`execution_nodes({requested_node_id?,executor_id?})` 读取本地/云节点登记和主机
+缓存的新鲜观测。默认关闭；缺失观测为未知，显式指定的不可用节点不会自动回退。
+始终返回 `advisory_only:true`、`execution_authorized:false`，不分配任务或授予执行权。
+客户端不能提供可信观测或批准。[配置、信任和 PR4 门槛](EXECUTION-NODES.md)。

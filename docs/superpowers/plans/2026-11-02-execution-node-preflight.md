@@ -35,18 +35,18 @@ No subscription-balance inference and no readiness imported from task prompts.
 
 ## Task 2 — read-only MCP host composition (TDD)
 
-- [ ] RED tests through actual MCP protocol: tool annotation/schema, disabled
+- [x] RED tests through actual MCP protocol: tool annotation/schema, disabled
   legacy config, no caller-supplied observation/approval accepted, host data only,
   no store writes/dispatch/executor start, no secret/error reflection.
-- [ ] Add execution_nodes read tool to existing production MCP boundary and
+- [x] Add execution_nodes read tool to existing production MCP boundary and
   optional in-process host observation injection in createApplication. Default
   has no observer, so configured nodes remain unknown. No new endpoint or setter.
-- [ ] GREEN targeted tests; commit.
+- [x] GREEN targeted tests; commit.
 
 ## Task 3 — evidence and review
 
-- [ ] Record PR20–25 head/CI/dependency/completion matrix and exact live blockers.
-- [ ] Document config, host trust, advisory-only limits, rollback and PR4b gates;
+- [x] Record PR20–25 head/CI/dependency/completion matrix and exact live blockers.
+- [x] Document config, host trust, advisory-only limits, rollback and PR4b gates;
   preserve English/Chinese architecture/protocol parity.
 - [ ] Run npm run verify; independent whole-branch read-only review; fix important
   issues RED→GREEN then final verification. Push feature branch, read remote SHA,
