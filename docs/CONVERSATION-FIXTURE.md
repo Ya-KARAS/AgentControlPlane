@@ -48,9 +48,9 @@ this command does not fix Cloud's SUID sandbox configuration or justify disablin
    Restart resets all fixture data; there is no cleanup/migration of production state.
 
 Record exact candidate SHA, browser/version/OS, sandbox mode, checklist results and
-any screenshot using **only synthetic content**. Until a supported browser actually
-runs this checklist, interaction/visual acceptance remains unpassed. Node's DOM
-contract harness and HTTP checks are different evidence.
+any screenshot using **only synthetic content**. The later coordinator receipt below records an actual synthetic browser run.
+Node's DOM contract harness and HTTP checks remain different evidence; neither
+that run nor this guide independently certifies browser sandbox configuration.
 
 ## Isolation and limits
 
@@ -72,3 +72,17 @@ Automated tests cover the served real page/fixture declarations, host/origin/inp
 credential rejection, memory-only deduplication, no production routes, guarded
 startup with poisoned config plus negative import control, CLI exit shape on both
 platforms and actual port reuse after shutdown. These do not certify a real browser.
+
+## Coordinator browser receipt — 2026-11-02
+
+Dot reports same-cloud-desktop Node24.22.1/platform CDP Chromium acceptance at
+11:04–11:12UTC, runtime244ac31, ZIP SHA256
+`4a1b88a5f5714c0cac4eab2b85df4bf7f3b8f38d073380e90afba15d05192157`;
+605 file hashes verified. A/B isolation, unconnected labels, injection rendered
+literally (img nodes0), double-click dedup, pending-stop display, one synthetic
+continuation, no refresh/back/reconnect replay and memory-draft cleanup passed.
+Ctrl+C and `ss` confirmed no18889 listener at11:12UTC. No sandbox setting changed;
+internal configuration-page inspection was policy-denied without bypass, so no
+independent sandbox-configuration proof is claimed. This is coordinator-reported
+actual **synthetic UI** acceptance, not real auth/persistence/executor/production.
+See [full receipt and remaining work](ACP-V1-ACCEPTANCE-GAPS.md).

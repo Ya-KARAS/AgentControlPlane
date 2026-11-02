@@ -64,7 +64,7 @@ roots as a production account/plugin. Production MCP does not gain synthetic
 | PR3 | Delivery metadata, strict read adapter, private persisted decision/replay/expiry/revocation, WebAuthn verifier | Real origin/RP/policy/user enrollment and real authenticated decision channel |
 | PR4 | Node registry, checkpoint/admission/recovery and stop/fencing tests | Actual persistent runner, measured adapters/physical write fence, desktop-off/return trial |
 | PR5 | Research matrix, versioned local handoff checker, isolated two-tool readiness; coordinator reports two earlier synthetic reads | Supported automatic ordinary Chat trigger/real document return and recovery remain absent |
-| Shared messages/UI | One journal/queue, foreground/background history, unconnected @target, progress/results and explicit modify/stop | Real vendor agent replies and real sandboxed browser interaction/visual acceptance |
+| Shared messages/UI | One journal/queue, foreground/background history, unconnected @target, progress/results and explicit modify/stop; coordinator-reported synthetic browser pass at244ac31 | Real vendor replies, real backend/executor browser acceptance and independent sandbox-configuration verification |
 | Acceptance/report/archive | Bound acceptance→synced report→archive, retries/restart/revocation protection | Real human decision input and operational acceptance; bounded history offload not provided |
 | Composition | All PR20–32 heads are ancestors; combined verify/CI evidence belongs to this PR | Main approval/retargeting/combined release acceptance and deployment |
 
@@ -79,9 +79,10 @@ Current CI has only Node22 `ubuntu-latest`/`windows-latest` matrix jobs. No exis
 Playwright dependency, explicit browser installation or browser job is configured
 in the project. Hosted images may include browsers, but these Node jobs do not
 establish their sandbox or interaction readiness. No new
-browser/dependency workflow is silently introduced. Cloud Chromium's existing
-SUID sandbox configuration remains blocked; no new retry, permission change or
-sandbox disabling was attempted in this round. See the credential-free fixture
+browser/dependency workflow is silently introduced. The developer container's
+prior Chromium attempt had a SUID sandbox blocker. A separate coordinator cloud
+desktop later completed synthetic fixture browser interactions without changing
+sandbox settings; independent sandbox-configuration verification is not claimed. See the credential-free fixture
 command, manual checklist and necessary existing browser resources in
 [CONVERSATION-FIXTURE.md](CONVERSATION-FIXTURE.md).
 
@@ -98,3 +99,15 @@ Do not let old code prune records whose safety depends on newer retention/fences
 A later approved merge sequence must account for this branch already containing all
 source histories: review/retarget predecessors or close superseded integration PRs
 only with explicit approval; do not blindly merge them all again. No auto-merge.
+
+## Later independent browser evidence and precise remaining development
+
+Coordinator dot reports the same-machine synthetic fixture acceptance passed on
+2026-11-02 11:04–11:12UTC at runtime244ac31, with matching ZIP/checksums and
+confirmed shutdown/no listener. This supersedes only the earlier unpassed
+synthetic-page interaction status, not real ACP/user/runner/vendor acceptance.
+See [the exact evidence, code gaps versus configuration, and minimum real pilot
+checklist](ACP-V1-ACCEPTANCE-GAPS.md). PR3 production credential storage/decision
+composition and PR4 measured adapters/write enforcement remain development gaps;
+they must not be called configuration-only. Original §9 permits manual ordinary
+Chat participation and does not make unattended automation a shipping blocker.
