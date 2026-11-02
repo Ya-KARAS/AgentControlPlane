@@ -15,7 +15,7 @@ export function createDeliveryHostService({ adapter, authorizeUser, clock = Date
     if (!healthy() || !projection || !Number.isSafeInteger(now) || now < projection.observed || now >= projection.until || projection.stamp !== stamp(state?.delivery)) return unknown(state?.delivery);
     return { ...state.delivery, checks:projection.checks, review_state:projection.review, source:'verified_host', verification:'verified', verified_until:new Date(projection.until).toISOString(), approval_supported:typeof authorizeUser === 'function',merged:projection.merge?.merged ?? null,merge_commit_sha:projection.merge?.merge_commit_sha ?? null,merge_source:projection.merge?.source ?? null,merge_event_id:projection.merge?.event_id ?? null };
   }
-  return Object.freeze({ status,
+  return Object.freeze({ status, invalidate:()=>projections.clear(),
     acceptance(id) {
       const view=status(id),projection=projections.get(id),decision=projection?.decision;
       if(view?.source!=='verified_host'||view.review_state!=='approved'||view.checks!=='passed'||view.approval_supported!==true||decision?.decision!=='approved'||!decision.user_id||!decision.event_id)return null;

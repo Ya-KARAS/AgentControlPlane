@@ -1,3 +1,4 @@
+import { createPrivateDeliveryStorage, identityBinding, identityError } from "./delivery-identity.js";
 import { workflowHash, workflowFingerprint } from "./workflow.js";
 import { readDailyReport, writeDailyReport, reportEntryHash, reportDate } from "./daily-report.js";
 import { createDeliveryHostService } from "./delivery-host.js";
@@ -123,6 +124,7 @@ function normalizeTaskRecord(task) {
 export class TaskStore {
   #deliveryHost = null;
   #deliveryHostEpoch = 0;
+  #deliveryIdentityEpoch = 0;
   constructor(
     stateDir,
     maxEvents = 500,
@@ -372,7 +374,7 @@ export class TaskStore {
       this.#requireExecutorLease();
       const temporary = `${this.statePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
       const bytes = JSON.stringify(this.state, null, 2);
-      const fd = fs.openSync(temporary, "wx");
+      const fd = fs.openSync(temporary, "wx", 0o600);
       try { fs.writeFileSync(fd, bytes, "utf8"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(temporary, this.statePath);
       this.persistedStateHash = sha256(bytes);
@@ -903,6 +905,36 @@ export class TaskStore {
       this.#workflowCommit(id,workflow,'workflow.archive_intent');
       return this.getTask(id);
     }finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
+  createDeliveryIdentityStorage({enabled=false,rpID,expectedOrigin,clock=Date.now}={}) {
+    if(enabled!==true)return createPrivateDeliveryStorage();
+    const binding=identityBinding({rpID,expectedOrigin}),epoch=++this.#deliveryIdentityEpoch;
+    this.#deliveryHost?.invalidate?.();
+    return createPrivateDeliveryStorage({enabled:true,binding,clock,access:(b,operation)=>this.#identityAccess(b,epoch,operation)});
+  }
+
+  #identityAccess(binding,epoch,operation) {
+    if(epoch!==this.#deliveryIdentityEpoch||this.checkpointFaulted)throw identityError();
+    const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();
+    const previous=this.state._delivery_identity;
+    try {
+      for(const file of [this.stateDir,this.statePath,this.auditPath,this.auditArchivePath])if(fs.existsSync(file)&&fs.lstatSync(file).isSymbolicLink())throw identityError();
+      this.#validateRetainedAudit(true);
+      let anchor=null;
+      for(const file of [this.auditArchivePath,this.auditPath])if(fs.existsSync(file))for(const line of fs.readFileSync(file,'utf8').split('\n').filter(Boolean)){const event=JSON.parse(line);if(event.type==='delivery.identity_commit')anchor=event;}
+      if(previous?(previous.pending!==false||anchor?.revision!==previous.revision||anchor?.identity_hash!==workflowHash(previous)):anchor!==null)throw identityError();
+      const change=operation(structuredClone(previous));
+      if(!change.next)return change.result;
+      if(change.next.rpID!==binding.rpID||change.next.expectedOrigin!==binding.expectedOrigin)throw identityError();
+      this.#deliveryHost?.invalidate?.();
+      this.state._delivery_identity={...change.next,pending:true};this.persist();
+      this.audit('delivery.identity_commit',{revision:change.next.revision,identity_hash:workflowHash(change.next),action:change.action});
+      const fd=fs.openSync(this.auditPath,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      this.state._delivery_identity=change.next;this.persist();return change.result;
+    } catch {
+      this.checkpointFaulted=true;throw identityError();
+    } finally {if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
   }
 
   createDeliveryHost({adapter, authorizeUser, clock} = {}) {
