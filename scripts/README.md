@@ -52,3 +52,4 @@ script execution is useful when a command needs additional arguments.
 | `npm run verify:audit` | `verify-audit.js` | Verify persisted audit evidence. |
 
 - `npm run delivery:import -- --offline TASK_ID FILE`: import bounded unverified PR metadata with ACP stopped; see [delivery operations](../docs/DELIVERY.md). No approval or GitHub action.
+- `npm run readonly:test-entry -- --port 4328`: isolated synthetic-fixture MCP test, no production startup; see [read-only test entry](../docs/READONLY-MCP-TEST-ENTRY.md).

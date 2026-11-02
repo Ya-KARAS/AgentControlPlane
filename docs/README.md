@@ -26,6 +26,7 @@ its original path so release notes and development handoffs keep stable links.
 
 - [Delivery observations and approval boundary](DELIVERY.md)
 - [Passive subscription status](SUBSCRIPTIONS.md)
+- [Isolated read-only MCP test entry](READONLY-MCP-TEST-ENTRY.md)
 - [Development workflow](DEVELOPMENT.md)
 - [Maintenance scripts](../scripts/README.md)
 - [Offline handoff acceptance](HANDOFF-ACCEPTANCE.md) · [中文](HANDOFF-ACCEPTANCE.zh-CN.md)
