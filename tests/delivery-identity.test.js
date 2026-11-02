@@ -41,3 +41,7 @@ test('retained audit detects state rollback and malformed private root rather th
  const f=setup(t);await insert(f.storage);const old=fs.readFileSync(f.store.statePath);await f.storage.compareAndSwapCounter({principalId:'private-test-user',credentialId:credential.id,expectedCounter:0,newCounter:2,expectedRevision:1});fs.writeFileSync(f.store.statePath,old);
  const restart=new TaskStore(f.dir);await assert.rejects(restart.createDeliveryIdentityStorage({...options}).readCredentials('private-test-user'),unavailable);restart.releaseExecutorLease();
 });
+test('credential capacity is bounded and private identity-shaped task fields cannot be patched or exposed',async t=>{
+ const f=setup(t);for(let i=0;i<16;i++)assert.equal(await insert(f.storage,{credential:{...credential,id:'fake-'+i}}),true);assert.equal(await insert(f.storage,{credential:{...credential,id:'overflow'}}),false);
+ const task=f.store.createTask({workspace:f.dir,brief:{objective:'synthetic'},policy:{name:'economy'}});assert.throws(()=>f.store.updateTask(task.id,{_delivery_identity:{secret:'private-marker'}}));f.store.state.tasks[task.id]._delivery_identity={secret:'private-marker'};assert.equal(JSON.stringify(f.store.getTask(task.id)).includes('private-marker'),false);
+});

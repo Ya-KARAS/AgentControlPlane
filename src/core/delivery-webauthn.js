@@ -1,5 +1,9 @@
+import { createHash } from 'node:crypto';
 import * as standardLibrary from '@simplewebauthn/server';
 import { ControlPlaneError } from './errors.js';
+
+const verifiedCeremonies=new WeakMap();
+export const verifiedDeliveryCeremony=value=>value&&typeof value==='object'?verifiedCeremonies.get(value):undefined;
 
 const unavailable = () => new ControlPlaneError('webauthn_unavailable', 'User-verification ceremony unavailable or rejected');
 const id = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value);
@@ -13,7 +17,7 @@ function targetBinding(value) {
 }
 function validCredential(value) {
   return value && credentialId(value.id) && value.publicKey instanceof Uint8Array &&
-    value.publicKey.length > 0 && value.publicKey.length <= 8192 && Number.isSafeInteger(value.counter) && value.counter >= 0;
+    value.publicKey.length > 0 && value.publicKey.length <= 8192 && Number.isSafeInteger(value.counter) && value.counter >= 0 && (value.revision===undefined || Number.isSafeInteger(value.revision)&&value.revision>0);
 }
 
 // Trusted host composition only. No route, config loader or default principal/RP.
@@ -102,13 +106,14 @@ export function createDeliveryWebAuthnVerifier({ rpID, expectedOrigin, rpName, a
       live(record);
       const committed=kind==='registration'
         ? await storage.insertCredential({principalId:record.principalId,credential:structuredClone(credential),expectedAbsent:true})
-        : await storage.compareAndSwapCounter({principalId:record.principalId,credentialId:credential.id,expectedCounter:credential.counter,newCounter:result.authenticationInfo.newCounter});
+        : await storage.compareAndSwapCounter({principalId:record.principalId,credentialId:credential.id,expectedCounter:credential.counter,newCounter:result.authenticationInfo.newCounter,...(credential.revision===undefined?{}:{expectedRevision:credential.revision})});
       if(committed!==true)throw unavailable();
       await authorized(record.principalId,kind,record.target);
       live(record);
-      return kind==='registration'
-        ? {verified:true,registration_only:true,credentialId:credential.id}
-        : {verified:true,ceremony_only:true,principalId:record.principalId,credentialId:credential.id,target:record.target};
+      if(kind==='registration')return {verified:true,registration_only:true,credentialId:credential.id};
+      const receipt=Object.freeze({verified:true,ceremony_only:true,principalId:record.principalId,credentialId:credential.id,target:record.target});
+      verifiedCeremonies.set(receipt,Object.freeze({storage,rpID,expectedOrigin,principalId:record.principalId,credentialId:credential.id,target:record.target,credentialRevision:credential.revision===undefined?undefined:credential.revision+1,createdAt:record.createdAt,expiresAt:record.expiresAt,proofId:createHash('sha256').update(JSON.stringify([rpID,expectedOrigin,challengeId,record.principalId,record.target,record.createdAt])).digest('hex')}));
+      return receipt;
     } catch {throw unavailable();}
     finally {if(reserved)finishing--;}
   }
