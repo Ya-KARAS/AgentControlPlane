@@ -1,3 +1,4 @@
+import { normalizeMessage, normalizeMessageQuery, messageOperationKey, messageFingerprint } from "./messages.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -627,6 +628,44 @@ export class TaskStore {
     }
   }
 
+  #commitMessage(key, record, action) {
+    const previous=this.state.messages; const held=Boolean(this.checkpointLeaseToken);this.acquireExecutorLease();let persisted=false;
+    try {
+      this.state.messages={...(previous??{}),[key]:record};this.persist();persisted=true;
+      this.audit('message.updated',{messageKey:key,action,taskId:record.execution_task_id??record.task_id??null});
+      return structuredClone(record);
+    } catch(error){if(!persisted)this.state.messages=previous;this.checkpointFaulted=true;throw error;}
+    finally{if(!held&&!this.checkpointFaulted)this.releaseExecutorLease();}
+  }
+
+  postMessage(input,maxMessages=1024) {
+    const message=normalizeMessage(input),key=messageOperationKey(message),fingerprint=messageFingerprint(message);
+    const previous=this.state.messages?.[key];
+    if(previous){
+      if(previous.fingerprint!==fingerprint)throw new ControlPlaneError('message_conflict','Message content conflicts with its existing identity');
+      if(previous.channels.includes(message.channel))return structuredClone(previous);
+      return this.#commitMessage(key,{...previous,channels:['foreground','background'].filter(c=>previous.channels.includes(c)||c===message.channel)},'channel_seen');
+    }
+    if(Object.keys(this.state.messages??{}).length>=maxMessages)throw new ControlPlaneError('message_capacity_reached','Local message capacity reached; preserve history before adding more');
+    const related=message.task_id?this.getTask(message.task_id):null;
+    if(message.task_id&&!related)throw new ControlPlaneError('task_not_found','Referenced task not found');
+    const {channel,...content}=message;
+    const record={...content,key,fingerprint,channels:[channel],sender_verified:false,source:'local_unverified',created_at:now(),sequence:Math.max(0,...Object.values(this.state.messages??{}).map(m=>m.sequence))+1,logical_task_id:related?.logical_task_id??null,execution_task_id:null,state:message.kind==='execution_request'?'dispatch_pending':'posted'};
+    return this.#commitMessage(key,record,'posted');
+  }
+
+  linkMessageTask(key,taskId) {
+    const message=this.state.messages?.[key],task=this.state.tasks[taskId];
+    if(!message||message.kind!=='execution_request'||!task||task.idempotency_key!==key||message.execution_task_id&&message.execution_task_id!==taskId)throw new ControlPlaneError('message_conflict','Message/task binding could not be confirmed');
+    if(message.execution_task_id===taskId)return structuredClone(message);
+    return this.#commitMessage(key,{...message,execution_task_id:taskId,logical_task_id:task.logical_task_id??task.id,state:'dispatched'},'task_bound');
+  }
+
+  listMessages(query={}) {
+    const {conversation_id,channel,limit}=normalizeMessageQuery(query);
+    return Object.values(this.state.messages??{}).filter(message=>(!conversation_id||message.conversation_id===conversation_id)&&(!channel||message.channels.includes(channel))).sort((a,b)=>a.sequence-b.sequence).slice(-limit).map(m=>structuredClone(m));
+  }
+
   applyNodeRecovery(id, command) {
     if (!isNodeRecoveryCommand(command)) throw new ControlPlaneError('untrusted_node_recovery', 'Host node recovery evidence is required');
     const task = this.state.tasks[id];
@@ -902,7 +941,7 @@ export class TaskStore {
       "interrupted",
     ]);
     const removable = tasks
-      .filter((task) => terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()))
+      .filter((task) => terminal.has(task.status) && !(task.executor_checkpoint?.retainUntil > Date.now()) && !/^message:[a-f0-9]{64}$/.test(task.idempotency_key??'') && !(task.node_recovery&&task.node_recovery.phase!=='completed'))
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     const removeCount = tasks.length - this.maxTasks + 1;
     if (removable.length < removeCount) {
