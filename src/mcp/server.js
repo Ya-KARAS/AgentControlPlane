@@ -6,11 +6,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   isInitializeRequest,
+  ListToolsRequestSchema,
   SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { asErrorPayload } from "../core/errors.js";
 import { estimateCost, latencyStats } from "../core/cost-latency.js";
 import { publicModels } from "../core/profiles.js";
@@ -97,9 +97,16 @@ function failure(error) {
 }
 
 function toJsonSchema(shape) {
-  return zodToJsonSchema(z.object(shape), {
-    target: "jsonSchema7",
-    $refStrategy: "none",
+  // Preserve the existing discovery contract while using Zod's native v4 converter.
+  return z.toJSONSchema(z.object(shape), {
+    target: "draft-7",
+    io: "input",
+    override: ({ jsonSchema }) => {
+      if (jsonSchema.type === "object" && jsonSchema.properties &&
+          jsonSchema.additionalProperties === undefined) {
+        jsonSchema.additionalProperties = false;
+      }
+    },
   });
 }
 
@@ -781,6 +788,16 @@ export function createMcpHandler({ orchestrator, store, config, messageHub, arch
     version: config.version ?? readPackageVersion(),
   };
 
+  function describeTools() {
+    return toolSpecs.map((spec) => ({
+      name: spec.name,
+      title: spec.title,
+      description: spec.description,
+      inputSchema: toJsonSchema(spec.inputSchema),
+      annotations: spec.annotations,
+    }));
+  }
+
   function buildServer() {
     // Compact briefs need far fewer entries; bound validation work as well as
     // the HTTP parser's existing 1 MiB body cap (GHSA-46jr-4wx8-v453).
@@ -797,6 +814,15 @@ export function createMcpHandler({ orchestrator, store, config, messageHub, arch
         spec.handler,
       );
     }
+    // Both discovery paths describe this static catalog using the same input
+    // schemas. Keep SDK runtime parsing and registerTool's task policy intact.
+    // Revisit this handler if dynamic tools or output schemas are introduced.
+    server.server.setRequestHandler(ListToolsRequestSchema, () => ({
+      tools: describeTools().map((tool) => ({
+        ...tool,
+        execution: { taskSupport: "forbidden" },
+      })),
+    }));
     return server;
   }
 
@@ -814,13 +840,7 @@ export function createMcpHandler({ orchestrator, store, config, messageHub, arch
         prompts: { listChanged: false },
       },
       instructions: SERVER_INSTRUCTIONS,
-      tools: toolSpecs.map((spec) => ({
-        name: spec.name,
-        title: spec.title,
-        description: spec.description,
-        inputSchema: toJsonSchema(spec.inputSchema),
-        annotations: spec.annotations,
-      })),
+      tools: describeTools(),
       resources: [],
       prompts: [],
     };
